@@ -36,6 +36,7 @@ static_validation() {
         scripts/check-worker-oci-image.py scripts/oci_reference.py \
         .github/scripts/anonymous_worker_pull.py \
         .github/scripts/worker_publication.py \
+        .github/workflows/accept-worker-publication.yml \
         .github/workflows/publish-worker.yml \
         tests/test_trusted_worker_publisher.py \
         tests/test-public-empty-registry.sh \

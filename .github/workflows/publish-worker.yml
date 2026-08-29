@@ -151,20 +151,23 @@ jobs:
           export REGISTRY_TAG PUSH_OUTPUT_PATH REGISTRY_TAG_IMAGE_ID REGISTRY_REPO_DIGESTS
           python3 trusted/.github/scripts/worker_publication.py verify-pushed
 
-      - name: Create trusted machine-readable publication record
+      - name: Create trusted provisional publication record
         env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
           REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
           FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
           CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
           REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
           OCI_DIGEST: ${{ steps.pushed.outputs.registry_digest }}
           WORKFLOW_RUN: ${{ github.run_id }}
-        run: python3 trusted/.github/scripts/worker_publication.py record
+        run: >-
+          python3 trusted/.github/scripts/worker_publication.py
+          record-provisional
 
-      - name: Upload publication record
+      - name: Upload provisional publication record
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: orchestra-worker-publication-${{ steps.source.outputs.candidate_sha }}
-          path: trusted/worker-publication.json
+          name: orchestra-worker-publication-provisional-${{ steps.source.outputs.candidate_sha }}
+          path: trusted/worker-publication-provisional.json
           if-no-files-found: error
           retention-days: 14
