@@ -11,6 +11,8 @@ from contextlib import closing
 from dataclasses import dataclass
 from typing import Any
 
+from scripts.oci_reference import parse_immutable_oci_reference
+
 from .core import (
     ControllerError,
     PROJECT_ID_PATTERN,
@@ -29,7 +31,6 @@ PROFILE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,127}$")
 TASK_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 EVENT_TYPE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
 PLAN_ID_PATTERN = re.compile(r"^plan-[a-f0-9]{32}$")
-IMAGE_DIGEST_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
 MAX_CURSOR_BYTES = 1024
 TASK_STATES = {
     "pending",
@@ -938,15 +939,18 @@ class ExecutionReadStore:
             return None
         if not isinstance(payload, dict):
             return None
-        candidates: list[Any] = [
-            payload.get("sandbox_image_digest"),
-            payload.get("image_id"),
-        ]
-        audit = payload.get("audit")
-        if isinstance(audit, dict):
-            candidates.extend([audit.get("image"), audit.get("image_id")])
-        valid = [item for item in candidates if isinstance(item, str) and IMAGE_DIGEST_PATTERN.fullmatch(item)]
-        return valid[0] if valid and len(set(valid)) == 1 else None
+        image_reference = payload.get("sandbox_image_reference")
+        if not isinstance(image_reference, str):
+            return None
+        try:
+            parsed = parse_immutable_oci_reference(image_reference)
+        except ValueError:
+            return None
+        digest = parsed.digest
+        projected = payload.get("sandbox_image_digest")
+        if projected is not None and projected != digest:
+            return None
+        return digest
 
     def _run(self, row: sqlite3.Row) -> dict[str, Any]:
         run_id = self._require_identifier(

@@ -1,0 +1,4 @@
+# The worker has no repository file inputs. Keep the distribution lock and all
+# checkout-specific state outside the context to prevent digest recursion.
+**
+!images/orchestra-worker.Dockerfile

@@ -33,6 +33,26 @@ static_validation() {
         install.sh uninstall.sh preflight.sh validate.sh \
         scripts/check-secrets.sh scripts/check-secrets.py \
         scripts/export-worker-image.sh scripts/init-test-fixtures.sh \
+        scripts/environment_resolution/__init__.py \
+        scripts/environment_resolution/contract.py \
+        scripts/environment_resolution/default.py \
+        scripts/legacy_worker_environment.py \
+        scripts/oci_reference.py \
+        scripts/sandbox_backend.py \
+        scripts/check-worker-oci-image.py \
+        scripts/hermesops-worker.py scripts/hermesops-reviewer.py \
+        config/environments/default-worker.toml \
+        images/orchestra-worker.Dockerfile \
+        images/orchestra-worker.Dockerfile.dockerignore \
+        .github/scripts/anonymous_worker_pull.py \
+        .github/scripts/worker_publication.py \
+        .github/workflows/publish-worker.yml \
+        docs/distribution/WORKER_IMAGE.md \
+        tests/test_environment_resolution.py \
+        tests/test_environment_resolution_guards.py \
+        tests/test_sandbox_backend.py \
+        tests/test_worker_distribution.py \
+        tests/test_worker_publication.py \
         tests/test-public-empty-registry.sh \
         tests/test-preflight-minimal-host.sh \
         tests/test-install-no-auth-contract.sh \
@@ -246,6 +266,11 @@ if versions != list(range(1, len(versions) + 1)):
 print(f"Migration sequence: PASS ({len(versions)})")
 PY
 
+    python3 "${REPO}/tests/test_environment_resolution.py"
+    python3 "${REPO}/tests/test_environment_resolution_guards.py"
+    python3 "${REPO}/tests/test_sandbox_backend.py"
+    python3 "${REPO}/tests/test_worker_distribution.py"
+    python3 "${REPO}/tests/test_worker_publication.py"
     "${REPO}/tests/test-public-empty-registry.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"

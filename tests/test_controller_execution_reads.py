@@ -27,6 +27,7 @@ LEGACY_ONE = "11111111-1111-4111-8111-111111111111"
 LEGACY_TWO = "22222222-2222-4222-8222-222222222222"
 WORKER_ONE = "execution-" + "1" * 32
 IMAGE_DIGEST = "sha256:" + "a" * 64
+IMAGE_REFERENCE = "registry.example.com/team/worker@" + IMAGE_DIGEST
 
 
 SCHEMA = """
@@ -311,7 +312,13 @@ class Fixture:
                     "worker_docs", "ops-worker-docs", "runtime-worker-private",
                     "private-container-name", "abcdef123456", "/host/private/prompt",
                     str(self.private_log), "write", 0, 2, 4096, 1, 1, 0,
-                    json.dumps({"audit": {"image": IMAGE_DIGEST}, "secret": "hidden"}),
+                    json.dumps(
+                        {
+                            "sandbox_image_reference": IMAGE_REFERENCE,
+                            "sandbox_image_digest": IMAGE_DIGEST,
+                            "secret": "hidden",
+                        }
+                    ),
                     None, "2026-07-19T00:05:00.000Z",
                     "2026-07-19T00:05:00.000Z", "2026-07-19T00:10:00.000Z",
                 ),

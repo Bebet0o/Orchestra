@@ -11,7 +11,6 @@ import sqlite3
 import subprocess
 import sys
 import time
-import tomllib
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +27,24 @@ from agent_runtime import (
     create_runtime,
     record_runtime_failure,
 )
+from environment_resolution import (
+    DEFAULT_ENVIRONMENT_ID,
+    ENVIRONMENT_SCHEMA_VERSION,
+    EnvironmentSpec,
+)
+from legacy_worker_environment import (
+    LegacyEnvironmentError,
+    LegacyLocalEnvironment,
+    LegacyWorkerEnvironmentAdapter,
+)
+from sandbox_backend import (
+    LegacyPreparedEnvironment,
+    SandboxContainerExpectation,
+    SandboxPreparation,
+    SandboxPreparationError,
+    prepare_legacy_environment,
+    verify_prepared_container,
+)
 
 
 ROOT = Path(
@@ -43,6 +60,11 @@ HERMES_HOME = ROOT / "state/hermes-home"
 EXECUTIONS_ROOT = ROOT / "state/controller/executions"
 CLONES_ROOT = ROOT / "workspaces/.hermesops-worker-clones"
 WORKER_LOCK = REPO / "config/worker-sandbox.lock.toml"
+
+DEFAULT_WORKER_ENVIRONMENT_SPEC = EnvironmentSpec(
+    schema_version=ENVIRONMENT_SCHEMA_VERSION,
+    environment_id=DEFAULT_ENVIRONMENT_ID,
+)
 
 ENGINE = "hermesops-sandbox-engine"
 
@@ -156,20 +178,27 @@ def nested_docker(
     )
 
 
-def load_worker_image() -> str:
-    with WORKER_LOCK.open("rb") as stream:
-        document = tomllib.load(stream)
+def load_worker_environment() -> LegacyLocalEnvironment:
+    """Load the explicit temporary local environment for the shared spec."""
 
-    image_id = document.get("image_id")
+    adapter = LegacyWorkerEnvironmentAdapter(
+        WORKER_LOCK,
+        lambda local_config_id: nested_docker(
+            "image",
+            "inspect",
+            local_config_id,
+        ),
+    )
+    try:
+        return adapter.load(DEFAULT_WORKER_ENVIRONMENT_SPEC)
+    except LegacyEnvironmentError as error:
+        fail(str(error))
 
-    if (
-        not isinstance(image_id, str)
-        or not image_id.startswith("sha256:")
-    ):
-        fail("Invalid worker sandbox image lock")
 
-    nested_docker("image", "inspect", image_id)
-    return image_id
+def prepare_worker_environment() -> LegacyPreparedEnvironment:
+    """Prepare today's explicitly local environment without inventing OCI data."""
+
+    return prepare_legacy_environment(load_worker_environment())
 
 
 def load_role(
@@ -573,16 +602,14 @@ def authorized_sandbox_container_id(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     read_only: bool,
 ) -> str | None:
     """Return a full ID only for the exact control-plane sandbox grant."""
-    if re.fullmatch(r"[a-f0-9]{12,64}", candidate_id) is None:
-        return None
     full_id = str(container.get("Id") or "")
     if (
         re.fullmatch(r"[a-f0-9]{64}", full_id) is None
-        or not full_id.startswith(candidate_id)
+        or candidate_id != full_id
     ):
         return None
 
@@ -611,29 +638,19 @@ def authorized_sandbox_container_id(
         "dead",
     }:
         return None
-    if container.get("Image") != image_id:
-        return None
-
-    mounts = container.get("Mounts") or []
-    if not isinstance(mounts, list) or not all(
-        isinstance(mount, dict) for mount in mounts
-    ):
-        return None
-    workspace_mounts = [
-        mount
-        for mount in mounts
-        if mount.get("Destination") == "/workspace"
-    ]
-    if len(workspace_mounts) != 1:
-        return None
-    workspace_mount = workspace_mounts[0]
-    mount_rw = workspace_mount.get("RW")
-    if (
-        Path(str(workspace_mount.get("Source") or "")).resolve()
-        != clone.resolve()
-        or not isinstance(mount_rw, bool)
-        or mount_rw != (not read_only)
-    ):
+    try:
+        verify_prepared_container(
+            container,
+            SandboxContainerExpectation(
+                container_id=full_id,
+                preparation=prepared_environment,
+                task_id=task_id,
+                runtime_request_id=runtime_request_id,
+                workspace=clone,
+                read_only=read_only,
+            ),
+        )
+    except (TypeError, ValueError, SandboxPreparationError):
         return None
     return full_id
 
@@ -644,7 +661,7 @@ def remove_owned_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     read_only: bool,
 ) -> bool:
     """Reinspect an owned sandbox and remove it only by its full ID."""
@@ -657,7 +674,7 @@ def remove_owned_sandbox(
         task_id=task_id,
         runtime_request_id=runtime_request_id,
         clone=clone,
-        image_id=image_id,
+        prepared_environment=prepared_environment,
         read_only=read_only,
     )
     if full_id is None:
@@ -672,7 +689,7 @@ def precreate_worker_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     cpu_limit: int,
     memory_mb: int,
     branch_name: str,
@@ -713,7 +730,7 @@ def precreate_worker_sandbox(
         f"{clone}:/workspace:rw",
         "--workdir",
         "/workspace",
-        image_id,
+        prepared_environment.executable_image_selector,
         "sleep",
         "infinity",
     )
@@ -728,7 +745,7 @@ def precreate_worker_sandbox(
         task_id=task_id,
         runtime_request_id=runtime_request_id,
         clone=clone,
-        image_id=image_id,
+        prepared_environment=prepared_environment,
         cpu_limit=cpu_limit,
         memory_mb=memory_mb,
     )
@@ -757,14 +774,20 @@ def find_worker_sandbox(
     *,
     baseline_ids: set[str],
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
 ) -> str | None:
-    current = set(nested_docker("ps", "-aq").stdout.split())
+    current = set(
+        nested_docker("ps", "-aq", "--no-trunc").stdout.split()
+    )
 
     for container_id in sorted(current - baseline_ids):
         data = inspect_nested_container(container_id)
 
-        if data is None or data.get("Image") != image_id:
+        if (
+            data is None
+            or data.get("Image")
+            != prepared_environment.local_image_config_id
+        ):
             continue
 
         mounts = data.get("Mounts") or []
@@ -786,7 +809,7 @@ def audit_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     cpu_limit: int,
     memory_mb: int,
 ) -> dict[str, Any]:
@@ -820,8 +843,20 @@ def audit_sandbox(
     if str((data.get("State") or {}).get("Status") or "") != "running":
         fail("Sandbox is not running")
 
-    if data.get("Image") != image_id:
-        fail(f"Unexpected sandbox image: {data.get('Image')}")
+    try:
+        verify_prepared_container(
+            data,
+            SandboxContainerExpectation(
+                container_id=container_id,
+                preparation=prepared_environment,
+                task_id=task_id,
+                runtime_request_id=runtime_request_id,
+                workspace=clone,
+                read_only=False,
+            ),
+        )
+    except (TypeError, ValueError, SandboxPreparationError) as error:
+        fail(str(error))
 
     mounts = data.get("Mounts") or []
     workspace_mounts = [
@@ -944,7 +979,8 @@ def audit_sandbox(
         "task_id": task_id,
         "runtime_request_id": runtime_request_id,
         "state": "running",
-        "image": data.get("Image"),
+        "local_image_config_id": prepared_environment.local_image_config_id,
+        "sandbox_image_digest": prepared_environment.oci_digest,
         "workspace_source": workspace_mount.get("Source"),
         "workspace_rw": workspace_mount.get("RW"),
         "network_mode": host_config.get("NetworkMode"),
@@ -972,13 +1008,13 @@ def cleanup_created_sandboxes(
     *,
     baseline_ids: set[str],
     clone: Path | None,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     task_id: str,
     runtime_request_id: str,
 ) -> None:
     """Clean only newly observed sandboxes with exact positive ownership."""
     current_ids = set(
-        nested_docker("ps", "-aq", check=False).stdout.split()
+        nested_docker("ps", "-aq", "--no-trunc", check=False).stdout.split()
     )
 
     for container_id in sorted(current_ids - baseline_ids):
@@ -989,7 +1025,7 @@ def cleanup_created_sandboxes(
             task_id=task_id,
             runtime_request_id=runtime_request_id,
             clone=clone,
-            image_id=image_id,
+            prepared_environment=prepared_environment,
             read_only=False,
         )
 
@@ -1152,7 +1188,7 @@ def command_launch(
     if not marker or "\n" in marker:
         fail("Marker must be one non-empty line")
 
-    image_id = load_worker_image()
+    prepared_environment = prepare_worker_environment()
 
     with connect() as connection:
         role = load_role(connection, arguments.role)
@@ -1205,7 +1241,9 @@ def command_launch(
     failure_reason: str | None = None
     success = False
     result: dict[str, Any] = {}
-    baseline_ids = set(nested_docker("ps", "-aq").stdout.split())
+    baseline_ids = set(
+        nested_docker("ps", "-aq", "--no-trunc").stdout.split()
+    )
 
     try:
         clone = prepare_worker_clone(
@@ -1219,7 +1257,7 @@ def command_launch(
             task_id=task_id,
             runtime_request_id=runtime_request_id,
             clone=clone,
-            image_id=image_id,
+            prepared_environment=prepared_environment,
             cpu_limit=cpu_limit,
             memory_mb=memory_mb,
             branch_name=run["branch_name"],
@@ -1241,7 +1279,7 @@ def command_launch(
                 completion_marker=marker,
                 sandbox=RuntimeSandboxContext(
                     workspace=clone,
-                    image_id=image_id,
+                    prepared_environment=prepared_environment,
                     cpu_limit=cpu_limit,
                     memory_mb=memory_mb,
                     read_only=False,
@@ -1259,7 +1297,7 @@ def command_launch(
             sandbox_id = find_worker_sandbox(
                 baseline_ids=baseline_ids,
                 clone=clone,
-                image_id=image_id,
+                prepared_environment=prepared_environment,
             )
 
         if sandbox_id is None:
@@ -1284,7 +1322,7 @@ def command_launch(
                     task_id=task_id,
                     runtime_request_id=runtime_request_id,
                     clone=clone,
-                    image_id=image_id,
+                    prepared_environment=prepared_environment,
                     cpu_limit=cpu_limit,
                     memory_mb=memory_mb,
                 )
@@ -1413,6 +1451,8 @@ def command_launch(
             "source_profile": role["profile_name"],
             "runtime_request_id": runtime_request_id,
             "sandbox_container_id": sandbox_id,
+            "sandbox_image_reference": prepared_environment.image_reference,
+            "sandbox_image_digest": prepared_environment.oci_digest,
             "output_path": str(output_path),
             "result_commit": head,
             "exit_code": exit_code,
@@ -1450,14 +1490,14 @@ def command_launch(
                 task_id=task_id,
                 runtime_request_id=runtime_request_id,
                 clone=clone,
-                image_id=image_id,
+                prepared_environment=prepared_environment,
                 read_only=False,
             )
 
         cleanup_created_sandboxes(
             baseline_ids=baseline_ids,
             clone=clone,
-            image_id=image_id,
+            prepared_environment=prepared_environment,
             task_id=task_id,
             runtime_request_id=runtime_request_id,
         )

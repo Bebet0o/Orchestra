@@ -143,7 +143,11 @@ class HermesRuntime(AgentRuntime):
             "HOME": "/home/hermes",
             "TERMINAL_ENV": "docker",
             "TERMINAL_CWD": "/workspace",
-            "TERMINAL_DOCKER_IMAGE": sandbox.image_id,
+            # Upstream Hermes still needs one Docker create selector.  Keep
+            # that adapter-specific translation separate from local evidence.
+            "TERMINAL_DOCKER_IMAGE": (
+                sandbox.prepared_environment.executable_image_selector
+            ),
             "TERMINAL_DOCKER_VOLUMES": json.dumps(
                 [f"{sandbox.workspace}:/workspace:{mount_mode}"],
                 separators=(",", ":"),
@@ -173,7 +177,12 @@ class HermesRuntime(AgentRuntime):
             "HERMESOPS_SANDBOX_TASK_ID": sandbox.task_id,
             "HERMESOPS_SANDBOX_REQUEST_ID": request.request_id,
             "HERMESOPS_SANDBOX_WORKSPACE": str(sandbox.workspace),
-            "HERMESOPS_SANDBOX_IMAGE_ID": sandbox.image_id,
+            "HERMESOPS_SANDBOX_EXECUTABLE_IMAGE": (
+                sandbox.prepared_environment.executable_image_selector
+            ),
+            "HERMESOPS_SANDBOX_LOCAL_IMAGE_CONFIG_ID": (
+                sandbox.prepared_environment.local_image_config_id
+            ),
             "HERMESOPS_SANDBOX_READ_ONLY": str(sandbox.read_only).lower(),
             "HERMESOPS_SANDBOX_CPU_LIMIT": str(sandbox.cpu_limit),
             "HERMESOPS_SANDBOX_MEMORY_MB": str(sandbox.memory_mb),
@@ -258,7 +267,9 @@ class HermesRuntime(AgentRuntime):
                 {
                     "backend": "docker",
                     "cwd": "/workspace",
-                    "docker_image": sandbox.image_id,
+                    "docker_image": (
+                        sandbox.prepared_environment.executable_image_selector
+                    ),
                     "docker_volumes": [
                         f"{sandbox.workspace}:/workspace:{mount_mode}"
                     ],

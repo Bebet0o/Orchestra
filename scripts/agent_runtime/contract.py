@@ -9,6 +9,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Protocol, runtime_checkable
 
+from oci_reference import (
+    is_canonical_oci_digest,
+    parse_immutable_oci_reference,
+)
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
@@ -68,12 +72,95 @@ class RuntimeEvent:
             raise ValueError("Runtime event timestamp must be timezone-aware UTC")
 
 
+@runtime_checkable
+class RuntimePreparedEnvironment(Protocol):
+    """Image facts consumed by runtimes without owning backend policy."""
+
+    @property
+    def executable_image_selector(self) -> str:
+        ...
+
+    @property
+    def local_image_config_id(self) -> str:
+        ...
+
+    @property
+    def oci_digest(self) -> str | None:
+        ...
+
+    @property
+    def image_reference(self) -> str | None:
+        ...
+
+
+@dataclass(frozen=True)
+class RuntimePreparedEnvironmentData:
+    """Validated immutable image-authority snapshot consumed by runtimes."""
+
+    executable_image_selector: str
+    local_image_config_id: str
+    oci_digest: str | None
+    image_reference: str | None
+
+    def __post_init__(self) -> None:
+        if not is_canonical_oci_digest(self.local_image_config_id):
+            raise ValueError(
+                "Runtime local image config ID must be canonical sha256"
+            )
+
+        if self.image_reference is None:
+            if self.oci_digest is not None:
+                raise ValueError(
+                    "Legacy runtime preparation must not contain an OCI digest"
+                )
+            if self.executable_image_selector != self.local_image_config_id:
+                raise ValueError(
+                    "Legacy runtime selector must equal its local config ID"
+                )
+            return
+
+        parsed = parse_immutable_oci_reference(self.image_reference)
+        if self.oci_digest != parsed.digest:
+            raise ValueError(
+                "Runtime OCI digest does not match its image reference"
+            )
+        if self.executable_image_selector != self.image_reference:
+            raise ValueError(
+                "Runtime OCI selector does not match its image reference"
+            )
+        if self.local_image_config_id == parsed.digest:
+            raise ValueError(
+                "Runtime OCI digest cannot substitute for local config ID"
+            )
+
+    @classmethod
+    def from_prepared(
+        cls,
+        value: object,
+    ) -> RuntimePreparedEnvironmentData:
+        if isinstance(value, cls):
+            return value
+        try:
+            snapshot = cls(
+                executable_image_selector=getattr(
+                    value,
+                    "executable_image_selector",
+                ),
+                local_image_config_id=getattr(value, "local_image_config_id"),
+                oci_digest=getattr(value, "oci_digest"),
+                image_reference=getattr(value, "image_reference"),
+            )
+        except AttributeError as error:
+            raise TypeError("Runtime sandbox preparation is incomplete") from error
+        return snapshot
+
+
 @dataclass(frozen=True)
 class RuntimeSandboxContext:
     """Bounded sandbox facts required to invoke an agent role."""
 
     workspace: Path
-    image_id: str
+    prepared_environment: RuntimePreparedEnvironment
     cpu_limit: int
     memory_mb: int
     read_only: bool
@@ -84,8 +171,10 @@ class RuntimeSandboxContext:
     def __post_init__(self) -> None:
         if not isinstance(self.workspace, Path) or not self.workspace.is_absolute():
             raise TypeError("Runtime sandbox workspace must be an absolute Path")
-        if not isinstance(self.image_id, str) or not self.image_id:
-            raise ValueError("Runtime sandbox image identity is required")
+        snapshot = RuntimePreparedEnvironmentData.from_prepared(
+            self.prepared_environment
+        )
+        object.__setattr__(self, "prepared_environment", snapshot)
         if (
             not isinstance(self.cpu_limit, int)
             or isinstance(self.cpu_limit, bool)
