@@ -17,6 +17,9 @@ _SHA = re.compile(r"[0-9a-f]{40}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _BRANCH_BODY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 EXPECTED_REPOSITORY = "ghcr.io/bebet0o/orchestra-worker"
+_REGISTRY_TAG = re.compile(
+    re.escape(EXPECTED_REPOSITORY) + r":candidate-[0-9a-f]{40}"
+)
 MAX_PUSH_OUTPUT_BYTES = 1_048_576
 
 
@@ -93,7 +96,12 @@ def resolve_detached_checkout(path: Path) -> str:
     return validate_candidate_sha(resolved.stdout.rstrip("\n"))
 
 
-def parse_push_registry_digest(path: Path) -> str:
+def parse_push_registry_digest(path: Path, expected_registry_tag: object) -> str:
+    if (
+        not isinstance(expected_registry_tag, str)
+        or _REGISTRY_TAG.fullmatch(expected_registry_tag) is None
+    ):
+        raise PublicationContractError("expected registry tag is invalid")
     try:
         metadata = path.stat()
         if not path.is_file() or path.is_symlink() or metadata.st_size > MAX_PUSH_OUTPUT_BYTES:
@@ -101,8 +109,16 @@ def parse_push_registry_digest(path: Path) -> str:
         output = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise PublicationContractError("Docker push output cannot be read safely") from error
+    if len(re.findall(r"(?i)digest:", output)) != 1:
+        raise PublicationContractError("Docker push output lacks one unambiguous digest")
+    expected_tag_name = expected_registry_tag.rsplit(":", 1)[1]
+    expected_prefix = (
+        rf"(?:{re.escape(expected_registry_tag)}|{re.escape(expected_tag_name)}):"
+        r"[ \t]+"
+    )
     matches = re.findall(
-        r"(?m)^digest:[ \t]+(sha256:[0-9a-f]{64})"
+        rf"(?m)^(?:{expected_prefix})?"
+        r"digest:[ \t]+(sha256:[0-9a-f]{64})"
         r"[ \t]+size:[ \t]+[0-9]+[ \t]*$",
         output,
     )
@@ -170,6 +186,8 @@ def verify_source_identities(
 
 def build_publication_record(
     *,
+    publication_state: object,
+    candidate_ref: object,
     requested_candidate_sha: object,
     fetched_candidate_sha: object,
     checked_out_sha: object,
@@ -178,7 +196,11 @@ def build_publication_record(
     platform: object,
     registry_digest: object,
     workflow_run_id: object,
+    ghcr_package_public: object | None = None,
+    anonymous_digest_pull: object | None = None,
+    anonymous_pull_fresh_daemon: object | None = None,
 ) -> dict[str, object]:
+    candidate_ref = validate_candidate_ref(candidate_ref)
     source_commit = verify_source_identities(
         requested_candidate_sha,
         fetched_candidate_sha,
@@ -199,8 +221,13 @@ def build_publication_record(
         or not workflow_run_id.isdecimal()
     ):
         raise PublicationContractError("workflow run identity is invalid")
-    return {
-        "schema_version": 1,
+    if publication_state not in {"provisional", "accepted"}:
+        raise PublicationContractError("publication state is invalid")
+    record: dict[str, object] = {
+        "schema_version": 2,
+        "publication_state": publication_state,
+        "candidate_ref": candidate_ref,
+        "candidate_sha": source_commit,
         "source_commit": source_commit,
         "repository": repository,
         "platform": platform,
@@ -208,6 +235,32 @@ def build_publication_record(
         "image_reference": repository + "@" + registry_digest,
         "workflow_run": workflow_run_id,
     }
+    if publication_state == "provisional":
+        if any(
+            value is not None
+            for value in (
+                ghcr_package_public,
+                anonymous_digest_pull,
+                anonymous_pull_fresh_daemon,
+            )
+        ):
+            raise PublicationContractError("provisional publication cannot claim acceptance")
+        record["anonymous_pull"] = "not-yet-verified"
+    else:
+        if (
+            ghcr_package_public != "YES"
+            or anonymous_digest_pull != "PASS"
+            or anonymous_pull_fresh_daemon != "YES"
+        ):
+            raise PublicationContractError("accepted publication lacks anonymous proof")
+        record.update(
+            {
+                "GHCR_PACKAGE_PUBLIC": "YES",
+                "ANONYMOUS_DIGEST_PULL": "PASS",
+                "ANONYMOUS_PULL_FRESH_DAEMON": "YES",
+            }
+        )
+    return record
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:
@@ -236,17 +289,29 @@ def main(
             "verify-checkout",
             "validate-local-image",
             "verify-pushed",
-            "record",
+            "validate-acceptance",
+            "record-provisional",
+            "record-accepted",
         ),
     )
     parser.add_argument("--checkout-path", type=Path)
     arguments = parser.parse_args(argv)
 
     requested = validate_candidate_sha(_required(environment, "REQUESTED_CANDIDATE_SHA"))
-    if arguments.command == "validate-request":
+    if arguments.command in {"validate-request", "validate-acceptance"}:
         candidate_ref = validate_candidate_ref(_required(environment, "REQUESTED_CANDIDATE_REF"))
+        digest = None
+        if arguments.command == "validate-acceptance":
+            digest = validate_canonical_digest(
+                _required(environment, "REQUESTED_IMAGE_DIGEST"),
+                field="acceptance image digest",
+            )
         _write_output("candidate_ref", candidate_ref, environment)
         _write_output("candidate_sha", requested, environment)
+        if arguments.command == "validate-acceptance":
+            assert digest is not None
+            _write_output("image_digest", digest, environment)
+            _write_output("image_reference", EXPECTED_REPOSITORY + "@" + digest, environment)
         return 0
 
     fetched = validate_candidate_sha(_required(environment, "FETCHED_CANDIDATE_SHA"))
@@ -275,8 +340,14 @@ def main(
         return 0
 
     if arguments.command == "verify-pushed":
+        registry_tag = _required(environment, "REGISTRY_TAG")
+        expected_registry_tag = (
+            EXPECTED_REPOSITORY + ":candidate-" + requested
+        )
+        if registry_tag != expected_registry_tag:
+            raise PublicationContractError("candidate registry tag is invalid")
         push_digest = parse_push_registry_digest(
-            Path(_required(environment, "PUSH_OUTPUT_PATH"))
+            Path(_required(environment, "PUSH_OUTPUT_PATH")), expected_registry_tag
         )
         verified_digest = verify_pushed_image_binding(
             requested_candidate_sha=requested,
@@ -285,7 +356,7 @@ def main(
             ),
             registry_tag_image_id=_required(environment, "REGISTRY_TAG_IMAGE_ID"),
             repository=_required(environment, "IMAGE_REPOSITORY"),
-            registry_tag=_required(environment, "REGISTRY_TAG"),
+            registry_tag=registry_tag,
             registry_digest=push_digest,
             repo_digests_json=_required(environment, "REGISTRY_REPO_DIGESTS"),
         )
@@ -293,6 +364,10 @@ def main(
         return 0
 
     record = build_publication_record(
+        publication_state=(
+            "provisional" if arguments.command == "record-provisional" else "accepted"
+        ),
+        candidate_ref=_required(environment, "REQUESTED_CANDIDATE_REF"),
         requested_candidate_sha=requested,
         fetched_candidate_sha=fetched,
         checked_out_sha=checked_out,
@@ -301,8 +376,12 @@ def main(
         platform=_required(environment, "PLATFORM"),
         registry_digest=_required(environment, "OCI_DIGEST"),
         workflow_run_id=_required(environment, "WORKFLOW_RUN"),
+        ghcr_package_public=environment.get("GHCR_PACKAGE_PUBLIC"),
+        anonymous_digest_pull=environment.get("ANONYMOUS_DIGEST_PULL"),
+        anonymous_pull_fresh_daemon=environment.get("ANONYMOUS_PULL_FRESH_DAEMON"),
     )
-    output = Path(__file__).resolve().parents[2] / "worker-publication.json"
+    suffix = "provisional" if arguments.command == "record-provisional" else "accepted"
+    output = Path(__file__).resolve().parents[2] / f"worker-publication-{suffix}.json"
     with output.open("x", encoding="utf-8") as stream:
         json.dump(record, stream, indent=2, sort_keys=True)
         stream.write("\n")

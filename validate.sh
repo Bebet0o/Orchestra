@@ -46,6 +46,7 @@ static_validation() {
         images/orchestra-worker.Dockerfile.dockerignore \
         .github/scripts/anonymous_worker_pull.py \
         .github/scripts/worker_publication.py \
+        .github/workflows/accept-worker-publication.yml \
         .github/workflows/publish-worker.yml \
         docs/distribution/WORKER_IMAGE.md \
         tests/test_environment_resolution.py \

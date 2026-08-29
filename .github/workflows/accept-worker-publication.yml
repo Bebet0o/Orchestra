@@ -1,0 +1,120 @@
+name: Accept Orchestra worker publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Full repository-owned branch ref
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact lowercase 40-hex candidate branch head
+        required: true
+        type: string
+      image_digest:
+        description: Exact lowercase sha256 digest produced by Phase 1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  accept:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'bebet0o/Orchestra' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IMAGE_REPOSITORY: ghcr.io/bebet0o/orchestra-worker
+      PLATFORM: linux/amd64
+    steps:
+      - name: Checkout trusted publication foundation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Validate acceptance request
+        id: request
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          REQUESTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: >-
+          python3 trusted/.github/scripts/worker_publication.py
+          validate-acceptance
+
+      - name: Fetch and reauthorize exact candidate branch head
+        id: fetched
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          git -C trusted fetch --no-tags --no-recurse-submodules --depth=1 --force origin \
+            "$REQUESTED_CANDIDATE_REF:refs/remotes/orchestra-acceptance/candidate"
+          FETCHED_CANDIDATE_SHA="$(git -C trusted rev-parse --verify \
+            'refs/remotes/orchestra-acceptance/candidate^{commit}')"
+          export FETCHED_CANDIDATE_SHA
+          python3 trusted/.github/scripts/worker_publication.py verify-fetched
+
+      - name: Checkout detached candidate source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.fetched.outputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Verify detached candidate source
+        id: source
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/worker_publication.py
+          verify-checkout --checkout-path candidate
+
+      - name: Validate candidate Dockerfile base policy
+        run: >-
+          python3 trusted/scripts/check-worker-oci-image.py
+          --dockerfile-policy candidate/images/orchestra-worker.Dockerfile
+
+      - name: Fresh anonymous exact-digest pull and candidate validation
+        id: anonymous
+        env:
+          IMMUTABLE_IMAGE_REFERENCE: ${{ steps.request.outputs.image_reference }}
+          CANDIDATE_SHA: ${{ steps.source.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/anonymous_worker_pull.py
+          --image "$IMMUTABLE_IMAGE_REFERENCE"
+          --expected-revision "$CANDIDATE_SHA"
+
+      - name: Create final accepted publication record
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
+          IMAGE_REPOSITORY: ${{ env.IMAGE_REPOSITORY }}
+          PLATFORM: ${{ env.PLATFORM }}
+          OCI_DIGEST: ${{ steps.request.outputs.image_digest }}
+          GHCR_PACKAGE_PUBLIC: ${{ steps.anonymous.outputs.ghcr_package_public }}
+          ANONYMOUS_DIGEST_PULL: ${{ steps.anonymous.outputs.anonymous_digest_pull }}
+          ANONYMOUS_PULL_FRESH_DAEMON: ${{ steps.anonymous.outputs.anonymous_pull_fresh_daemon }}
+          WORKFLOW_RUN: ${{ github.run_id }}
+        run: >-
+          python3 trusted/.github/scripts/worker_publication.py
+          record-accepted
+
+      - name: Upload final accepted publication record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orchestra-worker-publication-accepted-${{ steps.source.outputs.candidate_sha }}
+          path: trusted/worker-publication-accepted.json
+          if-no-files-found: error
+          retention-days: 14

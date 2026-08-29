@@ -15,6 +15,12 @@ from collections.abc import Callable
 
 DIND_IMAGE = "docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6515"
 EXPECTED_REPOSITORY = "ghcr.io/bebet0o/orchestra-worker"
+EXPECTED_SOURCE = "https://github.com/bebet0o/Orchestra"
+EXPECTED_BASE_DIGEST = (
+    "sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
+)
+_SHA = re.compile(r"[0-9a-f]{40}")
+_IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
 _REFERENCE = re.compile(
     re.escape(EXPECTED_REPOSITORY) + r"@sha256:[0-9a-f]{64}"
 )
@@ -34,12 +40,15 @@ class AnonymousPullError(RuntimeError):
 
 def prove_anonymous_pull(
     image_reference: str,
+    expected_revision: str,
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
     if _REFERENCE.fullmatch(image_reference) is None:
         raise AnonymousPullError("anonymous pull requires the exact worker digest")
+    if _SHA.fullmatch(expected_revision) is None:
+        raise AnonymousPullError("anonymous pull candidate revision is invalid")
     name = "orchestra-anonymous-pull-" + secrets.token_hex(8)
 
     def run(
@@ -66,7 +75,9 @@ def prove_anonymous_pull(
         started = run(
             [
                 "docker", "run", "--detach", "--privileged", "--name", name,
-                "--env", "DOCKER_TLS_CERTDIR=", DIND_IMAGE,
+                "--env", "DOCKER_TLS_CERTDIR=",
+                "--env", "DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config",
+                DIND_IMAGE,
                 "dockerd", "--host=unix:///var/run/docker.sock",
                 "--storage-driver=overlay2", "--log-level=error",
             ],
@@ -76,7 +87,11 @@ def prove_anonymous_pull(
             raise AnonymousPullError("fresh anonymous DIND failed to start")
         for _attempt in range(60):
             ready = run(
-                ["docker", "exec", name, "docker", "info"],
+                [
+                    "docker", "exec", "--env",
+                    "DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config",
+                    name, "docker", "info",
+                ],
                 timeout=5,
             )
             if ready.returncode == 0:
@@ -86,14 +101,20 @@ def prove_anonymous_pull(
             raise AnonymousPullError("fresh anonymous DIND did not become ready")
 
         preexisting = run(
-            ["docker", "exec", name, "docker", "image", "inspect", image_reference],
+            [
+                "docker", "exec", "--env",
+                "DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config",
+                name, "docker", "image", "inspect", image_reference,
+            ],
             timeout=10,
         )
         if preexisting.returncode == 0:
             raise AnonymousPullError("fresh daemon unexpectedly contains worker image")
         pulled = run(
             [
-                "docker", "exec", name, "docker", "image", "pull",
+                "docker", "exec", "--env",
+                "DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config",
+                name, "docker", "image", "pull",
                 "--platform", "linux/amd64", image_reference,
             ],
             timeout=900,
@@ -102,8 +123,9 @@ def prove_anonymous_pull(
             raise AnonymousPullError("anonymous exact-digest pull failed")
         inspected = run(
             [
-                "docker", "exec", name, "docker", "image", "inspect",
-                "--format", "{{json .RepoDigests}}", image_reference,
+                "docker", "exec", "--env",
+                "DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config",
+                name, "docker", "image", "inspect", image_reference,
             ],
             timeout=30,
             capture=True,
@@ -111,11 +133,29 @@ def prove_anonymous_pull(
         if inspected.returncode != 0 or len(inspected.stdout) > 262_144:
             raise AnonymousPullError("fresh-daemon image inspection failed")
         try:
-            repo_digests = json.loads(inspected.stdout)
+            payload = json.loads(inspected.stdout)
         except json.JSONDecodeError as error:
-            raise AnonymousPullError("fresh-daemon RepoDigests are malformed") from error
+            raise AnonymousPullError("fresh-daemon image metadata are malformed") from error
+        if not isinstance(payload, list) or len(payload) != 1 or not isinstance(payload[0], dict):
+            raise AnonymousPullError("fresh-daemon image inspection is invalid")
+        image = payload[0]
+        repo_digests = image.get("RepoDigests")
         if not isinstance(repo_digests, list) or image_reference not in repo_digests:
             raise AnonymousPullError("fresh daemon lacks the exact RepoDigest")
+        config = image.get("Config")
+        labels = config.get("Labels") if isinstance(config, dict) else None
+        if (
+            _IMAGE_ID.fullmatch(str(image.get("Id"))) is None
+            or image.get("Os") != "linux"
+            or image.get("Architecture") != "amd64"
+            or not isinstance(labels, dict)
+            or labels.get("org.opencontainers.image.source") != EXPECTED_SOURCE
+            or labels.get("org.opencontainers.image.base.digest") != EXPECTED_BASE_DIGEST
+            or labels.get("org.opencontainers.image.revision") != expected_revision
+            or labels.get("org.opencontainers.image.version")
+            != "candidate-" + expected_revision
+        ):
+            raise AnonymousPullError("fresh-daemon candidate metadata mismatched")
     finally:
         removed = run(["docker", "rm", "--force", name], timeout=30)
         if removed.returncode != 0:
@@ -125,9 +165,19 @@ def prove_anonymous_pull(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
+    parser.add_argument("--expected-revision", required=True)
     arguments = parser.parse_args()
-    prove_anonymous_pull(arguments.image)
+    prove_anonymous_pull(arguments.image, arguments.expected_revision)
+    try:
+        output = os.environ["GITHUB_OUTPUT"]
+        with open(output, "a", encoding="utf-8") as stream:
+            stream.write("ghcr_package_public=YES\n")
+            stream.write("anonymous_digest_pull=PASS\n")
+            stream.write("anonymous_pull_fresh_daemon=YES\n")
+    except (KeyError, OSError) as error:
+        raise AnonymousPullError("anonymous pull evidence cannot be recorded") from error
     print("ANONYMOUS_PULL_FRESH_DAEMON=YES")
+    print("ANONYMOUS_PULL_HAS_NO_REGISTRY_CREDENTIALS=YES")
     return 0
 
 
