@@ -33,6 +33,11 @@ static_validation() {
         install.sh uninstall.sh preflight.sh validate.sh \
         scripts/check-secrets.sh scripts/check-secrets.py \
         scripts/export-worker-image.sh scripts/init-test-fixtures.sh \
+        scripts/check-worker-oci-image.py scripts/oci_reference.py \
+        .github/scripts/anonymous_worker_pull.py \
+        .github/scripts/worker_publication.py \
+        .github/workflows/publish-worker.yml \
+        tests/test_trusted_worker_publisher.py \
         tests/test-public-empty-registry.sh \
         tests/test-preflight-minimal-host.sh \
         tests/test-install-no-auth-contract.sh \
@@ -246,6 +251,7 @@ if versions != list(range(1, len(versions) + 1)):
 print(f"Migration sequence: PASS ({len(versions)})")
 PY
 
+    python3 "${REPO}/tests/test_trusted_worker_publisher.py"
     "${REPO}/tests/test-public-empty-registry.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"
