@@ -53,6 +53,7 @@ static_validation() {
         tests/test_sandbox_backend.py \
         tests/test_worker_distribution.py \
         tests/test_worker_publication.py \
+        tests/test_trusted_worker_publisher.py \
         tests/test-public-empty-registry.sh \
         tests/test-preflight-minimal-host.sh \
         tests/test-install-no-auth-contract.sh \
@@ -271,6 +272,7 @@ PY
     python3 "${REPO}/tests/test_sandbox_backend.py"
     python3 "${REPO}/tests/test_worker_distribution.py"
     python3 "${REPO}/tests/test_worker_publication.py"
+    python3 "${REPO}/tests/test_trusted_worker_publisher.py"
     "${REPO}/tests/test-public-empty-registry.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"

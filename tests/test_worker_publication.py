@@ -40,6 +40,7 @@ class TrustedPublicationContractTest(unittest.TestCase):
     def run_helper(
         self,
         command: str,
+        *arguments: str,
         **values: str,
     ) -> tuple[subprocess.CompletedProcess[str], str]:
         with tempfile.TemporaryDirectory(prefix="orchestra-publication-cli-") as directory:
@@ -52,7 +53,12 @@ class TrustedPublicationContractTest(unittest.TestCase):
                 **values,
             }
             completed = subprocess.run(
-                [sys.executable, str(ROOT / ".github/scripts/worker_publication.py"), command],
+                [
+                    sys.executable,
+                    str(ROOT / ".github/scripts/worker_publication.py"),
+                    command,
+                    *arguments,
+                ],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -191,24 +197,58 @@ class TrustedPublicationContractTest(unittest.TestCase):
         self.assertEqual(output, f"candidate_sha={SHA}\n")
 
     def test_verify_checkout_cli_fails_mismatch_without_authority_output(self) -> None:
-        completed, output = self.run_helper(
-            "verify-checkout",
-            REQUESTED_CANDIDATE_SHA=SHA,
-            FETCHED_CANDIDATE_SHA=SHA,
-            CHECKED_OUT_SHA="c" * 40,
-        )
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertEqual(output, "")
-        self.assertNotIn("candidate_sha=", output)
+        with tempfile.TemporaryDirectory(
+            prefix="orchestra-feature-checkout-"
+        ) as directory:
+            repository = Path(directory) / "candidate"
+            subprocess.run(["git", "init", "-q", str(repository)], check=True)
+            subprocess.run(
+                [
+                    "git", "-C", str(repository),
+                    "-c", "user.name=Audit",
+                    "-c", "user.email=audit@example.invalid",
+                    "commit", "-q", "--allow-empty", "-m", "candidate",
+                ],
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", "HEAD"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            ).stdout.strip()
 
-        completed, output = self.run_helper(
-            "verify-checkout",
-            REQUESTED_CANDIDATE_SHA=SHA,
-            FETCHED_CANDIDATE_SHA=SHA,
-            CHECKED_OUT_SHA=SHA,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(output, f"candidate_sha={SHA}\n")
+            attached, output = self.run_helper(
+                "verify-checkout", "--checkout-path", str(repository),
+                REQUESTED_CANDIDATE_SHA=head,
+                FETCHED_CANDIDATE_SHA=head,
+            )
+            self.assertNotEqual(attached.returncode, 0)
+            self.assertIn("candidate checkout is not detached", attached.stderr)
+            self.assertEqual(output, "")
+
+            subprocess.run(
+                ["git", "-C", str(repository), "checkout", "-q", "--detach", head],
+                check=True,
+            )
+            completed, output = self.run_helper(
+                "verify-checkout", "--checkout-path", str(repository),
+                REQUESTED_CANDIDATE_SHA=SHA,
+                FETCHED_CANDIDATE_SHA=SHA,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("candidate source identities do not agree", completed.stderr)
+            self.assertNotIn("candidate checkout path is required", completed.stderr)
+            self.assertEqual(output, "")
+            self.assertNotIn("candidate_sha=", output)
+
+            completed, output = self.run_helper(
+                "verify-checkout", "--checkout-path", str(repository),
+                REQUESTED_CANDIDATE_SHA=head,
+                FETCHED_CANDIDATE_SHA=head,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(output, f"candidate_sha={head}\n")
 
 
 class FreshDaemonAnonymousPullTest(unittest.TestCase):

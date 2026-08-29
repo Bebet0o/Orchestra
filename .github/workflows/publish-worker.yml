@@ -68,20 +68,20 @@ jobs:
         env:
           REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
           FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
-        run: |
-          set -euo pipefail
-          if git -C candidate symbolic-ref -q HEAD >/dev/null; then
-            echo "Candidate checkout is not detached" >&2
-            exit 1
-          fi
-          CHECKED_OUT_SHA="$(git -C candidate rev-parse --verify HEAD)"
-          export CHECKED_OUT_SHA
-          python3 trusted/.github/scripts/worker_publication.py verify-checkout
+        run: >-
+          python3 trusted/.github/scripts/worker_publication.py
+          verify-checkout --checkout-path candidate
+
+      - name: Validate candidate Dockerfile base policy
+        run: >-
+          python3 trusted/scripts/check-worker-oci-image.py
+          --dockerfile-policy candidate/images/orchestra-worker.Dockerfile
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       - name: Build local contract candidate
+        id: build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: candidate
@@ -95,12 +95,26 @@ jobs:
             OCI_REVISION=${{ steps.source.outputs.candidate_sha }}
             OCI_VERSION=candidate-${{ steps.source.outputs.candidate_sha }}
 
+      - name: Resolve exact local image identity
+        id: local
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          LOCAL_CANDIDATE_TAG: orchestra-worker-contract:${{ steps.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          LOCAL_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$LOCAL_CANDIDATE_TAG")"
+          export LOCAL_IMAGE_ID
+          python3 trusted/.github/scripts/worker_publication.py validate-local-image
+
       - name: Validate local contract candidate with trusted checker
         env:
           CANDIDATE_SHA: ${{ steps.source.outputs.candidate_sha }}
+          VALIDATED_LOCAL_IMAGE_ID: ${{ steps.local.outputs.validated_local_image_id }}
         run: |
           python3 trusted/scripts/check-worker-oci-image.py \
-            --image "orchestra-worker-contract:$CANDIDATE_SHA" \
+            --image "$VALIDATED_LOCAL_IMAGE_ID" \
             --expected-revision "$CANDIDATE_SHA"
 
       - name: Authenticate to GHCR
@@ -110,19 +124,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push candidate
-        id: push
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: candidate
-          file: candidate/images/orchestra-worker.Dockerfile
-          platforms: ${{ env.PLATFORM }}
-          push: true
-          provenance: false
-          tags: ${{ env.IMAGE_REPOSITORY }}:candidate-${{ steps.source.outputs.candidate_sha }}
-          build-args: |
-            OCI_REVISION=${{ steps.source.outputs.candidate_sha }}
-            OCI_VERSION=candidate-${{ steps.source.outputs.candidate_sha }}
+      - name: Tag and push exact validated local image
+        id: pushed
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          CANDIDATE_SHA: ${{ steps.source.outputs.candidate_sha }}
+          VALIDATED_LOCAL_IMAGE_ID: ${{ steps.local.outputs.validated_local_image_id }}
+        run: |
+          set -euo pipefail
+          REGISTRY_TAG="${IMAGE_REPOSITORY}:candidate-${CANDIDATE_SHA}"
+          docker image tag "$VALIDATED_LOCAL_IMAGE_ID" "$REGISTRY_TAG"
+          TAGGED_LOCAL_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$REGISTRY_TAG")"
+          if [[ "$TAGGED_LOCAL_IMAGE_ID" != "$VALIDATED_LOCAL_IMAGE_ID" ]]; then
+            echo "Registry tag does not identify validated local image" >&2
+            exit 1
+          fi
+          PUSH_OUTPUT_PATH="$(mktemp "${RUNNER_TEMP}/orchestra-worker-push.XXXXXX")"
+          if ! docker image push "$REGISTRY_TAG" >"$PUSH_OUTPUT_PATH" 2>&1; then
+            echo "Worker image push failed" >&2
+            exit 1
+          fi
+          REGISTRY_TAG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$REGISTRY_TAG")"
+          REGISTRY_REPO_DIGESTS="$(docker image inspect --format '{{json .RepoDigests}}' "$REGISTRY_TAG")"
+          export REGISTRY_TAG PUSH_OUTPUT_PATH REGISTRY_TAG_IMAGE_ID REGISTRY_REPO_DIGESTS
+          python3 trusted/.github/scripts/worker_publication.py verify-pushed
 
       - name: Create trusted machine-readable publication record
         env:
@@ -130,7 +157,7 @@ jobs:
           FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
           CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
           REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
-          OCI_DIGEST: ${{ steps.push.outputs.digest }}
+          OCI_DIGEST: ${{ steps.pushed.outputs.registry_digest }}
           WORKFLOW_RUN: ${{ github.run_id }}
         run: python3 trusted/.github/scripts/worker_publication.py record
 

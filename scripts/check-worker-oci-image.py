@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ EXPECTED_SOURCE = "https://github.com/bebet0o/Orchestra"
 EXPECTED_BASE_DIGEST = (
     "sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
 )
+EXPECTED_BASE_REFERENCE = "python@" + EXPECTED_BASE_DIGEST
 SENSITIVE_FRAGMENTS = (
     "PASSWORD",
     "SECRET",
@@ -36,6 +38,26 @@ SENSITIVE_FRAGMENTS = (
 
 class WorkerImageContractError(RuntimeError):
     pass
+
+
+def validate_dockerfile_base_policy(path: Path) -> None:
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise WorkerImageContractError("Candidate Dockerfile cannot be read") from error
+    if "\x00" in source:
+        raise WorkerImageContractError("Candidate Dockerfile is malformed")
+    from_instructions: list[str] = []
+    for physical_line in source.splitlines():
+        stripped = physical_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if re.match(r"(?i)^FROM(?:\s|$)", stripped):
+            from_instructions.append(stripped)
+    if from_instructions != ["FROM " + EXPECTED_BASE_REFERENCE]:
+        raise WorkerImageContractError(
+            "Candidate Dockerfile must use exactly the trusted immutable base"
+        )
 
 
 def docker(
@@ -95,6 +117,8 @@ def validate_metadata(
         raise WorkerImageContractError("Worker image revision label mismatched")
     if not isinstance(version, str) or not version:
         raise WorkerImageContractError("Worker image version label is absent")
+    if expected_revision is not None and version != "candidate-" + expected_revision:
+        raise WorkerImageContractError("Worker image version label mismatched")
     if config.get("Cmd") != ["sleep", "infinity"]:
         raise WorkerImageContractError("Worker image default command mismatched")
     if config.get("Entrypoint") not in (None, []):
@@ -195,10 +219,20 @@ def anonymous_pull(image_reference: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", required=True)
+    parser.add_argument("--image")
     parser.add_argument("--expected-revision")
     parser.add_argument("--anonymous-pull", action="store_true")
+    parser.add_argument("--dockerfile-policy", type=Path)
     arguments = parser.parse_args()
+
+    if arguments.dockerfile_policy is not None:
+        if arguments.image is not None or arguments.anonymous_pull:
+            raise WorkerImageContractError("Dockerfile policy mode is exclusive")
+        validate_dockerfile_base_policy(arguments.dockerfile_policy)
+        print("ORCHESTRA_WORKER_DOCKERFILE_BASE_POLICY_PASS")
+        return 0
+    if arguments.image is None:
+        raise WorkerImageContractError("Worker image is required")
 
     if arguments.anonymous_pull:
         anonymous_pull(arguments.image)
