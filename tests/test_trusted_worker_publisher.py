@@ -637,12 +637,17 @@ class PublicationHelperCLITest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="orchestra-push-output-") as directory:
             output = Path(directory) / "push.log"
             output.write_text(f"digest: {DIGEST} size: 1234\n", encoding="utf-8")
-            self.assertEqual(PUBLICATION.parse_push_registry_digest(output), DIGEST)
+            self.assertEqual(PUBLICATION.parse_push_registry_digest(output, tag), DIGEST)
+            output.write_text(
+                f"candidate-{SHA}: digest: {DIGEST} size: 1234\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(PUBLICATION.parse_push_registry_digest(output, tag), DIGEST)
             output.write_text(
                 f"digest:\t{DIGEST}\tsize:\t1234\t\n",
                 encoding="utf-8",
             )
-            self.assertEqual(PUBLICATION.parse_push_registry_digest(output), DIGEST)
+            self.assertEqual(PUBLICATION.parse_push_registry_digest(output, tag), DIGEST)
             verified = PUBLICATION.verify_pushed_image_binding(
                 requested_candidate_sha=SHA,
                 validated_local_image_id=local_id,
@@ -655,7 +660,12 @@ class PublicationHelperCLITest(unittest.TestCase):
             self.assertEqual(verified, DIGEST)
             for content in (
                 "arbitrary-text\n", "digest: sha256:short size: 1\n",
+                f"candidate-wrong: digest: {DIGEST} size: 1\n",
+                f"candidate-{SHA}: digest: SHA256:{'a' * 64} size: 1\n",
+                f"candidate-{SHA}: digest: sha256:{'a' * 63} size: 1\n",
                 f"digest: {DIGEST} size: 1\ndigest: {DIGEST} size: 1\n",
+                f"candidate-{SHA}: digest: {DIGEST} size: 1\n"
+                f"candidate-{SHA}: digest: {'sha256:' + 'b' * 64} size: 1\n",
                 f"digest: {DIGEST}\nsize: 1\n",
                 f"digest:\n{DIGEST} size: 1\n",
                 f"digest: {DIGEST} size:\n1\n",
@@ -668,7 +678,7 @@ class PublicationHelperCLITest(unittest.TestCase):
             ):
                 output.write_text(content, encoding="utf-8")
                 with self.assertRaises(PUBLICATION.PublicationContractError):
-                    PUBLICATION.parse_push_registry_digest(output)
+                    PUBLICATION.parse_push_registry_digest(output, tag)
         for field, value in (
             ("registry_tag_image_id", "sha256:" + "d" * 64),
             ("registry_tag", "ghcr.io/bebet0o/orchestra-worker:candidate-wrong"),

@@ -17,6 +17,9 @@ _SHA = re.compile(r"[0-9a-f]{40}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _BRANCH_BODY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 EXPECTED_REPOSITORY = "ghcr.io/bebet0o/orchestra-worker"
+_REGISTRY_TAG = re.compile(
+    re.escape(EXPECTED_REPOSITORY) + r":candidate-[0-9a-f]{40}"
+)
 MAX_PUSH_OUTPUT_BYTES = 1_048_576
 
 
@@ -93,7 +96,12 @@ def resolve_detached_checkout(path: Path) -> str:
     return validate_candidate_sha(resolved.stdout.rstrip("\n"))
 
 
-def parse_push_registry_digest(path: Path) -> str:
+def parse_push_registry_digest(path: Path, expected_registry_tag: object) -> str:
+    if (
+        not isinstance(expected_registry_tag, str)
+        or _REGISTRY_TAG.fullmatch(expected_registry_tag) is None
+    ):
+        raise PublicationContractError("expected registry tag is invalid")
     try:
         metadata = path.stat()
         if not path.is_file() or path.is_symlink() or metadata.st_size > MAX_PUSH_OUTPUT_BYTES:
@@ -101,8 +109,16 @@ def parse_push_registry_digest(path: Path) -> str:
         output = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise PublicationContractError("Docker push output cannot be read safely") from error
+    if len(re.findall(r"(?i)digest:", output)) != 1:
+        raise PublicationContractError("Docker push output lacks one unambiguous digest")
+    expected_tag_name = expected_registry_tag.rsplit(":", 1)[1]
+    expected_prefix = (
+        rf"(?:{re.escape(expected_registry_tag)}|{re.escape(expected_tag_name)}):"
+        r"[ \t]+"
+    )
     matches = re.findall(
-        r"(?m)^digest:[ \t]+(sha256:[0-9a-f]{64})"
+        rf"(?m)^(?:{expected_prefix})?"
+        r"digest:[ \t]+(sha256:[0-9a-f]{64})"
         r"[ \t]+size:[ \t]+[0-9]+[ \t]*$",
         output,
     )
@@ -324,8 +340,14 @@ def main(
         return 0
 
     if arguments.command == "verify-pushed":
+        registry_tag = _required(environment, "REGISTRY_TAG")
+        expected_registry_tag = (
+            EXPECTED_REPOSITORY + ":candidate-" + requested
+        )
+        if registry_tag != expected_registry_tag:
+            raise PublicationContractError("candidate registry tag is invalid")
         push_digest = parse_push_registry_digest(
-            Path(_required(environment, "PUSH_OUTPUT_PATH"))
+            Path(_required(environment, "PUSH_OUTPUT_PATH")), expected_registry_tag
         )
         verified_digest = verify_pushed_image_binding(
             requested_candidate_sha=requested,
@@ -334,7 +356,7 @@ def main(
             ),
             registry_tag_image_id=_required(environment, "REGISTRY_TAG_IMAGE_ID"),
             repository=_required(environment, "IMAGE_REPOSITORY"),
-            registry_tag=_required(environment, "REGISTRY_TAG"),
+            registry_tag=registry_tag,
             registry_digest=push_digest,
             repo_digests_json=_required(environment, "REGISTRY_REPO_DIGESTS"),
         )
