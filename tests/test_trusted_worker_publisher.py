@@ -16,6 +16,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/publish-worker.yml"
+ACCEPTANCE_WORKFLOW = ROOT / ".github/workflows/accept-worker-publication.yml"
 HELPER = ROOT / ".github/scripts/worker_publication.py"
 ANONYMOUS_PULL = ROOT / ".github/scripts/anonymous_worker_pull.py"
 CHECKER = ROOT / "scripts/check-worker-oci-image.py"
@@ -132,8 +133,8 @@ class WorkflowTrustTest(unittest.TestCase):
             "Resolve exact local image identity": (
                 "trusted/.github/scripts/worker_publication.py", "validate-local-image"
             ),
-            "Create trusted machine-readable publication record": (
-                "trusted/.github/scripts/worker_publication.py", "record"
+            "Create trusted provisional publication record": (
+                "trusted/.github/scripts/worker_publication.py", "record-provisional"
             ),
             "Tag and push exact validated local image": (
                 "trusted/.github/scripts/worker_publication.py", "verify-pushed"
@@ -193,13 +194,17 @@ class WorkflowTrustTest(unittest.TestCase):
             "${{ steps.local.outputs.validated_local_image_id }}",
             self.source,
         )
-        record = self.by_name["Create trusted machine-readable publication record"]
+        record = self.by_name["Create trusted provisional publication record"]
         self.assertEqual(record["env"]["CHECKED_OUT_SHA"], source)
         self.assertEqual(record["env"]["REVISION_LABEL"], source)
         self.assertEqual(
             record["env"]["OCI_DIGEST"],
             "${{ steps.pushed.outputs.registry_digest }}",
         )
+        self.assertIn("record-provisional", record["run"])
+        self.assertNotIn("record-accepted", self.source)
+        upload = self.by_name["Upload provisional publication record"]
+        self.assertEqual(upload["with"]["path"], "trusted/worker-publication-provisional.json")
 
     def test_publication_order_and_same_local_artifact_binding(self) -> None:
         names = [step["name"] for step in self.steps]
@@ -211,7 +216,7 @@ class WorkflowTrustTest(unittest.TestCase):
             "Validate local contract candidate with trusted checker",
             "Authenticate to GHCR",
             "Tag and push exact validated local image",
-            "Create trusted machine-readable publication record",
+            "Create trusted provisional publication record",
         )
         self.assertEqual([names.index(name) for name in ordered], sorted(
             names.index(name) for name in ordered
@@ -228,6 +233,163 @@ class WorkflowTrustTest(unittest.TestCase):
         )
         self.assertIn("REGISTRY_REPO_DIGESTS=", run)
         self.assertIn("worker_publication.py verify-pushed", run)
+
+
+class AcceptanceWorkflowTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.source = ACCEPTANCE_WORKFLOW.read_text(encoding="utf-8")
+        self.workflow = yaml.load(self.source, Loader=yaml.BaseLoader)
+        self.steps = self.workflow["jobs"]["accept"]["steps"]
+        self.by_name = {step["name"]: step for step in self.steps}
+
+    def assert_zero_build_push_or_login(self, source: str) -> None:
+        workflow = yaml.load(source, Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["accept"]["steps"]
+        uses = [str(step.get("uses", "")) for step in steps]
+        shell = "\n".join(str(step.get("run", "")) for step in steps)
+        self.assertFalse(any(item.startswith("docker/build-push-action@") for item in uses))
+        self.assertFalse(any(item.startswith("docker/login-action@") for item in uses))
+        self.assertNotRegex(shell, r"(?m)^\s*docker\s+(?:image\s+)?push\b")
+        self.assertNotRegex(shell, r"(?m)^\s*docker\s+(?:build|buildx\s+build)\b")
+
+    def assert_acceptance_order(self, source: str) -> None:
+        workflow = yaml.load(source, Loader=yaml.BaseLoader)
+        names = [step["name"] for step in workflow["jobs"]["accept"]["steps"]]
+        ordered = (
+            "Validate acceptance request",
+            "Fetch and reauthorize exact candidate branch head",
+            "Checkout detached candidate source",
+            "Verify detached candidate source",
+            "Validate candidate Dockerfile base policy",
+            "Fresh anonymous exact-digest pull and candidate validation",
+            "Create final accepted publication record",
+            "Upload final accepted publication record",
+        )
+        self.assertEqual(
+            [names.index(name) for name in ordered],
+            sorted(names.index(name) for name in ordered),
+        )
+
+    def assert_trusted_acceptance_commands(self, source: str) -> None:
+        workflow = yaml.load(source, Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["accept"]["steps"]
+        shell = "\n".join(str(step.get("run", "")) for step in steps)
+        self.assertNotIn("candidate/.github/scripts/", shell)
+        self.assertNotIn("candidate/scripts/check-worker-oci-image.py", shell)
+        self.assertIn(
+            "trusted/.github/scripts/worker_publication.py validate-acceptance",
+            " ".join(shell.split()),
+        )
+        self.assertIn("trusted/.github/scripts/anonymous_worker_pull.py", shell)
+        self.assertIn("trusted/scripts/check-worker-oci-image.py", shell)
+
+    def test_manual_main_only_inputs_and_minimal_permissions(self) -> None:
+        self.assertEqual(set(self.workflow["on"]), {"workflow_dispatch"})
+        inputs = self.workflow["on"]["workflow_dispatch"]["inputs"]
+        self.assertEqual(set(inputs), {"candidate_ref", "candidate_sha", "image_digest"})
+        self.assertTrue(all(value["required"] == "true" for value in inputs.values()))
+        self.assertEqual(self.workflow["permissions"], {"contents": "read"})
+        condition = self.workflow["jobs"]["accept"]["if"]
+        self.assertIn("github.event_name == 'workflow_dispatch'", condition)
+        self.assertIn("github.repository == 'bebet0o/Orchestra'", condition)
+        self.assertIn("github.ref == 'refs/heads/main'", condition)
+
+    def test_actions_are_immutable_and_acceptance_has_no_build_push_or_login(self) -> None:
+        expected = {
+            "actions/checkout": "11bd71901bbe5b1630ceea73d27597364c9af683",
+            "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        }
+        found = dict(re.findall(
+            r"(?m)^\s*uses:\s*([^@\s]+)@([0-9a-f]{40})(?:\s|$)",
+            self.source,
+        ))
+        self.assertEqual(found, expected)
+        self.assert_zero_build_push_or_login(self.source)
+
+    def test_candidate_is_reauthorized_and_authority_stays_trusted(self) -> None:
+        request = self.by_name["Validate acceptance request"]
+        self.assertEqual(
+            request["env"],
+            {
+                "REQUESTED_CANDIDATE_REF": "${{ inputs.candidate_ref }}",
+                "REQUESTED_CANDIDATE_SHA": "${{ inputs.candidate_sha }}",
+                "REQUESTED_IMAGE_DIGEST": "${{ inputs.image_digest }}",
+            },
+        )
+        fetch = self.by_name["Fetch and reauthorize exact candidate branch head"]["run"]
+        self.assertIn("git -C trusted fetch", fetch)
+        self.assertIn('"$REQUESTED_CANDIDATE_REF:', fetch)
+        self.assertIn("worker_publication.py verify-fetched", fetch)
+        checkout = self.by_name["Checkout detached candidate source"]["with"]
+        self.assertEqual(checkout["path"], "candidate")
+        self.assertEqual(checkout["persist-credentials"], "false")
+        self.assertIn(
+            "verify-checkout --checkout-path candidate",
+            " ".join(self.by_name["Verify detached candidate source"]["run"].split()),
+        )
+        self.assert_trusted_acceptance_commands(self.source)
+
+    def test_anonymous_exact_digest_precedes_final_record(self) -> None:
+        self.assert_acceptance_order(self.source)
+        anonymous = self.by_name[
+            "Fresh anonymous exact-digest pull and candidate validation"
+        ]
+        self.assertEqual(
+            anonymous["env"]["IMMUTABLE_IMAGE_REFERENCE"],
+            "${{ steps.request.outputs.image_reference }}",
+        )
+        self.assertIn('--image "$IMMUTABLE_IMAGE_REFERENCE"', anonymous["run"])
+        self.assertIn('--expected-revision "$CANDIDATE_SHA"', anonymous["run"])
+        record = self.by_name["Create final accepted publication record"]
+        self.assertIn("record-accepted", record["run"])
+        self.assertEqual(record["env"]["OCI_DIGEST"], "${{ steps.request.outputs.image_digest }}")
+        self.assertEqual(record["env"]["GHCR_PACKAGE_PUBLIC"], "${{ steps.anonymous.outputs.ghcr_package_public }}")
+        self.assertEqual(record["env"]["ANONYMOUS_DIGEST_PULL"], "${{ steps.anonymous.outputs.anonymous_digest_pull }}")
+        self.assertEqual(record["env"]["ANONYMOUS_PULL_FRESH_DAEMON"], "${{ steps.anonymous.outputs.anonymous_pull_fresh_daemon }}")
+
+    def test_acceptance_regression_mutations_are_rejected(self) -> None:
+        mutations = []
+        mutations.append((self.assert_zero_build_push_or_login, self.source.replace(
+            "uses: actions/checkout@", "uses: docker/build-push-action@", 1
+        )))
+        mutations.append((self.assert_zero_build_push_or_login, self.source.replace(
+            "python3 trusted/.github/scripts/anonymous_worker_pull.py",
+            "docker image push ghcr.io/bebet0o/orchestra-worker:mutated\n          python3 trusted/.github/scripts/anonymous_worker_pull.py",
+            1,
+        )))
+        mutations.append((self.assert_zero_build_push_or_login, self.source.replace(
+            "uses: actions/upload-artifact@", "uses: docker/login-action@", 1
+        )))
+        swapped = self.source.replace(
+            "Fresh anonymous exact-digest pull and candidate validation",
+            "TEMPORARY ACCEPTANCE NAME",
+            1,
+        ).replace(
+            "Create final accepted publication record",
+            "Fresh anonymous exact-digest pull and candidate validation",
+            1,
+        ).replace(
+            "TEMPORARY ACCEPTANCE NAME",
+            "Create final accepted publication record",
+            1,
+        )
+        mutations.append((self.assert_acceptance_order, swapped))
+        mutations.append((self.assert_trusted_acceptance_commands, self.source.replace(
+            "python3 trusted/.github/scripts/anonymous_worker_pull.py",
+            "docker image pull",
+            1,
+        )))
+        mutations.append((self.assert_trusted_acceptance_commands, self.source.replace(
+            "validate-acceptance", "validate-request", 1
+        )))
+        mutations.append((self.assert_trusted_acceptance_commands, self.source.replace(
+            "trusted/.github/scripts/worker_publication.py",
+            "candidate/.github/scripts/worker_publication.py",
+            1,
+        )))
+        for assertion, mutated in mutations:
+            with self.subTest(assertion=assertion.__name__), self.assertRaises(AssertionError):
+                assertion(mutated)
 
 
 class PublicationHelperCLITest(unittest.TestCase):
@@ -293,6 +455,39 @@ class PublicationHelperCLITest(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertEqual(output, "")
 
+    def test_validate_acceptance_digest_is_strict_and_constructs_reference(self) -> None:
+        ref = "refs/heads/milestone/3a-distribution-foundation"
+        completed, output = self.run_helper(
+            "validate-acceptance",
+            REQUESTED_CANDIDATE_REF=ref,
+            REQUESTED_CANDIDATE_SHA=SHA,
+            REQUESTED_IMAGE_DIGEST=DIGEST,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            output,
+            f"candidate_ref={ref}\ncandidate_sha={SHA}\n"
+            f"image_digest={DIGEST}\nimage_reference={REFERENCE}\n",
+        )
+        for invalid in (
+            "sha256:short",
+            "sha256:" + "B" * 64,
+            "sha512:" + "b" * 64,
+            REFERENCE,
+            "candidate-tag",
+            " " + DIGEST,
+            DIGEST + "\n",
+            DIGEST + " " + DIGEST,
+        ):
+            completed, output = self.run_helper(
+                "validate-acceptance",
+                REQUESTED_CANDIDATE_REF=ref,
+                REQUESTED_CANDIDATE_SHA=SHA,
+                REQUESTED_IMAGE_DIGEST=invalid,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertNotIn("image_digest=", output)
+
     def test_fetched_cli_mismatches_emit_nothing(self) -> None:
         completed, output = self.run_helper(
             "verify-fetched",
@@ -344,6 +539,8 @@ class PublicationHelperCLITest(unittest.TestCase):
 
     def test_publication_record_binds_source_and_digest(self) -> None:
         record = PUBLICATION.build_publication_record(
+            publication_state="provisional",
+            candidate_ref="refs/heads/milestone/3a-distribution-foundation",
             requested_candidate_sha=SHA,
             fetched_candidate_sha=SHA,
             checked_out_sha=SHA,
@@ -354,8 +551,42 @@ class PublicationHelperCLITest(unittest.TestCase):
             workflow_run_id="123",
         )
         self.assertEqual(record["source_commit"], SHA)
+        self.assertEqual(record["publication_state"], "provisional")
+        self.assertEqual(record["anonymous_pull"], "not-yet-verified")
         self.assertEqual(record["oci_digest"], DIGEST)
         self.assertEqual(record["image_reference"], REFERENCE)
+        accepted = PUBLICATION.build_publication_record(
+            publication_state="accepted",
+            candidate_ref="refs/heads/milestone/3a-distribution-foundation",
+            requested_candidate_sha=SHA,
+            fetched_candidate_sha=SHA,
+            checked_out_sha=SHA,
+            revision_label=SHA,
+            repository="ghcr.io/bebet0o/orchestra-worker",
+            platform="linux/amd64",
+            registry_digest=DIGEST,
+            workflow_run_id="124",
+            ghcr_package_public="YES",
+            anonymous_digest_pull="PASS",
+            anonymous_pull_fresh_daemon="YES",
+        )
+        self.assertEqual(accepted["publication_state"], "accepted")
+        self.assertEqual(accepted["GHCR_PACKAGE_PUBLIC"], "YES")
+        self.assertEqual(accepted["ANONYMOUS_DIGEST_PULL"], "PASS")
+        self.assertEqual(accepted["ANONYMOUS_PULL_FRESH_DAEMON"], "YES")
+        with self.assertRaises(PUBLICATION.PublicationContractError):
+            PUBLICATION.build_publication_record(
+                publication_state="accepted",
+                candidate_ref="refs/heads/milestone/3a-distribution-foundation",
+                requested_candidate_sha=SHA,
+                fetched_candidate_sha=SHA,
+                checked_out_sha=SHA,
+                revision_label=SHA,
+                repository="ghcr.io/bebet0o/orchestra-worker",
+                platform="linux/amd64",
+                registry_digest=DIGEST,
+                workflow_run_id="125",
+            )
         for field in (
             "requested_candidate_sha", "fetched_candidate_sha",
             "checked_out_sha", "revision_label",
@@ -371,6 +602,8 @@ class PublicationHelperCLITest(unittest.TestCase):
                 PUBLICATION.PublicationContractError
             ):
                 PUBLICATION.build_publication_record(
+                    publication_state="provisional",
+                    candidate_ref="refs/heads/milestone/3a-distribution-foundation",
                     **identities,
                     repository="ghcr.io/bebet0o/orchestra-worker",
                     platform="linux/amd64",
@@ -386,6 +619,8 @@ class PublicationHelperCLITest(unittest.TestCase):
                 PUBLICATION.PublicationContractError
             ):
                 PUBLICATION.build_publication_record(
+                    publication_state="provisional",
+                    candidate_ref="refs/heads/milestone/3a-distribution-foundation",
                     requested_candidate_sha=SHA,
                     fetched_candidate_sha=SHA,
                     checked_out_sha=SHA,
@@ -520,23 +755,57 @@ class FreshDaemonHarnessTest(unittest.TestCase):
             "docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6515"
         )
         self.assertEqual(ANONYMOUS.DIND_IMAGE, expected_dind)
+        self.assertEqual(ANONYMOUS.EXPECTED_SOURCE, CHECKER_MODULE.EXPECTED_SOURCE)
+        self.assertEqual(
+            ANONYMOUS.EXPECTED_BASE_DIGEST,
+            CHECKER_MODULE.EXPECTED_BASE_DIGEST,
+        )
         calls: list[list[str]] = []
+        environments: list[dict[str, str]] = []
+        inspections = 0
 
-        def run(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            nonlocal inspections
             calls.append(arguments)
+            environments.append(kwargs["env"])
             if arguments[-3:-1] == ["image", "inspect"] and "--format" not in arguments:
-                return subprocess.CompletedProcess(arguments, 1, "", "")
-            if "--format" in arguments:
-                return subprocess.CompletedProcess(arguments, 0, json.dumps([REFERENCE]), "")
+                inspections += 1
+                if inspections == 1:
+                    return subprocess.CompletedProcess(arguments, 1, "", "")
+                payload = [{
+                    "Id": "sha256:" + "c" * 64,
+                    "RepoDigests": [REFERENCE],
+                    "Os": "linux",
+                    "Architecture": "amd64",
+                    "Config": {"Labels": {
+                        "org.opencontainers.image.source": ANONYMOUS.EXPECTED_SOURCE,
+                        "org.opencontainers.image.base.digest": ANONYMOUS.EXPECTED_BASE_DIGEST,
+                        "org.opencontainers.image.revision": SHA,
+                        "org.opencontainers.image.version": "candidate-" + SHA,
+                    }},
+                }]
+                return subprocess.CompletedProcess(arguments, 0, json.dumps(payload), "")
             return subprocess.CompletedProcess(arguments, 0, "", "")
 
-        ANONYMOUS.prove_anonymous_pull(REFERENCE, runner=run, sleeper=lambda _s: None)
+        ANONYMOUS.prove_anonymous_pull(
+            REFERENCE,
+            SHA,
+            runner=run,
+            sleeper=lambda _s: None,
+        )
         self.assertEqual(calls[0][:3], ["docker", "run", "--detach"])
         self.assertIn("--privileged", calls[0])
         self.assertIn(expected_dind, calls[0])
         self.assertNotIn("--volume", calls[0])
         pull = next(command for command in calls if "pull" in command)
         self.assertEqual(pull[-1], REFERENCE)
+        self.assertIn("DOCKER_CONFIG=/nonexistent/orchestra-empty-docker-config", pull)
+        for environment in environments:
+            self.assertEqual(
+                environment["DOCKER_CONFIG"],
+                "/nonexistent/orchestra-empty-docker-config",
+            )
+            self.assertNotIn("HOME", environment)
         self.assertEqual(calls[-1][:3], ["docker", "rm", "--force"])
 
     def test_failure_still_cleans_up(self) -> None:
@@ -549,7 +818,12 @@ class FreshDaemonHarnessTest(unittest.TestCase):
             return subprocess.CompletedProcess(arguments, 1, "", "")
 
         with self.assertRaises(ANONYMOUS.AnonymousPullError):
-            ANONYMOUS.prove_anonymous_pull(REFERENCE, runner=run, sleeper=lambda _s: None)
+            ANONYMOUS.prove_anonymous_pull(
+                REFERENCE,
+                SHA,
+                runner=run,
+                sleeper=lambda _s: None,
+            )
         self.assertEqual(calls[-1][:3], ["docker", "rm", "--force"])
 
 

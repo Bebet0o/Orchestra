@@ -170,6 +170,8 @@ def verify_source_identities(
 
 def build_publication_record(
     *,
+    publication_state: object,
+    candidate_ref: object,
     requested_candidate_sha: object,
     fetched_candidate_sha: object,
     checked_out_sha: object,
@@ -178,7 +180,11 @@ def build_publication_record(
     platform: object,
     registry_digest: object,
     workflow_run_id: object,
+    ghcr_package_public: object | None = None,
+    anonymous_digest_pull: object | None = None,
+    anonymous_pull_fresh_daemon: object | None = None,
 ) -> dict[str, object]:
+    candidate_ref = validate_candidate_ref(candidate_ref)
     source_commit = verify_source_identities(
         requested_candidate_sha,
         fetched_candidate_sha,
@@ -199,8 +205,13 @@ def build_publication_record(
         or not workflow_run_id.isdecimal()
     ):
         raise PublicationContractError("workflow run identity is invalid")
-    return {
-        "schema_version": 1,
+    if publication_state not in {"provisional", "accepted"}:
+        raise PublicationContractError("publication state is invalid")
+    record: dict[str, object] = {
+        "schema_version": 2,
+        "publication_state": publication_state,
+        "candidate_ref": candidate_ref,
+        "candidate_sha": source_commit,
         "source_commit": source_commit,
         "repository": repository,
         "platform": platform,
@@ -208,6 +219,32 @@ def build_publication_record(
         "image_reference": repository + "@" + registry_digest,
         "workflow_run": workflow_run_id,
     }
+    if publication_state == "provisional":
+        if any(
+            value is not None
+            for value in (
+                ghcr_package_public,
+                anonymous_digest_pull,
+                anonymous_pull_fresh_daemon,
+            )
+        ):
+            raise PublicationContractError("provisional publication cannot claim acceptance")
+        record["anonymous_pull"] = "not-yet-verified"
+    else:
+        if (
+            ghcr_package_public != "YES"
+            or anonymous_digest_pull != "PASS"
+            or anonymous_pull_fresh_daemon != "YES"
+        ):
+            raise PublicationContractError("accepted publication lacks anonymous proof")
+        record.update(
+            {
+                "GHCR_PACKAGE_PUBLIC": "YES",
+                "ANONYMOUS_DIGEST_PULL": "PASS",
+                "ANONYMOUS_PULL_FRESH_DAEMON": "YES",
+            }
+        )
+    return record
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:
@@ -236,17 +273,29 @@ def main(
             "verify-checkout",
             "validate-local-image",
             "verify-pushed",
-            "record",
+            "validate-acceptance",
+            "record-provisional",
+            "record-accepted",
         ),
     )
     parser.add_argument("--checkout-path", type=Path)
     arguments = parser.parse_args(argv)
 
     requested = validate_candidate_sha(_required(environment, "REQUESTED_CANDIDATE_SHA"))
-    if arguments.command == "validate-request":
+    if arguments.command in {"validate-request", "validate-acceptance"}:
         candidate_ref = validate_candidate_ref(_required(environment, "REQUESTED_CANDIDATE_REF"))
+        digest = None
+        if arguments.command == "validate-acceptance":
+            digest = validate_canonical_digest(
+                _required(environment, "REQUESTED_IMAGE_DIGEST"),
+                field="acceptance image digest",
+            )
         _write_output("candidate_ref", candidate_ref, environment)
         _write_output("candidate_sha", requested, environment)
+        if arguments.command == "validate-acceptance":
+            assert digest is not None
+            _write_output("image_digest", digest, environment)
+            _write_output("image_reference", EXPECTED_REPOSITORY + "@" + digest, environment)
         return 0
 
     fetched = validate_candidate_sha(_required(environment, "FETCHED_CANDIDATE_SHA"))
@@ -293,6 +342,10 @@ def main(
         return 0
 
     record = build_publication_record(
+        publication_state=(
+            "provisional" if arguments.command == "record-provisional" else "accepted"
+        ),
+        candidate_ref=_required(environment, "REQUESTED_CANDIDATE_REF"),
         requested_candidate_sha=requested,
         fetched_candidate_sha=fetched,
         checked_out_sha=checked_out,
@@ -301,8 +354,12 @@ def main(
         platform=_required(environment, "PLATFORM"),
         registry_digest=_required(environment, "OCI_DIGEST"),
         workflow_run_id=_required(environment, "WORKFLOW_RUN"),
+        ghcr_package_public=environment.get("GHCR_PACKAGE_PUBLIC"),
+        anonymous_digest_pull=environment.get("ANONYMOUS_DIGEST_PULL"),
+        anonymous_pull_fresh_daemon=environment.get("ANONYMOUS_PULL_FRESH_DAEMON"),
     )
-    output = Path(__file__).resolve().parents[2] / "worker-publication.json"
+    suffix = "provisional" if arguments.command == "record-provisional" else "accepted"
+    output = Path(__file__).resolve().parents[2] / f"worker-publication-{suffix}.json"
     with output.open("x", encoding="utf-8") as stream:
         json.dump(record, stream, indent=2, sort_keys=True)
         stream.write("\n")
