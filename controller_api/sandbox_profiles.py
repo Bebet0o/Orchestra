@@ -783,6 +783,15 @@ class SandboxProfileStore:
                             sandbox_id,
                         ),
                     )
+                profile_row = connection.execute(
+                    self._select_current_sql() + " WHERE p.sandbox_id = ?",
+                    (sandbox_id,),
+                ).fetchone()
+                if profile_row is None:
+                    raise sqlite3.IntegrityError(
+                        "committed sandbox profile projection is missing"
+                    )
+                profile = self._profile_projection(profile_row)
                 connection.commit()
         except ControllerError:
             raise
@@ -796,7 +805,7 @@ class SandboxProfileStore:
         except sqlite3.Error as error:
             raise self._database_error(error) from error
         return ImportResult(
-            profile=self.get_profile(sandbox_id),
+            profile=profile,
             created=created,
             revision_created=True,
         )
