@@ -57,7 +57,7 @@ for phrase in (
     '"sandbox_profile_operator_import": True',
     '"sandbox_profile_http_writes": True',
     '"sandbox_profile_http_validation": True',
-    '"hermesfile_builds": False',
+    '"blueprint_builds": False',
 ):
     if phrase not in core:
         raise SystemExit(f"Controller sandbox capability drift: {phrase}")

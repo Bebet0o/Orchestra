@@ -114,7 +114,7 @@ def probe_sandbox_profiles(
         "sandbox_profile_operator_import": True,
         "sandbox_profile_http_writes": True,
         "sandbox_profile_http_validation": True,
-        "hermesfile_builds": False,
+        "blueprint_builds": False,
     }
     for key, value in expected.items():
         if features.get(key) is not value:

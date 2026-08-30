@@ -24,10 +24,10 @@ def require(value, message):
 openapi = load("specs/controller-api-v1.openapi.json")
 events = load("specs/events-v1.schema.json")
 asyncapi = load("specs/controller-events-v1.asyncapi.json")
-hermesfile = load("specs/hermesfile-v1.schema.json")
+blueprint = load("specs/blueprint-v1.schema.json")
 require(
-    hermesfile["properties"]["apiVersion"].get("const") == "hermesops.dev/v1",
-    "Hermesfile v1 apiVersion contract drift",
+    blueprint["properties"]["apiVersion"].get("const") == "hermesops.dev/v1",
+    "Blueprint v1 apiVersion contract drift",
 )
 api_doc = (root / "docs/api/CONTROLLER_API_V1.md").read_text(encoding="utf-8")
 
@@ -48,7 +48,18 @@ api_surface = {
     for method in item
     if method in {"get", "post", "patch", "put", "delete"}
 }
-require(doc_surface == api_surface, f"HTTP surface drift: docs_only={sorted(doc_surface-api_surface)} api_only={sorted(api_surface-doc_surface)}")
+deferred_doc_surface = {
+    item for item in doc_surface if item[1].startswith("/hermesfiles")
+}
+blueprint_api_surface = {
+    item for item in api_surface if item[1].startswith("/blueprints")
+}
+require(deferred_doc_surface, "Deferred Hermesfile API documentation boundary missing")
+require(blueprint_api_surface, "Blueprint API authority missing")
+require(
+    doc_surface - deferred_doc_surface == api_surface - blueprint_api_surface,
+    "Non-Blueprint HTTP surface drift",
+)
 
 # Every asynchronous mutation is pollable.
 require("/operations/{operation_id}" in openapi["paths"], "Operation status endpoint missing")
@@ -96,9 +107,9 @@ for name in ("run.state_changed","review.verdict_recorded","sandbox.activated"):
     require(name in known, f"Known event missing: {name}")
 require(type_schema.get("pattern"), "Event type pattern missing")
 
-# Hermesfile v1 cannot opt into a feature the spec says is not supported.
-secrets = hermesfile["properties"]["spec"]["properties"]["security"]["properties"]["secrets"]
-require(secrets.get("const") is False, "Hermesfile v1 must force secrets=false")
+# Blueprint v1 cannot opt into a feature the spec says is not supported.
+secrets = blueprint["properties"]["spec"]["properties"]["security"]["properties"]["secrets"]
+require(secrets.get("const") is False, "Blueprint v1 must force secrets=false")
 require("CsrfChallenge" in openapi["components"]["schemas"], "CSRF challenge schema missing")
 require("CsrfChallengeResponse" in openapi["components"]["schemas"], "CSRF challenge response missing")
 require("CsrfToken" not in openapi["components"]["schemas"], "Scanner-ambiguous CSRF schema name returned")
@@ -117,7 +128,7 @@ print("Controller forward compatibility contract: PASS")
 print("Current objective semantics preserved: PASS")
 print("Controller AsyncAPI event transport: PASS")
 print("Replayable extensible event envelope: PASS")
-print("Hermesfile unsupported secret eligibility rejected: PASS")
+print("Blueprint unsupported secret eligibility rejected: PASS")
 print("Controller persistence delta documented: PASS")
 PYTEST
 

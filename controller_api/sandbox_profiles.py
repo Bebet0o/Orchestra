@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import ControllerError, Settings
-from .hermesfile import MAX_SOURCE_BYTES, HermesfileReport, validate_source
+from .blueprint import MAX_SOURCE_BYTES, BlueprintReport, validate_source
 
 
 SANDBOX_ID_PATTERN = re.compile(r"^sandbox-[0-9a-f]{32}$")
@@ -89,7 +89,7 @@ def read_source_file(path: Path) -> bytes:
             400,
             "sandbox_source_unavailable",
             "Sandbox profile source unavailable",
-            "The Hermesfile must be a readable regular file and not a symlink.",
+            "The Blueprint must be a readable regular file and not a symlink.",
         ) from error
     try:
         metadata = os.fstat(descriptor)
@@ -98,14 +98,14 @@ def read_source_file(path: Path) -> bytes:
                 400,
                 "sandbox_source_unavailable",
                 "Sandbox profile source unavailable",
-                "The Hermesfile must be a regular file with one hard link.",
+                "The Blueprint must be a regular file with one hard link.",
             )
         if metadata.st_size <= 0 or metadata.st_size > MAX_SOURCE_BYTES:
             raise ControllerError(
                 400,
                 "sandbox_source_size_invalid",
                 "Sandbox profile source size invalid",
-                "The Hermesfile source must be between 1 byte and 256 KiB.",
+                "The Blueprint source must be between 1 byte and 256 KiB.",
             )
         chunks: list[bytes] = []
         remaining = MAX_SOURCE_BYTES + 1
@@ -130,7 +130,7 @@ def read_source_file(path: Path) -> bytes:
                 400,
                 "sandbox_source_changed",
                 "Sandbox profile source changed while reading",
-                "Retry with a stable regular Hermesfile.",
+                "Retry with a stable regular Blueprint.",
             )
         return payload
     finally:
@@ -191,8 +191,8 @@ class SandboxProfileStore:
                 version = int(
                     connection.execute("PRAGMA user_version").fetchone()[0]
                 )
-                if version < 20:
-                    return False, "sandbox profile migration is not installed"
+                if version < 23:
+                    return False, "Blueprint migration is not installed"
                 connection.execute(
                     """
                     SELECT sandbox_id, current_revision_id
@@ -224,7 +224,7 @@ class SandboxProfileStore:
             )
 
     @staticmethod
-    def _validated_result(source: bytes) -> tuple[HermesfileReport, Any]:
+    def _validated_result(source: bytes) -> tuple[BlueprintReport, Any]:
         SandboxProfileStore._ensure_persistence_eligible(source)
         report = validate_source(source)
         if not report.valid or report.result is None:
@@ -232,7 +232,7 @@ class SandboxProfileStore:
                 400,
                 "sandbox_source_invalid",
                 "Sandbox profile source is invalid",
-                "The Hermesfile failed validation and was not stored.",
+                "The Blueprint failed validation and was not stored.",
             )
         return report, report.result
 
@@ -309,7 +309,7 @@ class SandboxProfileStore:
             if (
                 SANDBOX_ID_PATTERN.fullmatch(sandbox_id) is None
                 or PROFILE_NAME_PATTERN.fullmatch(profile_name) is None
-                or source_format != "hermesfile-v1"
+                or source_format != "blueprint-v1"
                 or state not in PROFILE_STATES
                 or SHA256_PATTERN.fullmatch(source_sha256) is None
                 or SHA256_PATTERN.fullmatch(canonical_sha256) is None

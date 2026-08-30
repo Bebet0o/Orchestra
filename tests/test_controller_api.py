@@ -489,6 +489,12 @@ default_branch = "main"
                     / "migrations/022_hermesfile_lifecycle.sql"
                 ).read_text(encoding="utf-8")
             )
+            migration_connection.executescript(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "migrations/023_blueprint_migration.sql"
+                ).read_text(encoding="utf-8")
+            )
             migration_connection.commit()
 
         self.settings = Settings.from_root(
@@ -602,6 +608,8 @@ class ControllerAPITest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         features = payload["data"]["features"]
+        self.assertEqual(payload["data"]["blueprint_versions"], ["v1"])
+        self.assertNotIn("hermesfile_versions", payload["data"])
         self.assertTrue(features["objective_reads"])
         self.assertTrue(features["operation_reads"])
         self.assertTrue(features["legacy_operation_projection"])
@@ -705,7 +713,11 @@ class ControllerAPITest(unittest.TestCase):
         )
         self.assertFalse(features["project_delete"])
         self.assertTrue(features["websocket_events"])
-        self.assertFalse(features["hermesfile_builds"])
+        self.assertFalse(features["blueprint_builds"])
+        self.assertNotIn("hermesfile_builds", features)
+        self.assertNotIn("hermesfile_revision_history", features)
+        self.assertNotIn("hermesfile_revision_comparison", features)
+        self.assertNotIn("hermesfile_runtime_projection", features)
 
 
     def test_project_payload_does_not_leak_host_paths(self) -> None:

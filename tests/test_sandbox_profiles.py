@@ -77,15 +77,10 @@ class SandboxProfileStoreTest(unittest.TestCase):
         root = Path(self.temporary.name)
         self.database = root / "controller.db"
         connection = sqlite3.connect(self.database)
-        connection.execute(
-            "CREATE TABLE schema_migrations ("
-            "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
-        )
-        migration = (
-            Path(__file__).resolve().parents[1]
-            / "migrations/020_sandbox_profile_persistence.sql"
-        ).read_text(encoding="utf-8")
-        connection.executescript(migration)
+        migrations = Path(__file__).resolve().parents[1] / "migrations"
+        connection.execute("PRAGMA foreign_keys=ON")
+        for migration in sorted(migrations.glob("[0-9][0-9][0-9]_*.sql")):
+            connection.executescript(migration.read_text(encoding="utf-8"))
         connection.close()
         self.store = SandboxProfileStore(
             SimpleNamespace(database=self.database)
@@ -99,13 +94,13 @@ class SandboxProfileStoreTest(unittest.TestCase):
         connection = sqlite3.connect(self.database)
         self.assertEqual(
             connection.execute("PRAGMA user_version").fetchone()[0],
-            20,
+            23,
         )
         self.assertEqual(
             connection.execute(
                 "SELECT version FROM schema_migrations"
             ).fetchall(),
-            [(20,)],
+            [(version,) for version in range(1, 24)],
         )
         connection.close()
 
@@ -115,6 +110,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
         self.assertTrue(first.revision_created)
         profile = first.profile
         self.assertEqual(profile["state"], "draft")
+        self.assertEqual(profile["source_format"], "blueprint-v1")
         self.assertEqual(profile["source_revision"], 1)
         self.assertEqual(profile["resource_revision"], 1)
         for forbidden in ("source", "source_text", "canonical", "canonical_json"):
@@ -176,9 +172,9 @@ class SandboxProfileStoreTest(unittest.TestCase):
     def test_import_path_rejects_symlinks_and_multiple_hardlinks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source = root / "Hermesfile"
+            source = root / "Blueprint"
             source.write_text(textwrap.dedent(VALID), encoding="utf-8")
-            link = root / "Hermesfile.link"
+            link = root / "Blueprint.link"
             link.symlink_to(source)
             with self.assertRaises(ControllerError) as context:
                 self.store.import_path(link)
@@ -186,7 +182,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
                 context.exception.code,
                 "sandbox_source_unavailable",
             )
-            hardlink = root / "Hermesfile.hardlink"
+            hardlink = root / "Blueprint.hardlink"
             hardlink.hardlink_to(source)
             with self.assertRaises(ControllerError) as context:
                 self.store.import_path(source)

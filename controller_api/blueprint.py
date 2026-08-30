@@ -18,7 +18,7 @@ from yaml.nodes import MappingNode
 
 API_VERSION = "hermesops.dev/v1"
 KIND = "SandboxProfile"
-SOURCE_FORMAT = "hermesfile-v1"
+SOURCE_FORMAT = "blueprint-v1"
 MAX_SOURCE_BYTES = 256 * 1024
 MAX_SOURCE_LINES = 8192
 MAX_NODES = 10000
@@ -74,7 +74,7 @@ class Diagnostic:
     code: str
     path: str
     message: str
-    documentation: str = "docs/hermesfile/SPECIFICATION_V1.md"
+    documentation: str = "specs/blueprint-v1.schema.json"
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -87,7 +87,7 @@ class Diagnostic:
 
 
 @dataclass(frozen=True)
-class HermesfileResult:
+class BlueprintResult:
     name: str
     source_format: str
     api_version: str
@@ -111,10 +111,10 @@ class HermesfileResult:
 
 
 @dataclass(frozen=True)
-class HermesfileReport:
+class BlueprintReport:
     valid: bool
     diagnostics: tuple[Diagnostic, ...]
-    result: HermesfileResult | None = None
+    result: BlueprintResult | None = None
 
     def as_dict(self, *, include_canonical: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -269,7 +269,7 @@ class _Validator:
         if pattern is not None and pattern.fullmatch(value) is None:
             self.add("invalid_format", path, "Value does not match the required format.")
         if enum is not None and value not in enum:
-            self.add("unsupported_value", path, "Value is not supported by Hermesfile v1.")
+            self.add("unsupported_value", path, "Value is not supported by Blueprint v1.")
         return value
 
     def boolean(self, value: Any, path: str, *, expected: bool | None = None) -> bool | None:
@@ -457,10 +457,10 @@ def _validate_graph(value: Any, validator: _Validator, path: str = "", depth: in
         counter = [0]
     counter[0] += 1
     if counter[0] > MAX_NODES:
-        validator.add("document_too_complex", "/", "Hermesfile contains too many data nodes.")
+        validator.add("document_too_complex", "/", "Blueprint contains too many data nodes.")
         return
     if depth > MAX_DEPTH:
-        validator.add("document_too_deep", path or "/", "Hermesfile nesting is too deep.")
+        validator.add("document_too_deep", path or "/", "Blueprint nesting is too deep.")
         return
     if isinstance(value, dict):
         for key, item in value.items():
@@ -524,7 +524,7 @@ def _validate_command(
             validator.add(
                 "shell_execution_forbidden",
                 validator.child(path, "run"),
-                "Shell pass-through commands are not accepted in Hermesfile v1.",
+                "Shell pass-through commands are not accepted in Blueprint v1.",
             )
         if sum(len(item.encode("utf-8")) for item in argv) > 32768:
             validator.add(
@@ -617,11 +617,11 @@ def _validate_document(document: Any) -> _Validator:
         validator.add(
             "unsupported_api_version",
             "/apiVersion",
-            "Hermesfile must use apiVersion hermesops.dev/v1.",
+            "Blueprint must use apiVersion hermesops.dev/v1.",
         )
     kind = validator.string(root.get("kind"), "/kind", maximum=64)
     if kind is not None and kind != KIND:
-        validator.add("unsupported_kind", "/kind", "Hermesfile v1 accepts SandboxProfile only.")
+        validator.add("unsupported_kind", "/kind", "Blueprint v1 accepts SandboxProfile only.")
 
     metadata = validator.exact_keys(
         root.get("metadata"),
@@ -745,7 +745,7 @@ def _validate_document(document: Any) -> _Validator:
                     validator.string(key, path, maximum=128, pattern=ENV_PATTERN)
                     parsed = validator.string(value, path, minimum=0, maximum=4096, allow_newline=True)
                     if SECRET_KEY_PATTERN.search(key):
-                        validator.add("secret_environment_key_forbidden", path, "Secret-like environment keys are forbidden in Hermesfile v1.")
+                        validator.add("secret_environment_key_forbidden", path, "Secret-like environment keys are forbidden in Blueprint v1.")
                     if parsed is not None and _secret_like(parsed):
                         validator.add("secret_like_value_forbidden", path, "Secret references and credential-like values are forbidden.")
         if "steps" in build_table:
@@ -1010,44 +1010,44 @@ def _canonicalize(document: dict[str, Any]) -> dict[str, Any]:
     return canonical
 
 
-def validate_source(source: bytes | str) -> HermesfileReport:
+def validate_source(source: bytes | str) -> BlueprintReport:
     raw = source.encode("utf-8") if isinstance(source, str) else bytes(source)
     diagnostics: list[Diagnostic] = []
     if len(raw) > MAX_SOURCE_BYTES:
-        diagnostics.append(Diagnostic("error", "source_too_large", "/", "Hermesfile source exceeds 256 KiB."))
-        return HermesfileReport(False, tuple(diagnostics))
+        diagnostics.append(Diagnostic("error", "source_too_large", "/", "Blueprint source exceeds 256 KiB."))
+        return BlueprintReport(False, tuple(diagnostics))
     if raw.count(b"\n") + 1 > MAX_SOURCE_LINES:
-        diagnostics.append(Diagnostic("error", "source_too_many_lines", "/", "Hermesfile source has too many lines."))
-        return HermesfileReport(False, tuple(diagnostics))
+        diagnostics.append(Diagnostic("error", "source_too_many_lines", "/", "Blueprint source has too many lines."))
+        return BlueprintReport(False, tuple(diagnostics))
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
-        diagnostics.append(Diagnostic("error", "invalid_utf8", "/", "Hermesfile source must be valid UTF-8."))
-        return HermesfileReport(False, tuple(diagnostics))
+        diagnostics.append(Diagnostic("error", "invalid_utf8", "/", "Blueprint source must be valid UTF-8."))
+        return BlueprintReport(False, tuple(diagnostics))
     if text.startswith("\ufeff"):
         diagnostics.append(Diagnostic("error", "utf8_bom_forbidden", "/", "UTF-8 BOM is not accepted."))
-        return HermesfileReport(False, tuple(diagnostics))
+        return BlueprintReport(False, tuple(diagnostics))
     if "\x00" in text:
         diagnostics.append(Diagnostic("error", "nul_character_forbidden", "/", "NUL characters are not accepted."))
-        return HermesfileReport(False, tuple(diagnostics))
+        return BlueprintReport(False, tuple(diagnostics))
     try:
         documents = list(yaml.load_all(text, Loader=_StrictLoader))
     except yaml.YAMLError as error:
         path = "/"
         mark = getattr(error, "problem_mark", None)
-        message = "Hermesfile YAML could not be parsed safely."
+        message = "Blueprint YAML could not be parsed safely."
         if mark is not None:
-            message = f"Hermesfile YAML is invalid at line {mark.line + 1}, column {mark.column + 1}."
+            message = f"Blueprint YAML is invalid at line {mark.line + 1}, column {mark.column + 1}."
         diagnostics.append(Diagnostic("error", "yaml_parse_failed", path, message))
-        return HermesfileReport(False, tuple(diagnostics))
+        return BlueprintReport(False, tuple(diagnostics))
     if len(documents) != 1:
         diagnostics.append(Diagnostic("error", "multiple_yaml_documents", "/", "Exactly one YAML document is required."))
-        return HermesfileReport(False, tuple(diagnostics))
+        return BlueprintReport(False, tuple(diagnostics))
     document = documents[0]
     validator = _validate_document(document)
     diagnostics.extend(validator.diagnostics)
     if validator.has_errors:
-        return HermesfileReport(False, tuple(diagnostics))
+        return BlueprintReport(False, tuple(diagnostics))
     assert isinstance(document, dict)
     canonical = _canonicalize(document)
     canonical_bytes = json.dumps(
@@ -1059,7 +1059,7 @@ def validate_source(source: bytes | str) -> HermesfileReport:
     ).encode("utf-8")
     source_sha256 = hashlib.sha256(raw).hexdigest()
     canonical_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
-    result = HermesfileResult(
+    result = BlueprintResult(
         name=str(canonical["metadata"]["name"]),
         source_format=SOURCE_FORMAT,
         api_version=API_VERSION,
@@ -1069,10 +1069,10 @@ def validate_source(source: bytes | str) -> HermesfileReport:
         canonical_bytes=canonical_bytes,
         diagnostics=tuple(diagnostics),
     )
-    return HermesfileReport(True, tuple(diagnostics), result)
+    return BlueprintReport(True, tuple(diagnostics), result)
 
 
-def validate_path(path: str | Any) -> HermesfileReport:
+def validate_path(path: str | Any) -> BlueprintReport:
     from pathlib import Path
 
     source_path = Path(path)
@@ -1081,14 +1081,14 @@ def validate_path(path: str | Any) -> HermesfileReport:
             raise OSError("not a regular file")
         raw = source_path.read_bytes()
     except OSError:
-        return HermesfileReport(
+        return BlueprintReport(
             False,
             (
                 Diagnostic(
                     "error",
                     "source_unavailable",
                     "/",
-                    "Hermesfile source must be a readable regular file and not a symlink.",
+                    "Blueprint source must be a readable regular file and not a symlink.",
                 ),
             ),
         )
