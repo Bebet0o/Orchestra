@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 REFERENCE = "ghcr.io/bebet0o/orchestra-worker@" + DIGEST
+CANDIDATE_REF = "refs/heads/milestone/3a-distribution-foundation"
 
 
 def load(name: str, path: Path) -> object:
@@ -93,6 +94,8 @@ class TrustedPublicationContractTest(unittest.TestCase):
 
     def test_record_constructs_reference_from_one_source_and_digest(self) -> None:
         record = PUBLICATION.build_publication_record(
+            publication_state="provisional",
+            candidate_ref=CANDIDATE_REF,
             requested_candidate_sha=SHA,
             fetched_candidate_sha=SHA,
             checked_out_sha=SHA,
@@ -107,6 +110,8 @@ class TrustedPublicationContractTest(unittest.TestCase):
         self.assertEqual(record["image_reference"], REFERENCE)
         with self.assertRaises(PUBLICATION.PublicationContractError):
             PUBLICATION.build_publication_record(
+                publication_state="provisional",
+                candidate_ref=CANDIDATE_REF,
                 requested_candidate_sha=SHA,
                 fetched_candidate_sha=SHA,
                 checked_out_sha=SHA,
@@ -133,6 +138,8 @@ class TrustedPublicationContractTest(unittest.TestCase):
                 PUBLICATION.PublicationContractError
             ):
                 PUBLICATION.build_publication_record(
+                    publication_state="provisional",
+                    candidate_ref=CANDIDATE_REF,
                     **values,
                     repository="ghcr.io/bebet0o/orchestra-worker",
                     platform="linux/amd64",
@@ -146,6 +153,8 @@ class TrustedPublicationContractTest(unittest.TestCase):
                 PUBLICATION.PublicationContractError
             ):
                 PUBLICATION.build_publication_record(
+                    publication_state="provisional",
+                    candidate_ref=CANDIDATE_REF,
                     requested_candidate_sha=SHA,
                     fetched_candidate_sha=SHA,
                     checked_out_sha=SHA,
@@ -258,16 +267,33 @@ class FreshDaemonAnonymousPullTest(unittest.TestCase):
             "docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6515",
         )
         calls: list[tuple[list[str], dict[str, object]]] = []
+        inspections = 0
 
         def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            nonlocal inspections
             calls.append((arguments, kwargs))
             if arguments[-3:-1] == ["image", "inspect"] and "--format" not in arguments:
-                return subprocess.CompletedProcess(arguments, 1, "", "")
-            if "--format" in arguments:
-                return subprocess.CompletedProcess(arguments, 0, json.dumps([REFERENCE]), "")
+                inspections += 1
+                if inspections == 1:
+                    return subprocess.CompletedProcess(arguments, 1, "", "")
+                payload = [{
+                    "Id": "sha256:" + "c" * 64,
+                    "RepoDigests": [REFERENCE],
+                    "Os": "linux",
+                    "Architecture": "amd64",
+                    "Config": {"Labels": {
+                        "org.opencontainers.image.source": ANONYMOUS.EXPECTED_SOURCE,
+                        "org.opencontainers.image.base.digest": ANONYMOUS.EXPECTED_BASE_DIGEST,
+                        "org.opencontainers.image.revision": SHA,
+                        "org.opencontainers.image.version": "candidate-" + SHA,
+                    }},
+                }]
+                return subprocess.CompletedProcess(arguments, 0, json.dumps(payload), "")
             return subprocess.CompletedProcess(arguments, 0, "", "")
 
-        ANONYMOUS.prove_anonymous_pull(REFERENCE, runner=run, sleeper=lambda _s: None)
+        ANONYMOUS.prove_anonymous_pull(
+            REFERENCE, SHA, runner=run, sleeper=lambda _s: None
+        )
         commands = [arguments for arguments, _kwargs in calls]
         start = commands[0]
         self.assertEqual(start[:3], ["docker", "run", "--detach"])
@@ -293,18 +319,29 @@ class FreshDaemonAnonymousPullTest(unittest.TestCase):
 
     def test_wrong_repo_digest_fails_closed_and_cleans_up(self) -> None:
         calls: list[list[str]] = []
+        inspections = 0
 
         def run(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            nonlocal inspections
             calls.append(arguments)
             if arguments[-3:-1] == ["image", "inspect"] and "--format" not in arguments:
-                return subprocess.CompletedProcess(arguments, 1, "", "")
-            if "--format" in arguments:
-                wrong = "ghcr.io/other/worker@" + DIGEST
-                return subprocess.CompletedProcess(arguments, 0, json.dumps([wrong]), "")
+                inspections += 1
+                if inspections == 1:
+                    return subprocess.CompletedProcess(arguments, 1, "", "")
+                payload = [{
+                    "Id": "sha256:" + "c" * 64,
+                    "RepoDigests": ["ghcr.io/other/worker@" + DIGEST],
+                    "Os": "linux",
+                    "Architecture": "amd64",
+                    "Config": {"Labels": {}},
+                }]
+                return subprocess.CompletedProcess(arguments, 0, json.dumps(payload), "")
             return subprocess.CompletedProcess(arguments, 0, "", "")
 
         with self.assertRaisesRegex(ANONYMOUS.AnonymousPullError, "exact RepoDigest"):
-            ANONYMOUS.prove_anonymous_pull(REFERENCE, runner=run, sleeper=lambda _s: None)
+            ANONYMOUS.prove_anonymous_pull(
+                REFERENCE, SHA, runner=run, sleeper=lambda _s: None
+            )
         self.assertEqual(calls[-1][:3], ["docker", "rm", "--force"])
 
     def test_failure_still_removes_the_unique_daemon(self) -> None:
@@ -317,7 +354,9 @@ class FreshDaemonAnonymousPullTest(unittest.TestCase):
             return subprocess.CompletedProcess(arguments, 1, "", "")
 
         with self.assertRaises(ANONYMOUS.AnonymousPullError):
-            ANONYMOUS.prove_anonymous_pull(REFERENCE, runner=run, sleeper=lambda _s: None)
+            ANONYMOUS.prove_anonymous_pull(
+                REFERENCE, SHA, runner=run, sleeper=lambda _s: None
+            )
         self.assertEqual(calls[-1][:3], ["docker", "rm", "--force"])
 
 

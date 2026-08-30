@@ -363,12 +363,24 @@ class DefaultEnvironmentResolverTest(unittest.TestCase):
             ],
         )
 
-    def test_repository_default_is_explicitly_unpublished(self) -> None:
-        with self.assertRaisesRegex(
-            EnvironmentNotPublishedError,
-            "not published",
-        ):
-            DefaultEnvironmentResolver().resolve(self.spec)
+    def test_repository_default_resolves_to_accepted_worker(self) -> None:
+        resolved = DefaultEnvironmentResolver().resolve(self.spec)
+
+        accepted_digest = (
+            "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"
+        )
+        self.assertEqual(resolved.schema_version, ENVIRONMENT_SCHEMA_VERSION)
+        self.assertEqual(resolved.environment_id, DEFAULT_ENVIRONMENT_ID)
+        self.assertEqual(resolved.platform, "linux/amd64")
+        self.assertEqual(
+            resolved.provenance,
+            "orchestra-3a-accepted-publication",
+        )
+        self.assertEqual(resolved.oci_digest, accepted_digest)
+        self.assertEqual(
+            resolved.image_reference,
+            "ghcr.io/bebet0o/orchestra-worker@" + accepted_digest,
+        )
 
     def test_unpublished_data_never_falls_back_to_legacy_artifacts(self) -> None:
         self.write_distribution(status="unpublished")

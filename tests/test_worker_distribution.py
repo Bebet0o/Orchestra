@@ -126,7 +126,7 @@ class PublicationWorkflowContractTest(unittest.TestCase):
             "Validate local contract candidate with trusted checker",
             "Authenticate to GHCR",
             "Tag and push exact validated local image",
-            "Create trusted machine-readable publication record",
+            "Create trusted provisional publication record",
         ]
         positions = [
             next(index for index, step in enumerate(steps) if step["name"] == name)
@@ -274,9 +274,9 @@ class PublicationWorkflowContractTest(unittest.TestCase):
                 "trusted/.github/scripts/worker_publication.py",
                 "verify-checkout",
             ),
-            "Create trusted machine-readable publication record": (
+            "Create trusted provisional publication record": (
                 "trusted/.github/scripts/worker_publication.py",
-                "record",
+                "record-provisional",
             ),
             "Validate local contract candidate with trusted checker": (
                 "trusted/scripts/check-worker-oci-image.py",
@@ -309,10 +309,11 @@ class PublicationWorkflowContractTest(unittest.TestCase):
         self.assertIn("OCI_REVISION=" + source, local["build-args"])
         self.assertIn("OCI_VERSION=candidate-" + source, local["build-args"])
         self.assert_validated_artifact_flow(self.source)
-        record = by_name["Create trusted machine-readable publication record"]
+        record = by_name["Create trusted provisional publication record"]
         self.assertEqual(
             record["env"],
             {
+                "REQUESTED_CANDIDATE_REF": "${{ steps.request.outputs.candidate_ref }}",
                 "REQUESTED_CANDIDATE_SHA": "${{ steps.request.outputs.candidate_sha }}",
                 "FETCHED_CANDIDATE_SHA": "${{ steps.fetched.outputs.candidate_sha }}",
                 "CHECKED_OUT_SHA": source,
@@ -323,9 +324,9 @@ class PublicationWorkflowContractTest(unittest.TestCase):
         )
         self.assertEqual(
             record["run"],
-            "python3 trusted/.github/scripts/worker_publication.py record",
+            "python3 trusted/.github/scripts/worker_publication.py record-provisional",
         )
-        self.assertFalse((ROOT / "worker-publication.json").exists())
+        self.assertFalse((ROOT / "worker-publication-provisional.json").exists())
 
     def test_certified_flow_mutations_are_rejected(self) -> None:
         second_build = self.source.replace(
@@ -427,24 +428,33 @@ class WorkerImageExecutableContractTest(unittest.TestCase):
 
 
 class ActivationGateTest(unittest.TestCase):
-    def test_default_environment_remains_unpublished_without_fake_identity(
+    def test_default_environment_is_exact_accepted_publication(
         self,
     ) -> None:
         with LOCK.open("rb") as stream:
             document = tomllib.load(stream)
-        self.assertEqual(document["status"], "unpublished")
-        self.assertNotIn("image_reference", document)
-        self.assertNotIn("oci_digest", document)
+        digest = (
+            "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"
+        )
+        self.assertEqual(document["status"], "published")
+        self.assertEqual(document["oci_digest"], digest)
+        self.assertEqual(
+            document["image_reference"],
+            "ghcr.io/bebet0o/orchestra-worker@" + digest,
+        )
 
-    def test_production_worker_and_reviewer_remain_on_legacy_preparation(
+    def test_production_worker_and_reviewer_share_oci_materialization(
         self,
     ) -> None:
         worker = (ROOT / "scripts/hermesops-worker.py").read_text(encoding="utf-8")
         reviewer = (ROOT / "scripts/hermesops-reviewer.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("return prepare_legacy_environment(", worker)
-        self.assertNotIn(".materialize(", worker)
+        self.assertIn("DefaultEnvironmentResolver().resolve(", worker)
+        self.assertIn("NestedDaemonSandboxBackend.for_dedicated_nested_daemon()", worker)
+        self.assertIn(".materialize(", worker)
+        self.assertNotIn("prepare_legacy_environment(", worker)
+        self.assertNotIn("LegacyWorkerEnvironmentAdapter", worker)
         self.assertIn("WORKER.prepare_worker_environment()", reviewer)
         self.assertNotIn(".materialize(", reviewer)
 

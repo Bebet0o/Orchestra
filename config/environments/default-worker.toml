@@ -1,8 +1,7 @@
-# Transitional 3A-S1 state: publication is intentionally fail-closed.
-# A later transactional slice will replace this state only after a real worker
-# artifact has been published and its complete immutable OCI reference frozen.
 schema_version = 1
 environment_id = "default-worker"
-status = "unpublished"
+status = "published"
 platform = "linux/amd64"
-provenance = "orchestra-3a-s1-awaiting-publication"
+provenance = "orchestra-3a-accepted-publication"
+image_reference = "ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"
+oci_digest = "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"

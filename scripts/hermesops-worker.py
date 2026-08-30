@@ -30,19 +30,17 @@ from agent_runtime import (
 from environment_resolution import (
     DEFAULT_ENVIRONMENT_ID,
     ENVIRONMENT_SCHEMA_VERSION,
+    DefaultEnvironmentResolver,
+    EnvironmentResolutionError,
     EnvironmentSpec,
-)
-from legacy_worker_environment import (
-    LegacyEnvironmentError,
-    LegacyLocalEnvironment,
-    LegacyWorkerEnvironmentAdapter,
+    ResolvedEnvironment,
 )
 from sandbox_backend import (
-    LegacyPreparedEnvironment,
+    NestedDaemonSandboxBackend,
+    PreparedEnvironment,
     SandboxContainerExpectation,
     SandboxPreparation,
     SandboxPreparationError,
-    prepare_legacy_environment,
     verify_prepared_container,
 )
 
@@ -59,8 +57,6 @@ DATABASE = ROOT / "state/controller/hermesops.db"
 HERMES_HOME = ROOT / "state/hermes-home"
 EXECUTIONS_ROOT = ROOT / "state/controller/executions"
 CLONES_ROOT = ROOT / "workspaces/.hermesops-worker-clones"
-WORKER_LOCK = REPO / "config/worker-sandbox.lock.toml"
-
 DEFAULT_WORKER_ENVIRONMENT_SPEC = EnvironmentSpec(
     schema_version=ENVIRONMENT_SCHEMA_VERSION,
     environment_id=DEFAULT_ENVIRONMENT_ID,
@@ -178,27 +174,26 @@ def nested_docker(
     )
 
 
-def load_worker_environment() -> LegacyLocalEnvironment:
-    """Load the explicit temporary local environment for the shared spec."""
+def load_worker_environment() -> ResolvedEnvironment:
+    """Resolve the published default worker to its immutable OCI authority."""
 
-    adapter = LegacyWorkerEnvironmentAdapter(
-        WORKER_LOCK,
-        lambda local_config_id: nested_docker(
-            "image",
-            "inspect",
-            local_config_id,
-        ),
-    )
     try:
-        return adapter.load(DEFAULT_WORKER_ENVIRONMENT_SPEC)
-    except LegacyEnvironmentError as error:
+        return DefaultEnvironmentResolver().resolve(
+            DEFAULT_WORKER_ENVIRONMENT_SPEC
+        )
+    except EnvironmentResolutionError as error:
         fail(str(error))
 
 
-def prepare_worker_environment() -> LegacyPreparedEnvironment:
-    """Prepare today's explicitly local environment without inventing OCI data."""
+def prepare_worker_environment() -> PreparedEnvironment:
+    """Exact-pull and verify the published worker in the dedicated daemon."""
 
-    return prepare_legacy_environment(load_worker_environment())
+    try:
+        return NestedDaemonSandboxBackend.for_dedicated_nested_daemon().materialize(
+            load_worker_environment()
+        )
+    except SandboxPreparationError as error:
+        fail(str(error))
 
 
 def load_role(

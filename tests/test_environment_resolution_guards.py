@@ -22,17 +22,27 @@ from environment_resolution import (  # noqa: E402
     DEFAULT_ENVIRONMENT_ID,
     ENVIRONMENT_SCHEMA_VERSION,
     DefaultEnvironmentResolver,
+    EnvironmentResolutionError,
     EnvironmentResolver,
     EnvironmentSpec,
     ResolvedEnvironment,
 )
+from agent_runtime import RuntimeSandboxContext  # noqa: E402
 from legacy_worker_environment import (  # noqa: E402
     LegacyEnvironmentError,
     LegacyWorkerEnvironmentAdapter,
 )
+from sandbox_backend import (  # noqa: E402
+    PreparedEnvironment,
+    SandboxPreparationError,
+)
 
 
 DIGEST = "sha256:" + "c" * 64
+ACCEPTED_DIGEST = (
+    "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"
+)
+ACCEPTED_REFERENCE = "ghcr.io/bebet0o/orchestra-worker@" + ACCEPTED_DIGEST
 
 
 def qualified_name(node: ast.expr, aliases: dict[str, str]) -> str | None:
@@ -378,31 +388,50 @@ class LegacyEnvironmentTransitionTest(unittest.TestCase):
         with self.assertRaises(LegacyEnvironmentError):
             adapter.load(EnvironmentSpec(1, "another-worker"))
 
-    def test_worker_preparation_uses_the_explicit_transition_adapter(self) -> None:
-        self.write_lock()
+    def test_worker_preparation_materializes_resolved_oci_environment(self) -> None:
         specification = importlib.util.spec_from_file_location(
-            "environment_transition_worker_test",
+            "published_environment_worker_test",
             SCRIPTS / "hermesops-worker.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load worker module")
         worker = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(worker)
-        completed = subprocess.CompletedProcess([], 0, "", "")
+        resolved = ResolvedEnvironment(
+            schema_version=ENVIRONMENT_SCHEMA_VERSION,
+            environment_id=DEFAULT_ENVIRONMENT_ID,
+            image_reference=ACCEPTED_REFERENCE,
+            oci_digest=ACCEPTED_DIGEST,
+            platform="linux/amd64",
+            provenance="orchestra-3a-accepted-publication",
+        )
+        prepared = PreparedEnvironment(resolved, DIGEST)
+        resolver = mock.Mock()
+        resolver.resolve.return_value = resolved
+        backend = mock.Mock()
+        backend.materialize.return_value = prepared
 
         with (
-            mock.patch.object(worker, "WORKER_LOCK", self.lock_path),
-            mock.patch.object(worker, "nested_docker", return_value=completed) as inspect,
+            mock.patch.object(
+                worker,
+                "DefaultEnvironmentResolver",
+                return_value=resolver,
+            ),
+            mock.patch.object(
+                worker.NestedDaemonSandboxBackend,
+                "for_dedicated_nested_daemon",
+                return_value=backend,
+            ),
         ):
             preparation = worker.prepare_worker_environment()
 
-        self.assertEqual(preparation.local_image_config_id, DIGEST)
-        self.assertIsNone(preparation.oci_digest)
-        inspect.assert_called_once_with("image", "inspect", DIGEST)
+        self.assertIs(preparation, prepared)
+        resolver.resolve.assert_called_once_with(worker.DEFAULT_WORKER_ENVIRONMENT_SPEC)
+        backend.materialize.assert_called_once_with(resolved)
 
-    def test_worker_boundary_normalizes_legacy_lock_failures(self) -> None:
+    def test_worker_boundary_normalizes_resolution_and_materialization_failures(self) -> None:
         specification = importlib.util.spec_from_file_location(
-            "environment_transition_worker_error_test",
+            "published_environment_worker_error_test",
             SCRIPTS / "hermesops-worker.py",
         )
         if specification is None or specification.loader is None:
@@ -410,27 +439,76 @@ class LegacyEnvironmentTransitionTest(unittest.TestCase):
         worker = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(worker)
 
-        cases = (
-            None,
-            "schema_version = [\n",
-            "schema_version = 1\n",
-            "schema_version = 1\n"
-            'tag = "hermesops-worker-sandbox:0.2"\n'
-            'image_id = "sha256:short"\n',
+        with (
+            mock.patch.object(
+                worker,
+                "DefaultEnvironmentResolver",
+                side_effect=EnvironmentResolutionError("resolution failed"),
+            ),
+            self.assertRaisesRegex(worker.WorkerError, "resolution failed"),
+        ):
+            worker.prepare_worker_environment()
+
+        resolved = ResolvedEnvironment(
+            schema_version=ENVIRONMENT_SCHEMA_VERSION,
+            environment_id=DEFAULT_ENVIRONMENT_ID,
+            image_reference=ACCEPTED_REFERENCE,
+            oci_digest=ACCEPTED_DIGEST,
+            platform="linux/amd64",
+            provenance="orchestra-3a-accepted-publication",
         )
-        for document in cases:
-            with self.subTest(document=document):
-                if self.lock_path.exists():
-                    self.lock_path.unlink()
-                if document is not None:
-                    self.lock_path.write_text(document, encoding="utf-8")
-                with (
-                    mock.patch.object(worker, "WORKER_LOCK", self.lock_path),
-                    mock.patch.object(worker, "nested_docker") as inspect,
-                    self.assertRaises(worker.WorkerError),
-                ):
-                    worker.prepare_worker_environment()
-                inspect.assert_not_called()
+        backend = mock.Mock()
+        backend.materialize.side_effect = SandboxPreparationError(
+            "materialization failed"
+        )
+        with (
+            mock.patch.object(
+                worker,
+                "DefaultEnvironmentResolver",
+                return_value=mock.Mock(resolve=mock.Mock(return_value=resolved)),
+            ),
+            mock.patch.object(
+                worker.NestedDaemonSandboxBackend,
+                "for_dedicated_nested_daemon",
+                return_value=backend,
+            ),
+            self.assertRaisesRegex(worker.WorkerError, "materialization failed"),
+        ):
+            worker.prepare_worker_environment()
+
+    def test_runtime_context_preserves_accepted_oci_authority(self) -> None:
+        resolved = ResolvedEnvironment(
+            schema_version=ENVIRONMENT_SCHEMA_VERSION,
+            environment_id=DEFAULT_ENVIRONMENT_ID,
+            image_reference=ACCEPTED_REFERENCE,
+            oci_digest=ACCEPTED_DIGEST,
+            platform="linux/amd64",
+            provenance="orchestra-3a-accepted-publication",
+        )
+        context = RuntimeSandboxContext(
+            workspace=Path("/tmp/orchestra-runtime-context"),
+            prepared_environment=PreparedEnvironment(resolved, DIGEST),
+            cpu_limit=1,
+            memory_mb=512,
+            read_only=False,
+            network_enabled=False,
+            sandbox_handle="a" * 64,
+            task_id="task-s3b-runtime-context",
+        )
+
+        self.assertEqual(
+            context.prepared_environment.executable_image_selector,
+            ACCEPTED_REFERENCE,
+        )
+        self.assertEqual(
+            context.prepared_environment.oci_digest,
+            ACCEPTED_DIGEST,
+        )
+        self.assertEqual(context.prepared_environment.local_image_config_id, DIGEST)
+        self.assertNotEqual(
+            context.prepared_environment.local_image_config_id,
+            context.prepared_environment.oci_digest,
+        )
 
 
 if __name__ == "__main__":
