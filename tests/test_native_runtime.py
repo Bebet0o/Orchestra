@@ -42,6 +42,8 @@ from model_provider import (  # noqa: E402
     OpenAICompatibleConfig,
     OpenAICompatibleProvider,
 )
+from legacy_worker_environment import LegacyLocalEnvironment  # noqa: E402
+from sandbox_backend import LegacyPreparedEnvironment  # noqa: E402
 
 
 EVENT_TIME = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
@@ -85,7 +87,13 @@ class NativeRuntimeTest(unittest.TestCase):
     def sandbox(self) -> RuntimeSandboxContext:
         return RuntimeSandboxContext(
             workspace=Path("/tmp/native-runtime-workspace"),
-            image_id="sha256:" + "a" * 64,
+            prepared_environment=LegacyPreparedEnvironment(
+                LegacyLocalEnvironment(
+                    environment_id="default-worker",
+                    local_image_config_id="sha256:" + "a" * 64,
+                    local_image_tag="hermesops-worker-sandbox:0.2",
+                )
+            ),
             cpu_limit=2,
             memory_mb=1024,
             read_only=False,
@@ -862,6 +870,10 @@ class NativeRuntimeCompositionTest(unittest.TestCase):
             shutil.copytree(
                 SCRIPTS / "model_provider",
                 installed_scripts / "model_provider",
+            )
+            shutil.copy2(
+                SCRIPTS / "oci_reference.py",
+                installed_scripts / "oci_reference.py",
             )
             programs = (
                 "import agent_runtime; import model_provider; "

@@ -28,6 +28,12 @@ from agent_runtime import (
     record_runtime_failure,
 )
 import hermesops_review_assignment as ASSIGNMENTS
+from sandbox_backend import (
+    SandboxContainerExpectation,
+    SandboxPreparation,
+    SandboxPreparationError,
+    verify_prepared_container,
+)
 
 
 ROOT = Path(
@@ -718,7 +724,7 @@ def remove_owned_reviewer_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
 ) -> bool:
     """Reinspect the exact reviewer sandbox before removal by full ID."""
     container = inspect_nested_container(container_id)
@@ -730,7 +736,7 @@ def remove_owned_reviewer_sandbox(
         task_id=task_id,
         runtime_request_id=runtime_request_id,
         clone=clone,
-        image_id=image_id,
+        prepared_environment=prepared_environment,
         read_only=True,
     )
     if full_id is None:
@@ -745,7 +751,7 @@ def audit_reviewer_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     cpu_limit: int,
     memory_mb: int,
 ) -> dict[str, Any]:
@@ -776,8 +782,20 @@ def audit_reviewer_sandbox(
     if str((data.get("State") or {}).get("Status") or "") != "running":
         fail("Reviewer sandbox is not running")
 
-    if data.get("Image") != image_id:
-        fail(f"Unexpected reviewer sandbox image: {data.get('Image')}")
+    try:
+        verify_prepared_container(
+            data,
+            SandboxContainerExpectation(
+                container_id=container_id,
+                preparation=prepared_environment,
+                task_id=task_id,
+                runtime_request_id=runtime_request_id,
+                workspace=clone,
+                read_only=True,
+            ),
+        )
+    except (TypeError, ValueError, SandboxPreparationError) as error:
+        fail(str(error))
 
     mounts = data.get("Mounts") or []
     workspace_mounts = [
@@ -900,7 +918,8 @@ def audit_reviewer_sandbox(
         "task_id": task_id,
         "runtime_request_id": runtime_request_id,
         "state": "running",
-        "image": data.get("Image"),
+        "local_image_config_id": prepared_environment.local_image_config_id,
+        "sandbox_image_digest": prepared_environment.oci_digest,
         "workspace_source": workspace_mount.get("Source"),
         "workspace_rw": workspace_mount.get("RW"),
         "network_mode": host_config.get("NetworkMode"),
@@ -931,7 +950,7 @@ def precreate_reviewer_sandbox(
     task_id: str,
     runtime_request_id: str,
     clone: Path,
-    image_id: str,
+    prepared_environment: SandboxPreparation,
     cpu_limit: int,
     memory_mb: int,
     branch_name: str,
@@ -973,7 +992,7 @@ def precreate_reviewer_sandbox(
         "/workspace",
         "--env",
         "GIT_OPTIONAL_LOCKS=0",
-        image_id,
+        prepared_environment.executable_image_selector,
         "sleep",
         "infinity",
     )
@@ -988,7 +1007,7 @@ def precreate_reviewer_sandbox(
         task_id=task_id,
         runtime_request_id=runtime_request_id,
         clone=clone,
-        image_id=image_id,
+        prepared_environment=prepared_environment,
         cpu_limit=cpu_limit,
         memory_mb=memory_mb,
     )
@@ -1333,7 +1352,7 @@ def command_launch(
 
     assignment_id = ASSIGNMENTS.validate_assignment_id(arguments.assignment)
 
-    image_id = WORKER.load_worker_image()
+    prepared_environment = WORKER.prepare_worker_environment()
 
     with connect() as connection:
         role = load_role(connection, arguments.role)
@@ -1423,7 +1442,7 @@ def command_launch(
             task_id=task_id,
             runtime_request_id=runtime_request_id,
             clone=clone,
-            image_id=image_id,
+            prepared_environment=prepared_environment,
             cpu_limit=cpu_limit,
             memory_mb=memory_mb,
             branch_name=run["branch_name"],
@@ -1444,7 +1463,7 @@ def command_launch(
                 completion_marker=marker,
                 sandbox=RuntimeSandboxContext(
                     workspace=clone,
-                    image_id=image_id,
+                    prepared_environment=prepared_environment,
                     cpu_limit=cpu_limit,
                     memory_mb=memory_mb,
                     read_only=True,
@@ -1464,7 +1483,7 @@ def command_launch(
             task_id=task_id,
             runtime_request_id=runtime_request_id,
             clone=clone,
-            image_id=image_id,
+            prepared_environment=prepared_environment,
             cpu_limit=cpu_limit,
             memory_mb=memory_mb,
         )
@@ -1509,6 +1528,8 @@ def command_launch(
             "source_profile": role["profile_name"],
             "runtime_request_id": runtime_request_id,
             "sandbox_container_id": sandbox_id,
+            "sandbox_image_reference": prepared_environment.image_reference,
+            "sandbox_image_digest": prepared_environment.oci_digest,
             "output_path": str(output_path),
             "base_commit": run["base_commit"],
             "result_commit": result_commit,
@@ -1554,7 +1575,7 @@ def command_launch(
                 task_id=task_id,
                 runtime_request_id=runtime_request_id,
                 clone=clone,
-                image_id=image_id,
+                prepared_environment=prepared_environment,
             )
 
         make_clone_writable(clone)

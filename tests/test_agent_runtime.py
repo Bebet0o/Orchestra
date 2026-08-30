@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from dataclasses import fields
+from dataclasses import FrozenInstanceError, fields
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,11 +36,28 @@ from agent_runtime import (  # noqa: E402
     RuntimeError,
     RuntimeErrorKind,
     RuntimeRequest,
+    RuntimePreparedEnvironmentData,
     RuntimeResult,
     RuntimeRole,
     RuntimeSandboxContext,
     record_runtime_failure,
 )
+from legacy_worker_environment import LegacyLocalEnvironment  # noqa: E402
+from environment_resolution import ResolvedEnvironment  # noqa: E402
+from sandbox_backend import (  # noqa: E402
+    LegacyPreparedEnvironment,
+    PreparedEnvironment,
+)
+
+
+def legacy_preparation(hex_character: str) -> LegacyPreparedEnvironment:
+    return LegacyPreparedEnvironment(
+        LegacyLocalEnvironment(
+            environment_id="default-worker",
+            local_image_config_id="sha256:" + hex_character * 64,
+            local_image_tag="hermesops-worker-sandbox:0.2",
+        )
+    )
 
 RECOVERY_SPEC = importlib.util.spec_from_file_location(
     "hermesops_recovery_runtime_tests",
@@ -129,7 +146,7 @@ class AgentRuntimeContractTest(unittest.TestCase):
     def test_sandbox_contract_is_generic_and_strict(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=Path("/tmp/workspace"),
-            image_id="sha256:" + "a" * 64,
+            prepared_environment=legacy_preparation("a"),
             cpu_limit=1,
             memory_mb=512,
             read_only=True,
@@ -142,7 +159,7 @@ class AgentRuntimeContractTest(unittest.TestCase):
             field_names,
             {
                 "workspace",
-                "image_id",
+                "prepared_environment",
                 "cpu_limit",
                 "memory_mb",
                 "read_only",
@@ -152,10 +169,10 @@ class AgentRuntimeContractTest(unittest.TestCase):
             },
         )
         self.assertFalse(any("hermes" in name for name in field_names))
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             RuntimeSandboxContext(
                 workspace=Path("/tmp/workspace"),
-                image_id="image",
+                prepared_environment="image",  # type: ignore[arg-type]
                 cpu_limit=1,
                 memory_mb=512,
                 read_only=False,
@@ -163,6 +180,89 @@ class AgentRuntimeContractTest(unittest.TestCase):
                 sandbox_handle="../container",
                 task_id="task-contract",
             )
+
+    def test_runtime_preparation_boundary_normalizes_valid_concrete_types(self) -> None:
+        legacy = legacy_preparation("a")
+        legacy_context = RuntimeSandboxContext(
+            workspace=Path("/tmp/workspace"),
+            prepared_environment=legacy,
+            cpu_limit=1,
+            memory_mb=512,
+            read_only=False,
+            network_enabled=False,
+            sandbox_handle="a" * 64,
+            task_id="task-contract",
+        )
+        self.assertIsInstance(
+            legacy_context.prepared_environment,
+            RuntimePreparedEnvironmentData,
+        )
+        self.assertIsNone(legacy_context.prepared_environment.image_reference)
+
+        digest = "sha256:" + "b" * 64
+        reference = "registry.example.com/team/worker@" + digest
+        resolved = ResolvedEnvironment(
+            1,
+            "default-worker",
+            reference,
+            digest,
+            "linux/amd64",
+            "runtime-test",
+        )
+        prepared = PreparedEnvironment(resolved, "sha256:" + "c" * 64)
+        oci_context = RuntimeSandboxContext(
+            workspace=Path("/tmp/workspace"),
+            prepared_environment=prepared,
+            cpu_limit=1,
+            memory_mb=512,
+            read_only=False,
+            network_enabled=False,
+            sandbox_handle="b" * 64,
+            task_id="task-contract",
+        )
+        self.assertEqual(
+            oci_context.prepared_environment.image_reference,
+            reference,
+        )
+        with self.assertRaises(FrozenInstanceError):
+            oci_context.prepared_environment.image_reference = None  # type: ignore[misc]
+
+    def test_runtime_preparation_boundary_rejects_incoherent_impostors(self) -> None:
+        digest = "sha256:" + "b" * 64
+        other_digest = "sha256:" + "c" * 64
+        local_id = "sha256:" + "d" * 64
+        reference = "registry.example.com/team/worker@" + digest
+        base = {
+            "executable_image_selector": reference,
+            "local_image_config_id": local_id,
+            "oci_digest": digest,
+            "image_reference": reference,
+        }
+        mutations = (
+            {**base, "image_reference": None, "oci_digest": None,
+             "executable_image_selector": "worker:latest"},
+            {**base, "executable_image_selector": local_id},
+            {**base, "oci_digest": other_digest},
+            {**base, "image_reference": None},
+            {**base, "oci_digest": None},
+            {**base, "local_image_config_id": "sha256:short"},
+            {**base, "local_image_config_id": digest},
+            {**base, "image_reference": "worker:latest",
+             "executable_image_selector": "worker:latest"},
+        )
+        for values in mutations:
+            impostor = SimpleNamespace(**values)
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                RuntimeSandboxContext(
+                    workspace=Path("/tmp/workspace"),
+                    prepared_environment=impostor,
+                    cpu_limit=1,
+                    memory_mb=512,
+                    read_only=False,
+                    network_enabled=False,
+                    sandbox_handle="c" * 64,
+                    task_id="task-contract",
+                )
 
     def test_fake_runtime_can_replace_the_adapter_deterministically(self) -> None:
         request = self.request()
@@ -625,7 +725,7 @@ class HermesRuntimeMappingTest(unittest.TestCase):
     def test_worker_mapping_preserves_sandbox_and_runtime_profile(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "worker-clone",
-            image_id="sha256:" + "a" * 64,
+            prepared_environment=legacy_preparation("a"),
             cpu_limit=2,
             memory_mb=2048,
             read_only=False,
@@ -653,13 +753,25 @@ class HermesRuntimeMappingTest(unittest.TestCase):
         )
         self.assertIn("HERMESOPS_SANDBOX_HANDLE=" + "a" * 64, command)
         self.assertIn("HERMESOPS_SANDBOX_TASK_ID=task-worker", command)
+        self.assertIn(
+            "HERMESOPS_SANDBOX_EXECUTABLE_IMAGE=sha256:" + "a" * 64,
+            command,
+        )
+        self.assertIn(
+            "HERMESOPS_SANDBOX_LOCAL_IMAGE_CONFIG_ID=sha256:"
+            + "a" * 64,
+            command,
+        )
+        self.assertFalse(
+            any("HERMESOPS_SANDBOX_IMAGE_ID=" in value for value in command)
+        )
         self.assertIn("hermesops-runtime-container=1", command)
         self.assertEqual(command[-4:], ["-p", "test", "-z", request.prompt])
 
     def test_reviewer_mapping_is_read_only_and_keeps_policy_outside(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "review-clone",
-            image_id="sha256:" + "b" * 64,
+            prepared_environment=legacy_preparation("b"),
             cpu_limit=1,
             memory_mb=1024,
             read_only=True,
@@ -1337,7 +1449,7 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
         (profile / "config.yaml").write_text("- not\n- a mapping\n", encoding="utf-8")
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "clone",
-            image_id="sha256:" + "c" * 64,
+            prepared_environment=legacy_preparation("c"),
             cpu_limit=1,
             memory_mb=512,
             read_only=False,
@@ -1634,7 +1746,11 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             mock.patch("builtins.print"),
             mock.patch.object(self.worker, "EXECUTIONS_ROOT", directory / "runs"),
             mock.patch.object(self.worker, "CLONES_ROOT", directory / "clones"),
-            mock.patch.object(self.worker, "load_worker_image", return_value="sha256:" + "d" * 64),
+            mock.patch.object(
+                self.worker,
+                "prepare_worker_environment",
+                return_value=legacy_preparation("d"),
+            ),
             mock.patch.object(self.worker, "connect", return_value=connection),
             mock.patch.object(self.worker, "load_role", return_value=role),
             mock.patch.object(self.worker, "load_run", return_value=run),
@@ -1733,7 +1849,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
                 clone=Path("/tmp/worker-clone"),
-                image_id="sha256:" + "f" * 64,
+                prepared_environment=legacy_preparation("f"),
                 cpu_limit=2,
                 memory_mb=2048,
                 branch_name="hermesops/test",
@@ -1770,7 +1886,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
                     task_id="task-" + "1" * 32,
                     runtime_request_id="agent-runtime-123456789abc",
                     clone=Path("/tmp/worker-clone"),
-                    image_id="sha256:" + "f" * 64,
+                    prepared_environment=legacy_preparation("f"),
                     cpu_limit=2,
                     memory_mb=2048,
                     branch_name="hermesops/test",
@@ -1786,6 +1902,8 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             "Image": "sha256:" + "f" * 64,
             "State": {"Status": "running"},
             "Config": {
+                "Image": "sha256:" + "f" * 64,
+                "User": "1000:1000",
                 "Labels": {
                     "hermesops-sandbox": "1",
                     "hermesops-task-id": "task-" + "1" * 32,
@@ -1806,7 +1924,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
     def test_worker_sweep_ignores_unowned_same_image_and_mount(self) -> None:
         container = self.owned_sandbox_document()
         container["Config"]["Labels"] = {}
-        completed = subprocess.CompletedProcess([], 0, "e" * 12 + "\n", "")
+        completed = subprocess.CompletedProcess([], 0, "e" * 64 + "\n", "")
         with (
             mock.patch.object(
                 self.worker,
@@ -1822,7 +1940,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             self.worker.cleanup_created_sandboxes(
                 baseline_ids=set(),
                 clone=Path("/tmp/worker-clone"),
-                image_id="sha256:" + "f" * 64,
+                prepared_environment=legacy_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
@@ -1850,11 +1968,11 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
                 self.assertIsNone(
                     self.worker.authorized_sandbox_container_id(
                         container,
-                        candidate_id="e" * 12,
+                        candidate_id="e" * 64,
                         task_id="task-" + "1" * 32,
                         runtime_request_id="agent-runtime-123456789abc",
                         clone=Path("/tmp/worker-clone"),
-                        image_id="sha256:" + "f" * 64,
+                        prepared_environment=legacy_preparation("f"),
                         read_only=False,
                     )
                 )
@@ -1867,7 +1985,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             commands.append(arguments)
             if arguments[:2] == ("ps", "-aq"):
                 return subprocess.CompletedProcess(
-                    arguments, 0, "e" * 12 + "\n", ""
+                    arguments, 0, "e" * 64 + "\n", ""
                 )
             return subprocess.CompletedProcess(arguments, 0, "", "")
 
@@ -1882,14 +2000,14 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             self.worker.cleanup_created_sandboxes(
                 baseline_ids=set(),
                 clone=Path("/tmp/worker-clone"),
-                image_id="sha256:" + "f" * 64,
+                prepared_environment=legacy_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
         self.assertIn(("rm", "-f", "e" * 64), commands)
 
     def test_worker_sweep_never_inspects_a_baseline_container(self) -> None:
-        completed = subprocess.CompletedProcess([], 0, "e" * 12 + "\n", "")
+        completed = subprocess.CompletedProcess([], 0, "e" * 64 + "\n", "")
         with (
             mock.patch.object(
                 self.worker,
@@ -1902,9 +2020,9 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             ) as inspect_container,
         ):
             self.worker.cleanup_created_sandboxes(
-                baseline_ids={"e" * 12},
+                baseline_ids={"e" * 64},
                 clone=Path("/tmp/worker-clone"),
-                image_id="sha256:" + "f" * 64,
+                prepared_environment=legacy_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
@@ -1992,7 +2110,11 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             mock.patch("builtins.print"),
             mock.patch.object(self.worker, "EXECUTIONS_ROOT", directory / "runs"),
             mock.patch.object(self.worker, "CLONES_ROOT", directory / "clones"),
-            mock.patch.object(self.worker, "load_worker_image", return_value="sha256:" + "f" * 64),
+            mock.patch.object(
+                self.worker,
+                "prepare_worker_environment",
+                return_value=legacy_preparation("f"),
+            ),
             mock.patch.object(self.worker, "connect", return_value=mock.MagicMock()),
             mock.patch.object(self.worker, "load_role", return_value=role),
             mock.patch.object(self.worker, "load_run", return_value=run),
@@ -2100,15 +2222,19 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         (root / "repo/scripts").mkdir(parents=True)
-        load_image = mock.Mock()
+        prepare_environment = mock.Mock()
         with (
             mock.patch.object(self.worker, "ROOT", root),
-            mock.patch.object(self.worker, "load_worker_image", load_image),
+            mock.patch.object(
+                self.worker,
+                "prepare_worker_environment",
+                prepare_environment,
+            ),
         ):
             with self.assertRaises(RuntimeError) as caught:
                 self.worker.command_launch(mock.Mock(), runtime=None)
         self.assertEqual(caught.exception.kind, RuntimeErrorKind.RUNTIME_UNAVAILABLE)
-        load_image.assert_not_called()
+        prepare_environment.assert_not_called()
 
 
 class ReviewerRuntimeInjectionTest(unittest.TestCase):
@@ -2219,8 +2345,8 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             ),
             mock.patch.object(
                 self.reviewer.WORKER,
-                "load_worker_image",
-                return_value="sha256:" + "e" * 64,
+                "prepare_worker_environment",
+                return_value=legacy_preparation("e"),
             ),
             mock.patch.object(self.reviewer, "connect", return_value=connection),
             mock.patch.object(self.reviewer, "load_role", return_value=role),
@@ -2329,7 +2455,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                image_id="sha256:" + "1" * 64,
+                prepared_environment=legacy_preparation("1"),
                 cpu_limit=1,
                 memory_mb=1024,
                 branch_name="hermesops/test",
@@ -2366,7 +2492,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                     task_id="task-" + "2" * 32,
                     runtime_request_id="agent-runtime-abcdef123456",
                     clone=Path("/tmp/reviewer-clone"),
-                    image_id="sha256:" + "1" * 64,
+                    prepared_environment=legacy_preparation("1"),
                     cpu_limit=1,
                     memory_mb=1024,
                     branch_name="hermesops/test",
@@ -2381,6 +2507,8 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             "Image": "sha256:" + "1" * 64,
             "State": {"Status": "running"},
             "Config": {
+                "Image": "sha256:" + "1" * 64,
+                "User": "1000:1000",
                 "Labels": {
                     "hermesops-sandbox": "1",
                     "hermesops-task-id": "task-" + "2" * 32,
@@ -2398,6 +2526,102 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             ],
         }
 
+    def reviewer_audit_document(self) -> dict[str, object]:
+        document = self.reviewer_cleanup_document()
+        document["HostConfig"] = {
+            "NetworkMode": "none",
+            "NanoCpus": 1_000_000_000,
+            "Memory": 1024 * 1024 * 1024,
+            "PidsLimit": 256,
+            "Privileged": False,
+            "SecurityOpt": ["no-new-privileges:true"],
+            "CapDrop": ["ALL"],
+        }
+        document["NetworkSettings"] = {"Networks": {}}
+        document["Config"]["Env"] = ["PATH=/usr/bin"]
+        return document
+
+    def audit_reviewer_document(self, document: dict[str, object]) -> dict[str, object]:
+        with mock.patch.object(
+            self.reviewer,
+            "inspect_nested_container",
+            return_value=document,
+        ):
+            return self.reviewer.audit_reviewer_sandbox(
+                container_id="f" * 64,
+                task_id="task-" + "2" * 32,
+                runtime_request_id="agent-runtime-abcdef123456",
+                clone=Path("/tmp/reviewer-clone"),
+                prepared_environment=legacy_preparation("1"),
+                cpu_limit=1,
+                memory_mb=1024,
+            )
+
+    def test_reviewer_real_authority_audit_accepts_canonical_container(self) -> None:
+        audit = self.audit_reviewer_document(self.reviewer_audit_document())
+        self.assertTrue(audit["read_only_verified"])
+        self.assertFalse(audit["workspace_rw"])
+        self.assertEqual(
+            audit["local_image_config_id"],
+            "sha256:" + "1" * 64,
+        )
+
+    def test_reviewer_real_authority_audit_rejects_all_identity_drift(self) -> None:
+        def config_image(data: dict[str, object]) -> None:
+            data["Config"]["Image"] = "sha256:" + "2" * 64
+
+        def local_image(data: dict[str, object]) -> None:
+            data["Image"] = "sha256:" + "2" * 64
+
+        def task(data: dict[str, object]) -> None:
+            data["Config"]["Labels"]["hermesops-task-id"] = "wrong"
+
+        def request(data: dict[str, object]) -> None:
+            data["Config"]["Labels"]["hermesops-runtime-request-id"] = "wrong"
+
+        def owner(data: dict[str, object]) -> None:
+            data["Config"]["Labels"]["hermesops-sandbox"] = "0"
+
+        def full_id(data: dict[str, object]) -> None:
+            data["Id"] = "e" * 64
+
+        def workspace(data: dict[str, object]) -> None:
+            data["Mounts"][0]["Source"] = "/tmp/foreign-clone"
+
+        def writable(data: dict[str, object]) -> None:
+            data["Mounts"][0]["RW"] = True
+
+        def docker_socket(data: dict[str, object]) -> None:
+            data["Mounts"].append(
+                {
+                    "Source": "/var/run/docker.sock",
+                    "Destination": "/var/run/docker.sock",
+                    "RW": True,
+                }
+            )
+
+        def missing_workspace(data: dict[str, object]) -> None:
+            data["Mounts"] = []
+
+        mutations = (
+            config_image,
+            local_image,
+            task,
+            request,
+            owner,
+            full_id,
+            workspace,
+            writable,
+            docker_socket,
+            missing_workspace,
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate.__name__):
+                document = copy.deepcopy(self.reviewer_audit_document())
+                mutate(document)
+                with self.assertRaises(self.reviewer.ReviewerError):
+                    self.audit_reviewer_document(document)
+
     def test_reviewer_cleanup_removes_only_verified_full_id(self) -> None:
         completed = subprocess.CompletedProcess([], 0, "", "")
         with (
@@ -2413,11 +2637,11 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             ) as docker,
         ):
             removed = self.reviewer.remove_owned_reviewer_sandbox(
-                "f" * 12,
+                "f" * 64,
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                image_id="sha256:" + "1" * 64,
+                prepared_environment=legacy_preparation("1"),
             )
         self.assertTrue(removed)
         docker.assert_called_once_with("rm", "-f", "f" * 64, check=False)
@@ -2434,14 +2658,45 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             mock.patch.object(self.reviewer, "nested_docker") as docker,
         ):
             removed = self.reviewer.remove_owned_reviewer_sandbox(
-                "f" * 12,
+                "f" * 64,
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                image_id="sha256:" + "1" * 64,
+                prepared_environment=legacy_preparation("1"),
             )
         self.assertFalse(removed)
         docker.assert_not_called()
+
+    def test_reviewer_cleanup_revalidates_image_and_requires_full_id(self) -> None:
+        for mutation, candidate in (
+            (lambda data: data["Config"].__setitem__(
+                "Image", "sha256:" + "2" * 64
+            ), "f" * 64),
+            (lambda data: data.__setitem__(
+                "Image", "sha256:" + "2" * 64
+            ), "f" * 64),
+            (lambda _data: None, "hermesops-sandbox-name"),
+        ):
+            with self.subTest(candidate=candidate, mutation=mutation):
+                document = self.reviewer_cleanup_document()
+                mutation(document)
+                with (
+                    mock.patch.object(
+                        self.reviewer,
+                        "inspect_nested_container",
+                        return_value=document,
+                    ),
+                    mock.patch.object(self.reviewer, "nested_docker") as docker,
+                ):
+                    removed = self.reviewer.remove_owned_reviewer_sandbox(
+                        candidate,
+                        task_id="task-" + "2" * 32,
+                        runtime_request_id="agent-runtime-abcdef123456",
+                        clone=Path("/tmp/reviewer-clone"),
+                        prepared_environment=legacy_preparation("1"),
+                    )
+                self.assertFalse(removed)
+                docker.assert_not_called()
 
     def test_reviewer_nonzero_runtime_journals_exit_status(self) -> None:
         with self.assertRaises(RuntimeError):
@@ -2609,8 +2864,8 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             ),
             mock.patch.object(
                 self.reviewer.WORKER,
-                "load_worker_image",
-                return_value="sha256:" + "1" * 64,
+                "prepare_worker_environment",
+                return_value=legacy_preparation("1"),
             ),
             mock.patch.object(self.reviewer, "connect", return_value=mock.MagicMock()),
             mock.patch.object(self.reviewer, "load_role", return_value=role),
@@ -2695,7 +2950,8 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
             "expected_task_id": "task-" + "1" * 32,
             "expected_request_id": "agent-runtime-123456789abc",
             "expected_workspace": "/srv/worker-clone",
-            "expected_image_id": "sha256:" + "b" * 64,
+            "expected_executable_image": "sha256:" + "b" * 64,
+            "expected_local_image_config_id": "sha256:" + "b" * 64,
             "expected_read_only": False,
             "expected_network_enabled": False,
             "expected_cpu_limit": 2,
@@ -2706,9 +2962,10 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
         expected = self.expected()
         return {
             "Id": expected["expected_handle"],
-            "Image": expected["expected_image_id"],
+            "Image": expected["expected_local_image_config_id"],
             "State": {"Status": "running"},
             "Config": {
+                "Image": expected["expected_executable_image"],
                 "Labels": {
                     "hermesops-sandbox": "1",
                     "hermesops-task-id": expected["expected_task_id"],

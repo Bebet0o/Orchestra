@@ -21,7 +21,12 @@ task_id = os.environ.get("HERMESOPS_SANDBOX_TASK_ID", "").strip()
 request_id = os.environ.get("HERMESOPS_SANDBOX_REQUEST_ID", "").strip()
 profile_name = os.environ.get("HERMESOPS_SANDBOX_PROFILE", "").strip()
 workspace = os.environ.get("HERMESOPS_SANDBOX_WORKSPACE", "").strip()
-image_id = os.environ.get("HERMESOPS_SANDBOX_IMAGE_ID", "").strip()
+executable_image = os.environ.get(
+    "HERMESOPS_SANDBOX_EXECUTABLE_IMAGE", ""
+).strip()
+local_image_config_id = os.environ.get(
+    "HERMESOPS_SANDBOX_LOCAL_IMAGE_CONFIG_ID", ""
+).strip()
 read_only_value = os.environ.get(
     "HERMESOPS_SANDBOX_READ_ONLY", ""
 ).strip().lower()
@@ -38,8 +43,10 @@ if not re.fullmatch(r"task-[a-f0-9]{32}", task_id):
 if not re.fullmatch(r"agent-runtime-[a-f0-9]{12}", request_id):
     raise RuntimeError("HermesOps sandbox request identity is invalid")
 
-if not profile_name or not workspace or not image_id:
+if not profile_name or not workspace or not executable_image:
     raise RuntimeError("HermesOps sandbox reuse identity is absent")
+if not re.fullmatch(r"sha256:[a-f0-9]{64}", local_image_config_id):
+    raise RuntimeError("HermesOps sandbox local image config ID is invalid")
 
 if network_value not in {"true", "false"}:
     raise RuntimeError("HermesOps sandbox network policy is invalid")
@@ -72,7 +79,8 @@ def _validate_authorized_sandbox(
     expected_task_id: str,
     expected_request_id: str,
     expected_workspace: str,
-    expected_image_id: str,
+    expected_executable_image: str,
+    expected_local_image_config_id: str,
     expected_read_only: bool,
     expected_network_enabled: bool,
     expected_cpu_limit: int,
@@ -94,8 +102,14 @@ def _validate_authorized_sandbox(
         raise RuntimeError("Authorized HermesOps sandbox request is mismatched")
     if state != "running":
         raise RuntimeError("Authorized HermesOps sandbox is not running")
-    if container.get("Image") != expected_image_id:
-        raise RuntimeError("Authorized HermesOps sandbox image is mismatched")
+    if config.get("Image") != expected_executable_image:
+        raise RuntimeError(
+            "Authorized HermesOps sandbox executable image is mismatched"
+        )
+    if container.get("Image") != expected_local_image_config_id:
+        raise RuntimeError(
+            "Authorized HermesOps sandbox local image config ID is mismatched"
+        )
 
     workspace_mounts = [
         mount
@@ -203,7 +217,8 @@ def _find_authorized_sandbox(
         expected_task_id=task_id,
         expected_request_id=request_id,
         expected_workspace=workspace,
-        expected_image_id=image_id,
+        expected_executable_image=executable_image,
+        expected_local_image_config_id=local_image_config_id,
         expected_read_only=read_only,
         expected_network_enabled=network_enabled,
         expected_cpu_limit=cpu_limit,
