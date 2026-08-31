@@ -29,7 +29,7 @@ ROUTES = frozenset(
         "/",
         "/dashboard",
         "/projects",
-        "/hermesfiles",
+        "/blueprints",
         "/objectives",
         "/executions",
         "/reviews",
@@ -54,10 +54,10 @@ CONTROLLER_ROUTES = frozenset(
         ("GET", "/api/v1/system/capabilities"),
         ("GET", "/api/v1/projects"),
         ("POST", "/api/v1/projects"),
-        ("GET", "/api/v1/hermesfiles"),
-        ("POST", "/api/v1/hermesfiles"),
-        ("POST", "/api/v1/hermesfiles/validate"),
-        ("GET", "/api/v1/hermesfiles/template"),
+        ("GET", "/api/v1/blueprints"),
+        ("POST", "/api/v1/blueprints"),
+        ("POST", "/api/v1/blueprints/validate"),
+        ("GET", "/api/v1/blueprints/template"),
         ("GET", "/api/v1/objectives"),
         ("POST", "/api/v1/objectives"),
         ("GET", "/api/v1/reviews"),
@@ -84,15 +84,15 @@ def _controller_route_exposed(method: str, path: str) -> bool:
     if query and not (
         method == "GET"
         and __import__("re").fullmatch(r"from=[1-9][0-9]*&to=[1-9][0-9]*", query)
-        and route_path.startswith("/api/v1/hermesfiles/")
+        and route_path.startswith("/api/v1/blueprints/")
         and route_path.endswith("/diff")
     ):
         return False
     if (method, route_path) in CONTROLLER_ROUTES and not query:
         return True
-    hermesfile_prefix = "/api/v1/hermesfiles/"
-    if route_path.startswith(hermesfile_prefix):
-        suffix = route_path[len(hermesfile_prefix):]
+    blueprint_prefix = "/api/v1/blueprints/"
+    if route_path.startswith(blueprint_prefix):
+        suffix = route_path[len(blueprint_prefix):]
         parts = suffix.split("/")
         if method in {"GET", "PATCH"} and len(parts) == 1:
             return SANDBOX_ID_PATTERN.fullmatch(parts[0]) is not None

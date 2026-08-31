@@ -105,10 +105,10 @@ for version_schema in version_schemas:
 print("Blueprint v1 schema/code/capability contract: PASS")
 PY
 
-python3 scripts/hermesops-hermesfile.py \
+python3 scripts/hermesops-blueprint.py \
     validate config/examples/Blueprint
 
-python3 scripts/hermesops-hermesfile.py \
+python3 scripts/hermesops-blueprint.py \
     fingerprint config/examples/Blueprint --json \
     | python3 -c '
 import json, sys

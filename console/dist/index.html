@@ -23,7 +23,7 @@
       <nav id="primary-navigation">
         <a href="/dashboard" data-route="dashboard">Tableau de bord</a>
         <a href="/projects" data-route="projects">Projets</a>
-        <a href="/hermesfiles" data-route="hermesfiles">Hermesfiles</a>
+        <a href="/blueprints" data-route="blueprints">Blueprints</a>
         <a href="/objectives" data-route="objectives">Objectifs</a>
         <a href="/executions" data-route="executions">Exécutions</a>
         <a href="/reviews" data-route="reviews">Reviews</a>
@@ -238,80 +238,80 @@
         </div>
       </section>
 
-      <section id="hermesfile-panel" class="hermesfile-panel" aria-labelledby="hermesfile-title" hidden>
+      <section id="blueprint-panel" class="blueprint-panel" aria-labelledby="blueprint-title" hidden>
         <div class="dashboard-heading">
           <div>
             <p class="eyebrow">Jalon 2T</p>
-            <h2 id="hermesfile-title">Cycle de vie Hermesfile</h2>
-            <p id="hermesfile-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+            <h2 id="blueprint-title">Cycle de vie Blueprint</h2>
+            <p id="blueprint-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
           </div>
-          <button id="hermesfile-refresh" class="secondary-button" type="button">Actualiser</button>
+          <button id="blueprint-refresh" class="secondary-button" type="button">Actualiser</button>
         </div>
 
-        <div class="hermesfile-grid">
-          <section class="dashboard-card" aria-labelledby="hermesfile-list-title">
+        <div class="blueprint-grid">
+          <section class="dashboard-card" aria-labelledby="blueprint-list-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Profils déclaratifs</p>
-                <h3 id="hermesfile-list-title">Hermesfiles</h3>
+                <h3 id="blueprint-list-title">Blueprints</h3>
               </div>
-              <span id="hermesfile-count" class="count-badge">0</span>
+              <span id="blueprint-count" class="count-badge">0</span>
             </div>
-            <ul id="hermesfile-list" class="project-admin-list"></ul>
-            <button id="hermesfile-new" class="secondary-button" type="button">Nouveau depuis le modèle</button>
+            <ul id="blueprint-list" class="project-admin-list"></ul>
+            <button id="blueprint-new" class="secondary-button" type="button">Nouveau depuis le modèle</button>
           </section>
 
-          <section class="dashboard-card hermesfile-editor-card" aria-labelledby="hermesfile-editor-title">
+          <section class="dashboard-card blueprint-editor-card" aria-labelledby="blueprint-editor-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Source déclarative</p>
-                <h3 id="hermesfile-editor-title">Éditeur Hermesfile</h3>
+                <h3 id="blueprint-editor-title">Éditeur Blueprint</h3>
               </div>
-              <span id="hermesfile-editor-mode" class="state-badge">nouveau</span>
+              <span id="blueprint-editor-mode" class="state-badge">nouveau</span>
             </div>
-            <p id="hermesfile-meta" class="project-meta">Chargez le modèle ou sélectionnez un profil.</p>
-            <label class="hermesfile-source-label" for="hermesfile-source">Source YAML</label>
-            <textarea id="hermesfile-source" class="hermesfile-source" rows="24" maxlength="262144" spellcheck="false" autocomplete="off"></textarea>
-            <div class="hermesfile-actions">
-              <button id="hermesfile-validate" type="button">Valider et prévisualiser</button>
-              <button id="hermesfile-save" type="button">Créer</button>
+            <p id="blueprint-meta" class="project-meta">Chargez le modèle ou sélectionnez un profil.</p>
+            <label class="blueprint-source-label" for="blueprint-source">Source YAML</label>
+            <textarea id="blueprint-source" class="blueprint-source" rows="24" maxlength="262144" spellcheck="false" autocomplete="off"></textarea>
+            <div class="blueprint-actions">
+              <button id="blueprint-validate" type="button">Valider et prévisualiser</button>
+              <button id="blueprint-save" type="button">Créer</button>
             </div>
           </section>
 
-          <section class="dashboard-card" aria-labelledby="hermesfile-diagnostics-title">
+          <section class="dashboard-card" aria-labelledby="blueprint-diagnostics-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Validation stricte</p>
-                <h3 id="hermesfile-diagnostics-title">Diagnostics</h3>
+                <h3 id="blueprint-diagnostics-title">Diagnostics</h3>
               </div>
-              <span id="hermesfile-validity" class="state-badge">non validé</span>
+              <span id="blueprint-validity" class="state-badge">non validé</span>
             </div>
-            <ul id="hermesfile-diagnostics" class="operational-list compact-list"></ul>
+            <ul id="blueprint-diagnostics" class="operational-list compact-list"></ul>
             <details>
               <summary>Configuration canonique et runtime</summary>
-              <pre id="hermesfile-preview" class="hermesfile-preview">Aucune prévisualisation.</pre>
+              <pre id="blueprint-preview" class="blueprint-preview">Aucune prévisualisation.</pre>
             </details>
           </section>
 
-          <section class="dashboard-card" aria-labelledby="hermesfile-history-title">
+          <section class="dashboard-card" aria-labelledby="blueprint-history-title">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Historique immuable</p>
-                <h3 id="hermesfile-history-title">Révisions</h3>
+                <h3 id="blueprint-history-title">Révisions</h3>
               </div>
-              <span id="hermesfile-revision-count" class="count-badge">0</span>
+              <span id="blueprint-revision-count" class="count-badge">0</span>
             </div>
-            <ul id="hermesfile-revisions" class="project-admin-list"></ul>
-            <div class="hermesfile-compare">
+            <ul id="blueprint-revisions" class="project-admin-list"></ul>
+            <div class="blueprint-compare">
               <label>De
-                <select id="hermesfile-diff-from"></select>
+                <select id="blueprint-diff-from"></select>
               </label>
               <label>Vers
-                <select id="hermesfile-diff-to"></select>
+                <select id="blueprint-diff-to"></select>
               </label>
-              <button id="hermesfile-compare" class="secondary-button" type="button">Comparer</button>
+              <button id="blueprint-compare" class="secondary-button" type="button">Comparer</button>
             </div>
-            <pre id="hermesfile-diff" class="hermesfile-preview">Aucune comparaison.</pre>
+            <pre id="blueprint-diff" class="blueprint-preview">Aucune comparaison.</pre>
           </section>
         </div>
       </section>
@@ -386,7 +386,7 @@
             <dl id="objective-detail-facts" class="objective-facts"></dl>
             <div class="objective-operation-box">
               <p class="eyebrow">Dernière opération Controller</p>
-              <pre id="objective-operation" class="hermesfile-preview">Aucune opération chargée.</pre>
+              <pre id="objective-operation" class="blueprint-preview">Aucune opération chargée.</pre>
             </div>
             <div class="project-command-box">
               <label>Motif facultatif
@@ -413,7 +413,7 @@
 
       <footer>
         <span>HermesOps v0.1.0-alpha</span>
-        <span>Console 2U · projets, Hermesfiles et objectifs bornés · aucune persistance navigateur</span>
+        <span>Console 2U · projets, Blueprints et objectifs bornés · aucune persistance navigateur</span>
       </footer>
     </main>
   </div>

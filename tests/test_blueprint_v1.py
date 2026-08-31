@@ -271,9 +271,21 @@ class BlueprintV1Test(unittest.TestCase):
 
     def test_cli_validate_fingerprint_and_canonicalize(self) -> None:
         repository = Path(__file__).resolve().parents[1]
-        # The dedicated CLI filename and product-facing messages migrate in S2.
-        cli = repository / "scripts/hermesops-hermesfile.py"
+        cli = repository / "scripts/hermesops-blueprint.py"
+        self.assertTrue(cli.is_file())
+        self.assertFalse((repository / "scripts/hermesops-hermesfile.py").exists())
         example = repository / "config/examples/Blueprint"
+        help_result = subprocess.run(
+            [sys.executable, str(cli), "--help"],
+            cwd=repository,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        self.assertIn("Blueprint v1", help_result.stdout)
+        self.assertNotIn("Hermesfile", help_result.stdout)
         validate = subprocess.run(
             [sys.executable, str(cli), "validate", str(example), "--json"],
             cwd=repository,

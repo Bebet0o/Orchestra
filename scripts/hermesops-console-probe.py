@@ -11,7 +11,7 @@ ROUTES = (
     "/",
     "/dashboard",
     "/projects",
-    "/hermesfiles",
+    "/blueprints",
     "/objectives",
     "/executions",
     "/reviews",
@@ -96,6 +96,10 @@ def validate(base_url: str, wait_seconds: float) -> None:
         if not headers.get("x-request-id", "").startswith("req_"):
             raise ProbeError(f"Console request ID is invalid on {route}")
 
+    status, _, _ = request(parsed.hostname, port, "/hermesfiles")
+    if status != 404:
+        raise ProbeError("Legacy Console route remains available")
+
     status, _, body = request(parsed.hostname, port, "/assets/app.js")
     if (
         status != 200
@@ -106,11 +110,11 @@ def validate(base_url: str, wait_seconds: float) -> None:
         or b"client.createProject" not in body
         or b"client.updateProject" not in body
         or b"client.commandProject" not in body
-        or b"refreshHermesfiles" not in body
-        or b"client.validateHermesfile" not in body
-        or b"client.createHermesfile" not in body
-        or b"client.updateHermesfile" not in body
-        or b"client.compareHermesfileRevisions" not in body
+        or b"refreshBlueprints" not in body
+        or b"client.validateBlueprint" not in body
+        or b"client.createBlueprint" not in body
+        or b"client.updateBlueprint" not in body
+        or b"client.compareBlueprintRevisions" not in body
         or b"refreshObjectives" not in body
         or b"client.createObjective" not in body
         or b"client.commandObjective" not in body
@@ -138,16 +142,16 @@ def validate(base_url: str, wait_seconds: float) -> None:
         or b"createProject" not in body
         or b"updateProject" not in body
         or b"commandProject" not in body
-        or b"validateHermesfile" not in body
-        or b"createHermesfile" not in body
-        or b"updateHermesfile" not in body
-        or b"compareHermesfileRevisions" not in body
+        or b"validateBlueprint" not in body
+        or b"createBlueprint" not in body
+        or b"updateBlueprint" not in body
+        or b"compareBlueprintRevisions" not in body
         or b"createObjective" not in body
         or b"commandObjective" not in body
         or b"async operation" not in body
         or b'"delete"' in body
-        or b"buildHermesfile" in body
-        or b"activateHermesfile" in body
+        or b"buildBlueprint" in body
+        or b"activateBlueprint" in body
     ):
         raise ProbeError("Console Controller client violates the 2U browser boundary")
 
@@ -198,17 +202,20 @@ def validate(base_url: str, wait_seconds: float) -> None:
             raise ProbeError(f"Unauthenticated objective proxy returned HTTP {status}: {path}")
 
     probe_sandbox = "sandbox-" + "a" * 32
+    status, _, _ = request(parsed.hostname, port, "/api/v1/hermesfiles")
+    if status != 404:
+        raise ProbeError("Legacy Controller proxy remains available")
     for path in (
-        "/api/v1/hermesfiles",
-        "/api/v1/hermesfiles/template",
-        f"/api/v1/hermesfiles/{probe_sandbox}",
-        f"/api/v1/hermesfiles/{probe_sandbox}/revisions",
-        f"/api/v1/hermesfiles/{probe_sandbox}/revisions/1",
-        f"/api/v1/hermesfiles/{probe_sandbox}/diff?from=1&to=2",
+        "/api/v1/blueprints",
+        "/api/v1/blueprints/template",
+        f"/api/v1/blueprints/{probe_sandbox}",
+        f"/api/v1/blueprints/{probe_sandbox}/revisions",
+        f"/api/v1/blueprints/{probe_sandbox}/revisions/1",
+        f"/api/v1/blueprints/{probe_sandbox}/diff?from=1&to=2",
     ):
         status, _, _ = request(parsed.hostname, port, path)
         if status != 401:
-            raise ProbeError(f"Unauthenticated Hermesfile proxy returned HTTP {status}: {path}")
+            raise ProbeError(f"Unauthenticated Blueprint proxy returned HTTP {status}: {path}")
 
     mutation_headers = {
         "Origin": base_url,
@@ -221,9 +228,9 @@ def validate(base_url: str, wait_seconds: float) -> None:
         ("POST", "/api/v1/projects"),
         ("PATCH", "/api/v1/projects/probe-project"),
         ("POST", "/api/v1/projects/probe-project/commands/enable"),
-        ("POST", "/api/v1/hermesfiles/validate"),
-        ("POST", "/api/v1/hermesfiles"),
-        ("PATCH", f"/api/v1/hermesfiles/{probe_sandbox}"),
+        ("POST", "/api/v1/blueprints/validate"),
+        ("POST", "/api/v1/blueprints"),
+        ("PATCH", f"/api/v1/blueprints/{probe_sandbox}"),
         ("POST", "/api/v1/objectives"),
         ("POST", f"/api/v1/objectives/{probe_objective}/commands/pause"),
         ("POST", f"/api/v1/objectives/{probe_objective}/commands/resume"),
@@ -243,8 +250,8 @@ def validate(base_url: str, wait_seconds: float) -> None:
     for method, path in (
         ("GET", "/api/v1/tasks"),
         ("POST", "/api/v1/projects/probe-project/commands/delete"),
-        ("POST", f"/api/v1/hermesfiles/{probe_sandbox}/builds"),
-        ("POST", f"/api/v1/hermesfiles/{probe_sandbox}/activate"),
+        ("POST", f"/api/v1/blueprints/{probe_sandbox}/builds"),
+        ("POST", f"/api/v1/blueprints/{probe_sandbox}/activate"),
         ("POST", f"/api/v1/objectives/{probe_objective}/commands/start"),
         ("POST", f"/api/v1/objectives/{probe_objective}/commands/replan"),
         ("POST", f"/api/v1/objectives/{probe_objective}/commands/archive"),
@@ -264,7 +271,7 @@ def validate(base_url: str, wait_seconds: float) -> None:
     print(
         f"HermesOps Console probe: PASS routes={len(ROUTES)} port={port} "
         "session_proxy=401 dashboard_proxy=401 project_lifecycle_proxy=401 "
-        "hermesfile_lifecycle_proxy=401 objective_lifecycle_proxy=401"
+        "blueprint_lifecycle_proxy=401 objective_lifecycle_proxy=401"
     )
 
 

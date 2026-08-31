@@ -89,7 +89,7 @@ static_validation() {
   controller_api/blueprint_lifecycle.py \
   controller_api/sandbox_profiles.py \
   controller_api/sandbox_profile_probe.py \
-  scripts/hermesops-hermesfile.py \
+  scripts/hermesops-blueprint.py \
   scripts/hermesops-sandbox-profile.py \
   scripts/hermesops-controller-sandbox-profile-probe.py \
   tests/test_blueprint_v1.py \
@@ -126,7 +126,7 @@ static_validation() {
         tests/test-controller-project-lifecycle.sh \
         tests/test-console-project-lifecycle.sh \
         tests/test-controller-blueprint-lifecycle.sh \
-        tests/test-console-hermesfile-lifecycle.sh \
+        tests/test-console-blueprint-lifecycle.sh \
         tests/test-console-objective-lifecycle.sh \
         tests/test_console_service.py \
         tests/test_console_controller_client.py \
@@ -134,7 +134,7 @@ static_validation() {
         tests/test_controller_project_lifecycle.py \
         tests/test_console_project_lifecycle.py \
         tests/test_controller_blueprint_lifecycle.py \
-        tests/test_console_hermesfile_lifecycle.py \
+        tests/test_console_blueprint_lifecycle.py \
         tests/test_console_objective_lifecycle.py \
         controller_api/__init__.py controller_api/core.py \
         controller_api/server.py controller_api/service_support.py \
@@ -303,7 +303,7 @@ PY
   "${REPO}/tests/test-controller-project-lifecycle.sh"
   "${REPO}/tests/test-console-project-lifecycle.sh"
   "${REPO}/tests/test-controller-blueprint-lifecycle.sh"
-  "${REPO}/tests/test-console-hermesfile-lifecycle.sh"
+  "${REPO}/tests/test-console-blueprint-lifecycle.sh"
   "${REPO}/tests/test-console-objective-lifecycle.sh"
   "${REPO}/tests/test-reviewer-assignments.sh"
     "${REPO}/tests/test-controller-service-contract.sh"

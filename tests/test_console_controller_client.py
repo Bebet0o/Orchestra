@@ -74,18 +74,21 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/api/v1/auth/session":
             self._send_json(401, {"code": "authentication_required", "title": "Authentication required"})
         elif self.path == "/api/v1/system/capabilities":
-            self._send_json(200, {"data": {"features": {"browser_session_lifecycle": True}}})
+            self._send_json(200, {"data": {"features": {
+                "browser_session_lifecycle": True,
+                "blueprint_versions": ["v1"],
+            }}})
         elif self.path == "/api/v1/projects/alpha":
             self._send_json(200, {"data": {"id": "alpha", "name": "Alpha", "state": "disabled", "resource_revision": 1}}, etag='"1"')
-        elif self.path == "/api/v1/hermesfiles/template":
-            self._send_json(200, {"data": {"source": "apiVersion: hermesops.dev/v1\n", "source_format": "hermesfile-v1", "canonical_sha256": "a" * 64}})
-        elif self.path == "/api/v1/hermesfiles/sandbox-" + "a" * 32:
+        elif self.path == "/api/v1/blueprints/template":
+            self._send_json(200, {"data": {"source": "apiVersion: hermesops.dev/v1\n", "source_format": "blueprint-v1", "canonical_sha256": "a" * 64}})
+        elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32:
             self._send_json(200, {"data": {"profile": {"id": "sandbox-" + "a" * 32, "profile_name": "python-project", "resource_revision": 1}, "revision": {"source_revision": 1, "source": "apiVersion: hermesops.dev/v1\n"}}}, etag='"1"')
-        elif self.path == "/api/v1/hermesfiles/sandbox-" + "a" * 32 + "/revisions":
+        elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/revisions":
             self._send_json(200, {"data": [{"source_revision": 1}], "meta": {"next_cursor": None}})
-        elif self.path == "/api/v1/hermesfiles/sandbox-" + "a" * 32 + "/revisions/1":
+        elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/revisions/1":
             self._send_json(200, {"data": {"source_revision": 1, "source": "apiVersion: hermesops.dev/v1\n"}})
-        elif self.path == "/api/v1/hermesfiles/sandbox-" + "a" * 32 + "/diff?from=1&to=2":
+        elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/diff?from=1&to=2":
             self._send_json(200, {"data": {"changed": True, "changes": [{"path": "/spec/runtime/cpu", "kind": "modified"}]}})
         elif self.path == "/api/v1/objectives/objective-" + "a" * 32:
             self._send_json(200, {"data": {"id": "objective-" + "a" * 32, "title": "Objective Alpha", "description": "Bounded objective", "state": "paused", "raw_state": "PAUSED", "project_ids": ["alpha"], "priority": 100, "resource_revision": 3, "requested_transition": None, "planning_attempt_count": 1, "attempt_count": 1, "event_count": 2, "plan_id": None, "not_before": "2026-07-29T00:00:00.000Z", "max_parallel_tasks": 1, "has_error": False, "latest_operation_id": "operation-" + "a" * 32}})
@@ -93,7 +96,7 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, {"data": {"id": "operation-" + "a" * 32, "kind": "objective.pause", "state": "succeeded", "created_at": "2026-07-29T00:00:00.000Z", "finished_at": "2026-07-29T00:00:00.000Z", "target": {"type": "objective", "id": "objective-" + "a" * 32}, "result": {"state": "paused"}}})
         elif self.path in {
             "/api/v1/projects",
-            "/api/v1/hermesfiles",
+            "/api/v1/blueprints",
             "/api/v1/objectives",
             "/api/v1/reviews",
             "/api/v1/recoveries",
@@ -131,9 +134,9 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/api/v1/objectives/objective-" + "a" * 32 + "/commands/"):
             command = self.path.rsplit("/", 1)[-1]
             self._send_json(202, {"data": {"id": "operation-" + "a" * 32, "kind": "objective." + command, "state": "succeeded", "target": {"type": "objective", "id": "objective-" + "a" * 32}, "result": {"state": command}}})
-        elif self.path == "/api/v1/hermesfiles/validate":
+        elif self.path == "/api/v1/blueprints/validate":
             self._send_json(200, {"data": {"valid": True, "diagnostics": [], "canonical": {}, "runtime_config": {}}})
-        elif self.path == "/api/v1/hermesfiles":
+        elif self.path == "/api/v1/blueprints":
             self._send_json(202, {"data": {"id": "operation-" + "c" * 32, "state": "succeeded", "result": {"sandbox_id": "sandbox-" + "a" * 32}}})
         else:
             self._send_json(404, {"code": "not_found", "title": "Not found"})
@@ -142,7 +145,7 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
         self._record()
         if self.path == "/api/v1/projects/alpha":
             self._send_json(202, {"data": {"operation_id": "operation-" + "b" * 32, "state": "succeeded"}})
-        elif self.path == "/api/v1/hermesfiles/sandbox-" + "a" * 32:
+        elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32:
             self._send_json(202, {"data": {"id": "operation-" + "d" * 32, "state": "succeeded", "result": {"sandbox_id": "sandbox-" + "a" * 32, "resource_revision": 2}}})
         else:
             self._send_json(404, {"code": "not_found", "title": "Not found"})
@@ -256,12 +259,15 @@ class ConsoleControllerProxyTest(unittest.TestCase):
 
         status, _, payload = self.request("GET", "/api/v1/system/capabilities")
         self.assertEqual(status, 200)
-        self.assertTrue(json.loads(payload)["data"]["features"]["browser_session_lifecycle"])
+        features = json.loads(payload)["data"]["features"]
+        self.assertTrue(features["browser_session_lifecycle"])
+        self.assertEqual(features["blueprint_versions"], ["v1"])
+        self.assertNotIn("hermesfile_versions", features)
 
     def test_operational_dashboard_gets_are_forwarded(self) -> None:
         for path in (
             "/api/v1/projects",
-            "/api/v1/hermesfiles",
+            "/api/v1/blueprints",
             "/api/v1/objectives",
             "/api/v1/reviews",
             "/api/v1/recoveries",

@@ -61,7 +61,7 @@ function projectId(value) {
 
 function sandboxId(value) {
   if (typeof value !== "string" || !SANDBOX_ID_PATTERN.test(value)) {
-    throw new ControllerClientError("Identifiant Hermesfile invalide.", {
+    throw new ControllerClientError("Identifiant Blueprint invalide.", {
       status: 400,
       code: "invalid_sandbox_id",
     });
@@ -101,19 +101,19 @@ function objectiveIntent(value) {
 
 function revisionNumber(value) {
   if (!Number.isInteger(value) || value < 1 || value > Number.MAX_SAFE_INTEGER) {
-    throw new ControllerClientError("Révision Hermesfile invalide.", {
+    throw new ControllerClientError("Révision Blueprint invalide.", {
       status: 400,
-      code: "invalid_hermesfile_revision",
+      code: "invalid_blueprint_revision",
     });
   }
   return value;
 }
 
-function hermesfileSource(value) {
+function blueprintSource(value) {
   if (typeof value !== "string" || value.length === 0 || new TextEncoder().encode(value).length > 256 * 1024) {
-    throw new ControllerClientError("Source Hermesfile invalide ou trop volumineuse.", {
+    throw new ControllerClientError("Source Blueprint invalide ou trop volumineuse.", {
       status: 400,
-      code: "invalid_hermesfile_source",
+      code: "invalid_blueprint_source",
     });
   }
   return value;
@@ -274,65 +274,65 @@ export function createControllerClient() {
       return dataObject(await request("capabilities"));
     },
 
-    async hermesfiles() {
-      return collection(await request({ method: "GET", path: "/api/v1/hermesfiles" }));
+    async blueprints() {
+      return collection(await request({ method: "GET", path: "/api/v1/blueprints" }));
     },
-    async hermesfileTemplate() {
-      return dataObject(await request({ method: "GET", path: "/api/v1/hermesfiles/template" }));
+    async blueprintTemplate() {
+      return dataObject(await request({ method: "GET", path: "/api/v1/blueprints/template" }));
     },
-    async hermesfile(identifier) {
+    async blueprint(identifier) {
       const result = await request({
         method: "GET",
-        path: `/api/v1/hermesfiles/${sandboxId(identifier)}`,
+        path: `/api/v1/blueprints/${sandboxId(identifier)}`,
       }, { includeEtag: true });
-      return Object.freeze({ hermesfile: dataObject(result.payload), etag: result.etag });
+      return Object.freeze({ blueprint: dataObject(result.payload), etag: result.etag });
     },
-    async hermesfileRevisions(identifier) {
+    async blueprintRevisions(identifier) {
       return collection(await request({
         method: "GET",
-        path: `/api/v1/hermesfiles/${sandboxId(identifier)}/revisions`,
+        path: `/api/v1/blueprints/${sandboxId(identifier)}/revisions`,
       }));
     },
-    async hermesfileRevision(identifier, revision) {
+    async blueprintRevision(identifier, revision) {
       return dataObject(await request({
         method: "GET",
-        path: `/api/v1/hermesfiles/${sandboxId(identifier)}/revisions/${revisionNumber(revision)}`,
+        path: `/api/v1/blueprints/${sandboxId(identifier)}/revisions/${revisionNumber(revision)}`,
       }));
     },
-    async compareHermesfileRevisions(identifier, fromRevision, toRevision) {
+    async compareBlueprintRevisions(identifier, fromRevision, toRevision) {
       const from = revisionNumber(fromRevision);
       const to = revisionNumber(toRevision);
       return dataObject(await request({
         method: "GET",
-        path: `/api/v1/hermesfiles/${sandboxId(identifier)}/diff?from=${from}&to=${to}`,
+        path: `/api/v1/blueprints/${sandboxId(identifier)}/diff?from=${from}&to=${to}`,
       }));
     },
-    async validateHermesfile(source) {
+    async validateBlueprint(source) {
       const csrf = await csrfToken();
-      return dataObject(await request({ method: "POST", path: "/api/v1/hermesfiles/validate" }, {
-        body: { source: hermesfileSource(source) },
+      return dataObject(await request({ method: "POST", path: "/api/v1/blueprints/validate" }, {
+        body: { source: blueprintSource(source) },
         csrfToken: csrf,
-        idempotencyLabel: "hermesfile-validate",
+        idempotencyLabel: "blueprint-validate",
       }));
     },
-    async createHermesfile(source) {
+    async createBlueprint(source) {
       const csrf = await csrfToken();
-      return dataObject(await request({ method: "POST", path: "/api/v1/hermesfiles" }, {
-        body: { source: hermesfileSource(source) },
+      return dataObject(await request({ method: "POST", path: "/api/v1/blueprints" }, {
+        body: { source: blueprintSource(source) },
         csrfToken: csrf,
-        idempotencyLabel: "hermesfile-create",
+        idempotencyLabel: "blueprint-create",
       }));
     },
-    async updateHermesfile(identifier, etag, source) {
+    async updateBlueprint(identifier, etag, source) {
       const csrf = await csrfToken();
       return dataObject(await request({
         method: "PATCH",
-        path: `/api/v1/hermesfiles/${sandboxId(identifier)}`,
+        path: `/api/v1/blueprints/${sandboxId(identifier)}`,
       }, {
-        body: { source: hermesfileSource(source) },
+        body: { source: blueprintSource(source) },
         csrfToken: csrf,
         ifMatch: etag,
-        idempotencyLabel: "hermesfile-update",
+        idempotencyLabel: "blueprint-update",
       }));
     },
     async projects() {
