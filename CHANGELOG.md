@@ -4,18 +4,15 @@ Notable project changes are recorded here. The current project is Orchestra;
 older entries retain HermesOps and Hermesfile names where those were the names
 of the released or implemented historical interfaces.
 
-No Orchestra release version or release date is invented by this changelog.
+Post-transition Orchestra changes remain under [Unreleased] until an Orchestra
+release is published.
 
 ## [Unreleased]
 
 ### Added
 
-- Orchestra project identity and a runtime-neutral control-plane direction
-  built on the preserved HermesOps history.
-- `AgentRuntime`, `HermesRuntime`, and the first bounded `NativeRuntime`
-  primitive.
-- `ModelProvider`, deterministic fake implementations, and a minimal
-  OpenAI-compatible provider adapter.
+- Orchestra project identity and public repository bootstrap on the preserved
+  HermesOps foundation.
 - Immutable OCI worker distribution data, environment resolution, exact
   sandbox materialization, and shared worker/reviewer preparation.
 - A trusted two-phase worker publication and acceptance process with exact
@@ -24,6 +21,8 @@ No Orchestra release version or release date is invented by this changelog.
   persistence, immutable revisions, lifecycle operations, and current
   API/CLI/Console/documentation surfaces.
 - SQLite schema migration 22 to 23 for the Blueprint authority cutover.
+- Refreshed public project, contribution, security, and changelog documentation
+  for the current Orchestra implementation.
 
 ### Changed
 
@@ -59,16 +58,19 @@ No Orchestra release version or release date is invented by this changelog.
 
 ## Historical HermesOps development
 
-The entries below describe the HermesOps foundation from which Orchestra was
-created. They remain historical records and do not establish current Orchestra
-terminology or a new release version.
+The entries below preserve the names and capabilities of the completed
+HermesOps foundation from which Orchestra was created.
 
-### HermesOps 0.2.0 development (unreleased historical material)
+### HermesOps 0.2.0 (historical release)
 
 #### Added
 
 - Durable, immutable Hermesfile v1 sandbox-profile source revisions and
   authenticated profile reads.
+- `AgentRuntime`, `HermesRuntime`, runtime-neutral execution events, and the
+  first bounded `NativeRuntime` primitive.
+- `ModelProvider`, deterministic fake implementations, and the minimal
+  OpenAI-compatible provider adapter.
 - Bounded Objective Lifecycle Console integration using secure objective
   creation, pause, resume, cancel, and operation-read contracts.
 - Hermesfile lifecycle persistence and Controller routes, including strict

@@ -4,10 +4,14 @@
 
     REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     README="${REPO}/README.md"
+    CHANGELOG="${REPO}/CHANGELOG.md"
+    SECURITY="${REPO}/SECURITY.md"
     LICENSE_FILE="${REPO}/LICENSE"
     VERSION_FILE="${REPO}/VERSION"
 
     [[ -f "$README" ]]
+    [[ -f "$CHANGELOG" ]]
+    [[ -f "$SECURITY" ]]
     [[ -f "$LICENSE_FILE" ]]
     [[ -f "$VERSION_FILE" ]]
 
@@ -53,6 +57,14 @@
             exit 1
         fi
     done
+
+    grep -Fq '### HermesOps 0.2.0 (historical release)' "$CHANGELOG"
+    ! grep -Fq 'HermesOps 0.2.0 development (unreleased historical material)' \
+        "$CHANGELOG"
+    grep -Fq 'working transitional deployment path' "$README"
+    grep -Fq 'and service layout is inherited from HermesOps' "$README"
+    grep -Fq 'GitHub private vulnerability reporting is not currently enabled' \
+        "$SECURITY"
 
     current_blueprint_docs=(
         docs/api/CONTROLLER_API_V1.md

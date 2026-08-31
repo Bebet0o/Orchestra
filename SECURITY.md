@@ -10,12 +10,11 @@ operators should preserve.
 Do not open a public issue containing exploit details, secrets, private logs,
 or reproduction material for an undisclosed vulnerability.
 
-GitHub private vulnerability reporting is not currently enabled for this
-repository, and the project does not publish a dedicated security email
-address. If you do not already have a private maintainer channel, open a public
-issue containing no sensitive detail and ask the maintainers to arrange a
-private reporting channel. Do not include the vulnerable component, exploit
-method, affected data, or proof of concept in that request.
+GitHub private vulnerability reporting is not currently enabled, and the
+project does not publish a security email address. If you do not already have a
+private maintainer channel, open a public issue with no sensitive detail and ask
+the maintainers to arrange one. Do not identify the vulnerable component,
+exploit method, affected data, or proof of concept in that request.
 
 Once a private channel is available, a useful report includes:
 

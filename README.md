@@ -134,10 +134,13 @@ References:
 
 ## Getting started
 
-The current public installer targets Debian 12 Bookworm on amd64, UID/GID
-`1000:1000`, Docker Engine with the Compose plugin, and user-level systemd. It
-uses the historical installation root `/opt/docker/hermesops`; this technical
-path has not yet been renamed.
+The current installer is the working transitional deployment path for the
+existing stack. It targets Debian 12 Bookworm on amd64, UID/GID `1000:1000`,
+Docker Engine with the Compose plugin, and user-level systemd. Its filesystem
+and service layout is inherited from HermesOps, including the installation root
+`/opt/docker/hermesops` and `hermesops-*` technical names. This path remains
+available while Orchestra's longer-term distribution architecture evolves; it
+does not define that future architecture.
 
 Review the preflight before changing the host:
 
