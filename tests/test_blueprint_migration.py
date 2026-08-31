@@ -19,6 +19,7 @@ TOKEN = "migration-session-" + "a" * 48
 SANDBOX_ID = "sandbox-" + "b" * 32
 REVISION_ID = "sandbox-revision-" + "c" * 32
 OPERATION_ID = "operation-" + "d" * 32
+SECOND_OPERATION_ID = "operation-" + "f" * 32
 AUDIT_ID = "audit-" + "e" * 32
 CREATED_AT = "2026-08-30T12:34:56.000Z"
 HISTORICAL_ROUTE = "/api/v1/hermesfiles"
@@ -134,12 +135,29 @@ class BlueprintMigrationTest(unittest.TestCase):
                 INSERT INTO controller_hermesfile_operations (
                     operation_id, command_kind, state, target_id, result_json,
                     error_code, created_at, updated_at, finished_at
-                ) VALUES (?, 'hermesfile.create', 'SUCCEEDED', ?, ?, NULL, ?, ?, ?)
+                ) VALUES (?, 'hermesfile.create', 'SUCCEEDED', ?, ?,
+                    'hermesfile_source_invalid', ?, ?, ?)
                 """,
                 (
                     OPERATION_ID,
                     SANDBOX_ID,
                     json.dumps({"sandbox_id": SANDBOX_ID}, separators=(",", ":")),
+                    CREATED_AT,
+                    CREATED_AT,
+                    CREATED_AT,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO controller_hermesfile_operations (
+                    operation_id, command_kind, state, target_id, result_json,
+                    error_code, created_at, updated_at, finished_at
+                ) VALUES (?, 'hermesfile.update', 'FAILED', ?, '{}',
+                    'upstream_hermesfile_bridge_failed', ?, ?, ?)
+                """,
+                (
+                    SECOND_OPERATION_ID,
+                    SANDBOX_ID,
                     CREATED_AT,
                     CREATED_AT,
                     CREATED_AT,
@@ -231,6 +249,27 @@ class BlueprintMigrationTest(unittest.TestCase):
             connection.execute("PRAGMA foreign_keys=ON")
             connection.executescript("BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;")
 
+    def assert_v23_rejected_atomically(self) -> None:
+        with self.assertRaises(sqlite3.Error):
+            self.apply_v23()
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 22)
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            self.assertIn("sandbox_profiles", tables)
+            self.assertIn("controller_hermesfile_operations", tables)
+            self.assertNotIn("controller_blueprint_operations", tables)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT route FROM controller_hermesfile_idempotency"
+                ).fetchone()[0],
+                HISTORICAL_ROUTE,
+            )
+
     def test_fresh_database_reaches_schema_23(self) -> None:
         self.apply_through(23)
         with sqlite3.connect(self.database) as connection:
@@ -267,6 +306,11 @@ class BlueprintMigrationTest(unittest.TestCase):
             ).fetchone()
             assert revision is not None and profile is not None and idem is not None
             assert operation is not None and audit is not None
+            second_operation = connection.execute(
+                "SELECT * FROM controller_blueprint_operations WHERE operation_id=?",
+                (SECOND_OPERATION_ID,),
+            ).fetchone()
+            assert second_operation is not None
             self.assertEqual(revision["source_format"], "blueprint-v1")
             self.assertEqual(profile["source_format"], "blueprint-v1")
             self.assertEqual(revision["source_text"], expected["source"])
@@ -293,12 +337,51 @@ class BlueprintMigrationTest(unittest.TestCase):
             self.assertEqual(idem["request_hash"], expected["request_hash"])
             self.assertEqual(idem["key_hash"], expected["key_hash"])
             self.assertEqual(operation["command_kind"], "blueprint.create")
+            self.assertEqual(operation["error_code"], "blueprint_source_invalid")
+            self.assertEqual(
+                second_operation["error_code"],
+                "upstream_hermesfile_bridge_failed",
+            )
             self.assertEqual(audit["action"], "blueprint.create")
             self.assertEqual(
                 json.loads(idem["response_json"])["data"]["kind"],
                 "blueprint.create",
             )
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            schema_objects = {
+                (row[0], row[1])
+                for row in connection.execute(
+                    "SELECT type, name FROM sqlite_master "
+                    "WHERE type IN ('index', 'trigger') AND sql IS NOT NULL"
+                )
+            }
+            for expected_object in {
+                ("index", "idx_sandbox_profiles_state_name"),
+                ("index", "idx_sandbox_profile_revisions_profile"),
+                ("index", "idx_controller_blueprint_operations_target"),
+                ("index", "idx_controller_blueprint_audit_resource"),
+                ("trigger", "sandbox_profile_revision_update_guard"),
+                ("trigger", "sandbox_profile_revision_delete_guard"),
+                ("trigger", "sandbox_profile_identity_guard"),
+                ("trigger", "sandbox_profile_resource_revision_guard"),
+                ("trigger", "sandbox_profile_source_revision_guard"),
+                ("trigger", "controller_blueprint_audit_update_guard"),
+                ("trigger", "controller_blueprint_audit_delete_guard"),
+                ("trigger", "controller_blueprint_idempotency_delete_guard"),
+            }:
+                self.assertIn(expected_object, schema_objects)
+
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                connection.execute(
+                    "UPDATE sandbox_profile_revisions SET created_at=created_at "
+                    "WHERE revision_id=?",
+                    (REVISION_ID,),
+                )
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "immutable"):
+                connection.execute(
+                    "DELETE FROM controller_blueprint_command_audit WHERE audit_id=?",
+                    (AUDIT_ID,),
+                )
 
         store = BlueprintLifecycleStore(
             self.settings, SandboxProfileStore(self.settings)
@@ -334,6 +417,66 @@ class BlueprintMigrationTest(unittest.TestCase):
                 ).fetchone()[0],
                 expected["source_sha256"],
             )
+
+    def test_unexpected_idempotency_kind_fails_atomically(self) -> None:
+        self.seed_real_v22()
+        with sqlite3.connect(self.database) as connection:
+            response = json.loads(
+                connection.execute(
+                    "SELECT response_json FROM controller_hermesfile_idempotency"
+                ).fetchone()[0]
+            )
+            response["data"]["kind"] = "hermesfile.delete"
+            connection.execute(
+                "UPDATE controller_hermesfile_idempotency SET response_json=?",
+                (json.dumps(response, separators=(",", ":")),),
+            )
+        self.assert_v23_rejected_atomically()
+
+    def test_unexpected_legacy_operation_kind_fails_atomically(self) -> None:
+        self.seed_real_v22()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA ignore_check_constraints=ON")
+            connection.execute(
+                "UPDATE controller_hermesfile_operations "
+                "SET command_kind='hermesfile.delete' WHERE operation_id=?",
+                (OPERATION_ID,),
+            )
+        self.assert_v23_rejected_atomically()
+
+    def test_malformed_persisted_json_fails_atomically(self) -> None:
+        self.seed_real_v22()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA ignore_check_constraints=ON")
+            connection.execute(
+                "UPDATE controller_hermesfile_idempotency SET response_json='{'"
+            )
+        self.assert_v23_rejected_atomically()
+
+    def test_unexpected_legacy_source_format_fails_atomically(self) -> None:
+        self.seed_real_v22()
+        with sqlite3.connect(self.database) as connection:
+            trigger_sql = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' "
+                "AND name='sandbox_profile_revision_update_guard'"
+            ).fetchone()[0]
+            connection.execute("DROP TRIGGER sandbox_profile_revision_update_guard")
+            connection.execute("PRAGMA ignore_check_constraints=ON")
+            connection.execute(
+                "UPDATE sandbox_profile_revisions SET source_format='unknown-v1'"
+            )
+            connection.execute(trigger_sql)
+        self.assert_v23_rejected_atomically()
+
+    def test_preexisting_foreign_key_violation_fails_atomically(self) -> None:
+        self.seed_real_v22()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA foreign_keys=OFF")
+            connection.execute(
+                "UPDATE controller_hermesfile_idempotency SET operation_id=?",
+                ("operation-" + "0" * 32,),
+            )
+        self.assert_v23_rejected_atomically()
 
 
 if __name__ == "__main__":

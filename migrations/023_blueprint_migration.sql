@@ -186,6 +186,69 @@ CREATE TABLE controller_blueprint_command_audit (
         ON DELETE RESTRICT
 );
 
+CREATE TEMP TABLE blueprint_migration_guard (
+    violations INTEGER NOT NULL CHECK (violations = 0)
+);
+
+-- Fail closed instead of normalizing storage that could not have been
+-- produced by the authoritative v22 schema and lifecycle.
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM sandbox_profile_revisions_v22
+WHERE source_format != 'hermesfile-v1';
+
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM sandbox_profiles_v22
+WHERE source_format != 'hermesfile-v1';
+
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM controller_hermesfile_operations_v22
+WHERE command_kind NOT IN ('hermesfile.create', 'hermesfile.update');
+
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM controller_hermesfile_command_audit_v22
+WHERE action NOT IN ('hermesfile.create', 'hermesfile.update');
+
+-- The old table constrains response_json to a JSON object. Recheck that
+-- integrity explicitly so a damaged database cannot be silently normalized.
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM controller_hermesfile_idempotency_v22
+WHERE CASE
+    WHEN response_json IS NULL THEN 0
+    WHEN NOT json_valid(response_json) THEN 1
+    WHEN json_type(response_json) != 'object' THEN 1
+    ELSE 0
+END;
+
+-- A completed lifecycle response always has exactly one current-operation
+-- kind. Missing, duplicate, differently typed, or unknown values are
+-- ambiguous and must not be normalized.
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM controller_hermesfile_idempotency_v22 AS idempotency
+WHERE response_json IS NOT NULL
+  AND (
+      SELECT count(*)
+      FROM json_tree(idempotency.response_json)
+      WHERE fullkey = '$.data.kind'
+  ) != 1;
+
+INSERT INTO blueprint_migration_guard
+SELECT count(*)
+FROM controller_hermesfile_idempotency_v22
+WHERE response_json IS NOT NULL
+  AND json_type(response_json, '$.data.kind') IS NOT NULL
+  AND (
+      json_type(response_json, '$.data.kind') != 'text'
+      OR json_extract(response_json, '$.data.kind') NOT IN (
+          'hermesfile.create', 'hermesfile.update'
+      )
+  );
+
 INSERT INTO sandbox_profile_revisions (
     revision_id, sandbox_id, source_revision, source_format, api_version,
     source_text, source_sha256, canonical_json, canonical_sha256,
@@ -219,9 +282,14 @@ SELECT
         WHEN 'hermesfile.update' THEN 'blueprint.update'
     END,
     state, target_id, result_json,
-    CASE
-        WHEN error_code LIKE '%hermesfile%'
-            THEN replace(error_code, 'hermesfile', 'blueprint')
+    CASE error_code
+        WHEN 'hermesfile_source_invalid' THEN 'blueprint_source_invalid'
+        WHEN 'hermesfile_profile_conflict' THEN 'blueprint_profile_conflict'
+        WHEN 'hermesfile_identity_immutable' THEN 'blueprint_identity_immutable'
+        WHEN 'hermesfile_unchanged' THEN 'blueprint_unchanged'
+        WHEN 'hermesfile_revision_not_found' THEN 'blueprint_revision_not_found'
+        WHEN 'hermesfile_revision_projection_failed'
+            THEN 'blueprint_revision_projection_failed'
         ELSE error_code
     END,
     created_at, updated_at, finished_at
@@ -323,10 +391,6 @@ BEFORE DELETE ON controller_blueprint_idempotency
 BEGIN
     SELECT RAISE(ABORT, 'controller Blueprint idempotency is immutable');
 END;
-
-CREATE TEMP TABLE blueprint_migration_guard (
-    violations INTEGER NOT NULL CHECK (violations = 0)
-);
 
 INSERT INTO blueprint_migration_guard
 SELECT abs(
