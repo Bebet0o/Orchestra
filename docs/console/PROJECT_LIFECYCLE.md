@@ -16,7 +16,7 @@ Implemented browser intents:
 - enable, disable, rescan, and archive a project;
 - display accepted Controller operation identifiers.
 
-Deletion, remote mutation, default-branch mutation, Hermesfile editing, automatic
+Deletion, remote mutation, default-branch mutation, Blueprint editing, automatic
 push, and background polling are not implemented.
 
 ## Same-origin routes

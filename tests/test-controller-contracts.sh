@@ -48,17 +48,17 @@ api_surface = {
     for method in item
     if method in {"get", "post", "patch", "put", "delete"}
 }
-deferred_doc_surface = {
-    item for item in doc_surface if item[1].startswith("/hermesfiles")
+documented_blueprint_surface = {
+    item for item in doc_surface if item[1].startswith("/blueprints")
 }
 blueprint_api_surface = {
     item for item in api_surface if item[1].startswith("/blueprints")
 }
-require(deferred_doc_surface, "Deferred Hermesfile API documentation boundary missing")
+require(documented_blueprint_surface, "Documented Blueprint API surface missing")
 require(blueprint_api_surface, "Blueprint API authority missing")
 require(
-    doc_surface - deferred_doc_surface == api_surface - blueprint_api_surface,
-    "Non-Blueprint HTTP surface drift",
+    doc_surface == api_surface,
+    "Human-readable and machine-readable HTTP surfaces differ",
 )
 
 # Every asynchronous mutation is pollable.

@@ -57,9 +57,14 @@ if '"blueprint_versions": ["v1"]' not in core:
 if '"blueprint_builds": False' not in core:
     raise SystemExit("Controller must not claim Blueprint builds in milestone 2N")
 
-# General documentation migration is deferred to S4.
-contract = (root / "docs/hermesfile/SPECIFICATION_V1.md").read_text(encoding="utf-8")
+contract = (root / "docs/blueprint/SPECIFICATION_V1.md").read_text(encoding="utf-8")
+if (root / "docs/hermesfile/SPECIFICATION_V1.md").exists():
+    raise SystemExit("Current Blueprint v1 specification remains at the legacy path")
 for phrase in (
+    "Orchestra Blueprint v1 Specification",
+    "../../specs/blueprint-v1.schema.json",
+    "scripts/hermesops-blueprint.py",
+    "The conventional source name is",
     "not a project configuration",
     "does not contain secret values",
     "canonical SHA-256",

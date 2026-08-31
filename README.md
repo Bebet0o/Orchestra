@@ -5,11 +5,11 @@ Local-first orchestration platform for durable, multi-agent software projects.
 > [!IMPORTANT]
 > **Orchestra is the successor to HermesOps.** This repository was created from
 > the complete HermesOps Git history, and its initial snapshot is the final
-> HermesOps 0.2.0 architecture. The technical rebrand is not complete: many
-> scripts, services, commands, paths, environment variables, schemas, and types
-> still use `HermesOps`, `hermesops-*`, or `Hermesfile`. Dedicated milestones
-> will migrate those identifiers progressively. Until then, the legacy names in
-> examples are the real interfaces shipped by the code.
+> HermesOps 0.2.0 architecture. Some infrastructure identifiers still use
+> `HermesOps` or `hermesops-*` and will migrate in dedicated milestones. The
+> declarative sandbox authority has completed its product migration to
+> **Orchestra Blueprint**; historical documents and database migrations retain
+> the names that shipped in their original releases.
 
 Orchestra is under active development. It already provides a durable control
 plane, isolated execution, review and recovery workflows, a dedicated Console,
@@ -25,7 +25,7 @@ default execution backend.
 - [Release direction](#release-direction)
 - [Architecture](#architecture)
 - [Capabilities](#capabilities)
-- [Hermesfile and Orchestra Blueprint](#hermesfile-and-orchestra-blueprint)
+- [Orchestra Blueprint](#orchestra-blueprint)
 - [Console and CLI](#console-and-cli)
 - [Installation](#installation)
 - [Quick start](#quick-start)
@@ -108,20 +108,19 @@ backend reached through its adapter.
   review gates, and controlled local integration;
 - a dedicated Docker sandbox engine and ephemeral worker/reviewer containers;
 - an authenticated, loopback-only Console for operational summaries, project
-  lifecycle, Hermesfile lifecycle, and bounded objective lifecycle;
+  lifecycle, Blueprint lifecycle, and bounded objective lifecycle;
 - legacy operator CLIs and user-level systemd services;
 - `AgentRuntime`, `HermesRuntime`, `NativeRuntime`, and deterministic fake
   implementations used at the test boundary;
 - `ModelProvider`, a fake provider, and the minimal
   `OpenAICompatibleProvider` adapter;
-- strict Hermesfile v1 parsing, validation, canonicalization, fingerprinting,
+- strict Blueprint v1 parsing, validation, canonicalization, fingerprinting,
   persistence, source revision history, and Console editing.
 
 ### Being built next
 
 - the technical rename from HermesOps to Orchestra, without breaking current
   installations or history;
-- the conceptual transition from Hermesfile to **Orchestra Blueprint**;
 - selection and configuration of native runtimes in the control plane;
 - a native worker pool, parallel specialized workers, shared context, routing,
   stronger independent judging, dynamic decomposition, retry/replan, and
@@ -283,21 +282,10 @@ The matching checksum asset is
 `hermesops-worker-sandbox-0.2.tar.gz.sha256`. These names remain unchanged
 during the bootstrap.
 
-## Hermesfile and Orchestra Blueprint
+## Orchestra Blueprint
 
-**Orchestra Blueprint** is the future product name for Orchestra's declarative
-project/sandbox specification concept. The current technical name is
-**Hermesfile**.
-
-Hermesfile is the current technical name of Orchestra's declarative
-project/sandbox specification format. During the Orchestra transition, this
-concept will become Orchestra Blueprint. The code has not been renamed, so
-current files, schema values, routes, and commands must continue to say
-`Hermesfile` and `hermesops-*`.
-
-## Hermesfile v1 — validation and canonicalization available
-
-A Hermesfile is currently one strict declarative YAML source for a
+**Orchestra Blueprint** is the current product name for Orchestra's declarative
+sandbox specification. A Blueprint is one strict declarative YAML source for a
 `SandboxProfile`; it is not a project definition, objective, task DAG, role
 prompt, or orchestration policy. Its executable v1 contract uses:
 
@@ -306,30 +294,34 @@ apiVersion: hermesops.dev/v1
 kind: SandboxProfile
 ```
 
+The persisted source format is `blueprint-v1`; the Controller API authority is
+`/api/v1/blueprints`, and the Console product route is `/blueprints`, labeled
+**Blueprints** in navigation.
+
 The source declares a digest-pinned base image, declarative package inputs,
 workspace identity and source mode, resource limits, network policy, mandatory
 security invariants, logical mounts, and validation command vectors. It cannot
 contain arbitrary host mounts, shell pass-through, secret values, privileged
 mode, added capabilities, Docker socket access, or device access.
 
-The current tree can strictly parse, validate, canonicalize and
-fingerprint Hermesfile v1 sources:
+The current tree can strictly parse, validate, canonicalize and fingerprint
+Blueprint v1 sources:
 
 ```bash
-scripts/hermesops-hermesfile.py validate config/examples/Hermesfile
-scripts/hermesops-hermesfile.py fingerprint config/examples/Hermesfile --json
-scripts/hermesops-hermesfile.py canonicalize config/examples/Hermesfile
+scripts/hermesops-blueprint.py validate config/examples/Blueprint
+scripts/hermesops-blueprint.py fingerprint config/examples/Blueprint --json
+scripts/hermesops-blueprint.py canonicalize config/examples/Blueprint
 ```
 
 Operators can import a valid source into durable sandbox-profile storage:
 
 ```bash
-scripts/hermesops-sandbox-profile.py import config/examples/Hermesfile
+scripts/hermesops-sandbox-profile.py import config/examples/Blueprint
 scripts/hermesops-sandbox-profile.py list
 ```
 
 The Console can load the official template, validate without persistence,
-create and update a Hermesfile with optimistic concurrency, retain immutable
+create and update a Blueprint with optimistic concurrency, retain immutable
 source revisions, preview canonical/runtime projections, inspect history, and
 compare canonical paths. A project may reference a persisted sandbox profile;
 project identity and objective scheduling remain separate Controller concerns.
@@ -342,9 +334,9 @@ Image construction, package resolution, validation-container execution,
 activation, rollback, secret binding, revision deletion, and profile deletion
 are not implemented by the current lifecycle.
 
-See the executable [Hermesfile v1 specification](docs/hermesfile/SPECIFICATION_V1.md).
-The [v0 specification](docs/hermesfile/SPECIFICATION_V0.md) is an experimental
-historical design contract, not the current executable format.
+See the executable [Blueprint v1 specification](docs/blueprint/SPECIFICATION_V1.md).
+The [Hermesfile v0 specification](docs/hermesfile/SPECIFICATION_V0.md) is an
+experimental historical design contract, not the current executable format.
 
 ## Console and CLI
 
@@ -353,12 +345,11 @@ is an unprivileged, authenticated, loopback-only browser client with these
 current product routes:
 
 Historical documentation and service descriptions may still call it the
-**HermesOps Console**; the product-facing name is now Orchestra Console. Its
-current navigation likewise retains the technical label **Hermesfiles**.
+**HermesOps Console**; the product-facing name is now Orchestra Console.
 
 - `/dashboard`: bounded operational summaries and an attention queue;
 - `/projects`: create/import and manage the bounded project lifecycle;
-- `/hermesfiles`: validate, create, edit, version, inspect, and compare sources;
+- `/blueprints`: validate, create, edit, version, inspect, and compare sources;
 - `/objectives`: create, inspect, pause, resume, and cancel objectives;
 - navigation shells for executions, reviews, events, and administration, whose
   richer workflows remain limited or deferred.
@@ -366,7 +357,7 @@ current navigation likewise retains the technical label **Hermesfiles**.
 The Console does not access SQLite, Docker, workspaces, Hermes Agent, or host
 paths directly. It uses an allowlisted same-origin gateway to the loopback
 Controller. It has no browser storage or generic API proxy, and it does not yet
-offer objective task detail, live polling, human review actions, Hermesfile
+offer objective task detail, live polling, human review actions, Blueprint
 build/activation, or arbitrary Controller commands.
 
 The legacy CLI remains the broader administration and recovery interface:
@@ -498,7 +489,7 @@ After installation:
    initialize, or clone a managed project. Enable the project when its bounded
    configuration is valid.
 
-3. If the project needs a custom sandbox specification, use `/hermesfiles` to
+3. If the project needs a custom sandbox specification, use `/blueprints` to
    load the current template, validate it, save it, and attach the persisted
    sandbox profile to the project. This manages source and revisions only; it
    does not build or activate an image.
@@ -620,15 +611,15 @@ See [Security](docs/SECURITY.md), [Transactions](docs/TRANSACTIONS.md), and
 
 ## Current limitations
 
-- The technical rebrand is incomplete; interfaces still expose HermesOps and
-  Hermesfile names.
+- The infrastructure rebrand is incomplete; some interfaces still expose
+  HermesOps technical names.
 - `HermesRuntime` remains the default planner/worker/reviewer backend.
 - `NativeRuntime` is the synchronous 2Z primitive described above, not a native
   worker fleet.
 - The Console exposes bounded workflows, not every Controller read or command;
   task detail, rich execution views, human review actions, live WebSocket
   reconciliation, and offline queues are not available there.
-- Hermesfile source lifecycle exists, but image build, validation-container
+- Blueprint source lifecycle exists, but image build, validation-container
   execution, activation, rollback, secret binding, and revision deletion do not.
 - The pinned default worker image still comes from a historical HermesOps
   release asset.
@@ -691,7 +682,7 @@ Core current contracts:
 - [Console foundation](docs/console/FOUNDATION.md)
 - [Console project lifecycle](docs/console/PROJECT_LIFECYCLE.md)
 - [Console objective lifecycle](docs/console/OBJECTIVE_LIFECYCLE.md)
-- [Hermesfile v1 specification](docs/hermesfile/SPECIFICATION_V1.md)
+- [Blueprint v1 specification](docs/blueprint/SPECIFICATION_V1.md)
 - [Security](docs/SECURITY.md)
 - [Recovery](docs/RECOVERY.md)
 

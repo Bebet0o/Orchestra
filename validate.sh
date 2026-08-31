@@ -188,7 +188,7 @@ static_validation() {
   console/dist/index.html console/dist/assets/app.js \
   console/dist/assets/controller-client.js \
   console/dist/assets/styles.css console/dist/asset-manifest.json \
-  docs/hermesfile/SPECIFICATION_V1.md \
+  docs/blueprint/SPECIFICATION_V1.md \
   specs/blueprint-v1.schema.json \
   config/examples/Blueprint \
         compose/agent.yaml compose/images.lock.env \

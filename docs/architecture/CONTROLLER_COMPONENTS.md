@@ -349,10 +349,10 @@ Recovery must be deterministic from persisted evidence where possible.
 
 Responsibilities:
 
-- store Hermesfile source and parsed canonical form;
+- store Blueprint source and parsed canonical form;
 - validate schema and security policy;
 - create build records;
-- compile Hermesfile into a deterministic build plan;
+- compile Blueprint into a deterministic build plan;
 - build in the dedicated sandbox engine;
 - run declared validation commands;
 - record image ID and immutable digest;
@@ -488,7 +488,7 @@ Recommended order:
 6. adapt orchestrator and supervisor to internal commands;
 7. implement Agent adapter;
 8. implement sandbox profile storage and validation;
-9. implement Hermesfile build operations;
+9. implement Blueprint build operations;
 10. retire direct database writes from CLI scripts.
 
 ## Invariants

@@ -19,10 +19,10 @@ The Console service exposes a deliberately narrow same-origin gateway for:
 Milestone 2R additionally exposes six exact query-free GET collections for the
 operational dashboard: projects, objectives, reviews, recoveries, plans, and
 reviewer assignments. Milestone 2S adds only project detail, create, update, and
-`enable|disable|rescan|archive` command routes. Milestone 2T adds the exact
-Hermesfile collection, template, validation, detail, revision, comparison,
+`enable|disable|rescan|archive` command routes. The current gateway adds the
+exact Blueprint collection, template, validation, detail, revision, comparison,
 create, and update routes. The only query-bearing Console route is the bounded
-Hermesfile comparison with positive integer `from` and `to` values. All other
+Blueprint comparison with positive integer `from` and `to` values. All other
 Controller paths remain unavailable. The gateway is not a general reverse
 proxy.
 
@@ -74,7 +74,7 @@ queue mutations, retry passwords, or preserve destructive intent.
 
 Milestone 2Q does not add:
 
-- Hermesfile build, activation, secret binding, or revision deletion;
+- Blueprint build, activation, secret binding, or revision deletion;
 - project deletion or repository/default-branch mutation;
 - review commands;
 - objective start, replan, archive or delete commands;
