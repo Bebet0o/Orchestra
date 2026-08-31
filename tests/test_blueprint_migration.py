@@ -6,11 +6,14 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
-from types import SimpleNamespace
 
 from controller_api.blueprint import validate_source
 from controller_api.blueprint_lifecycle import BlueprintLifecycleStore
+from controller_api.core import ReadOnlyDatabase, Settings
+from controller_api.objective_commands import ObjectiveCommandStore
+from controller_api.objective_reads import ObjectiveReadStore
 from controller_api.sandbox_profiles import SandboxProfileStore
 
 
@@ -18,10 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "migration-session-" + "a" * 48
 SANDBOX_ID = "sandbox-" + "b" * 32
 REVISION_ID = "sandbox-revision-" + "c" * 32
+SECOND_REVISION_ID = "sandbox-revision-" + "7" * 32
 OPERATION_ID = "operation-" + "d" * 32
 SECOND_OPERATION_ID = "operation-" + "f" * 32
 AUDIT_ID = "audit-" + "e" * 32
 CREATED_AT = "2026-08-30T12:34:56.000Z"
+UPDATED_AT = "2026-08-30T12:35:56.000Z"
 HISTORICAL_ROUTE = "/api/v1/hermesfiles"
 IDEMPOTENCY_KEY = "historical-create-0001"
 
@@ -31,7 +36,12 @@ class BlueprintMigrationTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.database = self.root / "controller.db"
-        self.settings = SimpleNamespace(root=self.root, database=self.database)
+        self.settings = Settings.from_root(
+            self.root,
+            host="127.0.0.1",
+            port=0,
+            database=self.database,
+        )
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -73,13 +83,19 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def seed_real_v22(self) -> dict[str, object]:
         self.apply_through(22)
-        source = (ROOT / "config/examples/Blueprint").read_text(encoding="utf-8")
-        report = validate_source(source)
-        self.assertTrue(report.valid)
-        self.assertIsNotNone(report.result)
-        result = report.result
-        assert result is not None
-        request_hash = self.request_hash(source)
+        first_source = (ROOT / "config/examples/Blueprint").read_text(encoding="utf-8")
+        second_source = first_source.replace("    cpu: 4\n", "    cpu: 2\n")
+        self.assertNotEqual(first_source, second_source)
+        first_report = validate_source(first_source)
+        second_report = validate_source(second_source)
+        self.assertTrue(first_report.valid)
+        self.assertTrue(second_report.valid)
+        self.assertIsNotNone(first_report.result)
+        self.assertIsNotNone(second_report.result)
+        first_result = first_report.result
+        second_result = second_report.result
+        assert first_result is not None and second_result is not None
+        request_hash = self.request_hash(first_source)
         key_hash = self.key_hash()
         response = {
             "data": {
@@ -108,12 +124,12 @@ class BlueprintMigrationTest(unittest.TestCase):
                 (
                     REVISION_ID,
                     SANDBOX_ID,
-                    result.api_version,
-                    source,
-                    result.source_sha256,
-                    result.canonical_bytes.decode("utf-8"),
-                    result.canonical_sha256,
-                    len(result.canonical_bytes),
+                    first_result.api_version,
+                    first_source,
+                    first_result.source_sha256,
+                    first_result.canonical_bytes.decode("utf-8"),
+                    first_result.canonical_sha256,
+                    len(first_result.canonical_bytes),
                     CREATED_AT,
                 ),
             )
@@ -129,6 +145,35 @@ class BlueprintMigrationTest(unittest.TestCase):
                     1, NULL, 1, ?, ?)
                 """,
                 (SANDBOX_ID, REVISION_ID, CREATED_AT, CREATED_AT),
+            )
+            connection.execute(
+                """
+                INSERT INTO sandbox_profile_revisions (
+                    revision_id, sandbox_id, source_revision, source_format,
+                    api_version, source_text, source_sha256, canonical_json,
+                    canonical_sha256, canonical_size, diagnostics_json, created_at
+                ) VALUES (?, ?, 2, 'hermesfile-v1', ?, ?, ?, ?, ?, ?, '[]', ?)
+                """,
+                (
+                    SECOND_REVISION_ID,
+                    SANDBOX_ID,
+                    second_result.api_version,
+                    second_source,
+                    second_result.source_sha256,
+                    second_result.canonical_bytes.decode("utf-8"),
+                    second_result.canonical_sha256,
+                    len(second_result.canonical_bytes),
+                    UPDATED_AT,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE sandbox_profiles
+                SET current_revision_id=?, current_source_revision=2,
+                    resource_revision=2, updated_at=?
+                WHERE sandbox_id=?
+                """,
+                (SECOND_REVISION_ID, UPDATED_AT, SANDBOX_ID),
             )
             connection.execute(
                 """
@@ -233,10 +278,14 @@ class BlueprintMigrationTest(unittest.TestCase):
             )
             connection.commit()
         return {
-            "source": source,
-            "source_sha256": result.source_sha256,
-            "canonical": result.canonical_bytes.decode("utf-8"),
-            "canonical_sha256": result.canonical_sha256,
+            "first_source": first_source,
+            "first_source_sha256": first_result.source_sha256,
+            "first_canonical": first_result.canonical_bytes.decode("utf-8"),
+            "first_canonical_sha256": first_result.canonical_sha256,
+            "second_source": second_source,
+            "second_source_sha256": second_result.source_sha256,
+            "second_canonical": second_result.canonical_bytes.decode("utf-8"),
+            "second_canonical_sha256": second_result.canonical_sha256,
             "request_hash": request_hash,
             "key_hash": key_hash,
         }
@@ -282,13 +331,24 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_real_v22_upgrade_preserves_integrity_and_reopens(self) -> None:
         expected = self.seed_real_v22()
+        pre_migration_runtime = BlueprintLifecycleStore._runtime_config_from_persisted(
+            {
+                "source_format": "hermesfile-v1",
+                "api_version": "hermesops.dev/v1",
+                "canonical_sha256": expected["second_canonical_sha256"],
+            },
+            json.loads(str(expected["second_canonical"])),
+        )
         self.apply_v23()
         with sqlite3.connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
-            revision = connection.execute(
-                "SELECT * FROM sandbox_profile_revisions WHERE revision_id=?",
-                (REVISION_ID,),
-            ).fetchone()
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
+            revisions = connection.execute(
+                "SELECT * FROM sandbox_profile_revisions WHERE sandbox_id=? "
+                "ORDER BY source_revision",
+                (SANDBOX_ID,),
+            ).fetchall()
+            revision, second_revision = revisions
             profile = connection.execute(
                 "SELECT * FROM sandbox_profiles WHERE sandbox_id=?", (SANDBOX_ID,)
             ).fetchone()
@@ -312,18 +372,38 @@ class BlueprintMigrationTest(unittest.TestCase):
             ).fetchone()
             assert second_operation is not None
             self.assertEqual(revision["source_format"], "blueprint-v1")
+            self.assertEqual(second_revision["source_format"], "blueprint-v1")
             self.assertEqual(profile["source_format"], "blueprint-v1")
-            self.assertEqual(revision["source_text"], expected["source"])
-            self.assertEqual(revision["source_sha256"], expected["source_sha256"])
-            self.assertEqual(revision["canonical_json"], expected["canonical"])
-            self.assertEqual(revision["canonical_sha256"], expected["canonical_sha256"])
+            self.assertEqual(revision["source_text"], expected["first_source"])
+            self.assertEqual(revision["source_sha256"], expected["first_source_sha256"])
+            self.assertEqual(revision["canonical_json"], expected["first_canonical"])
+            self.assertEqual(
+                revision["canonical_sha256"], expected["first_canonical_sha256"]
+            )
             self.assertEqual(revision["revision_id"], REVISION_ID)
             self.assertEqual(revision["sandbox_id"], SANDBOX_ID)
             self.assertEqual(revision["source_revision"], 1)
             self.assertEqual(revision["created_at"], CREATED_AT)
-            self.assertEqual(profile["current_revision_id"], REVISION_ID)
+            self.assertEqual(second_revision["revision_id"], SECOND_REVISION_ID)
+            self.assertEqual(second_revision["sandbox_id"], SANDBOX_ID)
+            self.assertEqual(second_revision["source_revision"], 2)
+            self.assertEqual(second_revision["source_text"], expected["second_source"])
+            self.assertEqual(
+                second_revision["source_sha256"], expected["second_source_sha256"]
+            )
+            self.assertEqual(
+                second_revision["canonical_json"], expected["second_canonical"]
+            )
+            self.assertEqual(
+                second_revision["canonical_sha256"],
+                expected["second_canonical_sha256"],
+            )
+            self.assertEqual(second_revision["created_at"], UPDATED_AT)
+            self.assertEqual(profile["current_revision_id"], SECOND_REVISION_ID)
+            self.assertEqual(profile["current_source_revision"], 2)
+            self.assertEqual(profile["resource_revision"], 2)
             self.assertEqual(profile["created_at"], CREATED_AT)
-            self.assertEqual(profile["updated_at"], CREATED_AT)
+            self.assertEqual(profile["updated_at"], UPDATED_AT)
             project_link = connection.execute(
                 "SELECT sandbox_profile_id FROM projects WHERE project_id='alpha'"
             ).fetchone()[0]
@@ -390,10 +470,80 @@ class BlueprintMigrationTest(unittest.TestCase):
         self.assertEqual(store.get_operation(OPERATION_ID)["kind"], "blueprint.create")
         current = store.current(SANDBOX_ID)
         self.assertEqual(current["revision"]["source_format"], "blueprint-v1")
+        expected_runtime = dict(pre_migration_runtime)
+        expected_runtime["source_format"] = "blueprint-v1"
+        self.assertEqual(current["revision"]["runtime_config"], expected_runtime)
+        with closing(store.connect()) as connection:
+            replay, _, _, _ = store._replay_or_reserve(
+                connection,
+                session_token=TOKEN,
+                idempotency_key=IDEMPOTENCY_KEY,
+                method="POST",
+                route=HISTORICAL_ROUTE,
+                body={"source": expected["first_source"]},
+            )
+        assert replay is not None
+        self.assertEqual(replay["data"]["id"], OPERATION_ID)
+        self.assertEqual(replay["data"]["kind"], "blueprint.create")
         reopened = BlueprintLifecycleStore(
             self.settings, SandboxProfileStore(self.settings)
         )
         self.assertEqual(reopened.get_operation(OPERATION_ID)["id"], OPERATION_ID)
+
+    def test_migrated_project_supports_current_objective_execution_linkage(self) -> None:
+        self.seed_real_v22()
+        self.apply_v23()
+
+        database = ReadOnlyDatabase(self.settings)
+        project = database.get_project("alpha")
+        self.assertEqual(project["sandbox_profile_id"], "python-project")
+        with closing(database.connect()) as connection:
+            project_columns = {
+                str(row[1]) for row in connection.execute("PRAGMA table_info(projects)")
+            }
+        self.assertIn("sandbox_profile_id", project_columns)
+        self.assertNotIn("blueprint_id", project_columns)
+
+        status, payload = ObjectiveCommandStore(self.settings).create_objective(
+            session_token="objective-session-" + "9" * 48,
+            idempotency_key="migrated-objective-create-0001",
+            route="/api/v1/objectives",
+            body={
+                "project_ids": ["alpha"],
+                "title": "Exercise migrated Blueprint linkage",
+                "description": "Use the migrated project's persisted profile.",
+                "priority": 75,
+                "not_before": "2026-08-30T13:00:00.000Z",
+                "max_parallel_tasks": 1,
+                "planning_max_attempts": 3,
+                "constraints": [],
+            },
+            meta_factory=lambda revision: {"resource_revision": revision},
+        )
+        self.assertEqual(status, 202)
+        objective_id = payload["data"]["target"]["id"]
+        attempt_id = "objective-attempt-" + "6" * 32
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute(
+                """
+                INSERT INTO objective_attempts (
+                    objective_attempt_id, objective_id, attempt_number, status,
+                    result_json, started_at, heartbeat_at
+                ) VALUES (?, ?, 1, 'RUNNING', '{}', ?, ?)
+                """,
+                (attempt_id, objective_id, UPDATED_AT, UPDATED_AT),
+            )
+
+        objective = ObjectiveReadStore(self.settings).get_objective(objective_id)
+        self.assertEqual(objective["project_ids"], ["alpha"])
+        self.assertEqual(objective["operation_ids"], [attempt_id])
+        self.assertEqual(objective["latest_operation_id"], attempt_id)
+        current = BlueprintLifecycleStore(
+            self.settings, SandboxProfileStore(self.settings)
+        ).current(SANDBOX_ID)
+        self.assertEqual(current["profile"]["profile_name"], "python-project")
+        self.assertEqual(current["revision"]["source_revision"], 2)
 
     def test_migration_23_rerun_fails_without_changing_database(self) -> None:
         expected = self.seed_real_v22()
@@ -415,7 +565,7 @@ class BlueprintMigrationTest(unittest.TestCase):
                 connection.execute(
                     "SELECT source_sha256 FROM sandbox_profile_revisions"
                 ).fetchone()[0],
-                expected["source_sha256"],
+                expected["first_source_sha256"],
             )
 
     def test_unexpected_idempotency_kind_fails_atomically(self) -> None:
