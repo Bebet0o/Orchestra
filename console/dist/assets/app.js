@@ -16,10 +16,10 @@ const routes = Object.freeze({
     title: "Projets",
     message: "Connectez-vous pour créer, importer et administrer les projets via le Controller.",
   },
-  "/hermesfiles": {
-    key: "hermesfiles",
-    title: "Hermesfiles",
-    message: "Connectez-vous pour créer, valider, modifier et versionner les Hermesfiles.",
+  "/blueprints": {
+    key: "blueprints",
+    title: "Blueprints",
+    message: "Connectez-vous pour créer, valider, modifier et versionner les Blueprints.",
   },
   "/objectives": {
     key: "objectives",
@@ -82,27 +82,27 @@ const projectUpdateForm = document.getElementById("project-update-form");
 const projectUpdateSubmit = document.getElementById("project-update-submit");
 const projectCommandReason = document.getElementById("project-command-reason");
 const projectCommandButtons = document.getElementById("project-command-buttons");
-const hermesfilePanel = document.getElementById("hermesfile-panel");
-const hermesfileRefresh = document.getElementById("hermesfile-refresh");
-const hermesfileStatus = document.getElementById("hermesfile-status");
-const hermesfileCount = document.getElementById("hermesfile-count");
-const hermesfileList = document.getElementById("hermesfile-list");
-const hermesfileNew = document.getElementById("hermesfile-new");
-const hermesfileEditorTitle = document.getElementById("hermesfile-editor-title");
-const hermesfileEditorMode = document.getElementById("hermesfile-editor-mode");
-const hermesfileMeta = document.getElementById("hermesfile-meta");
-const hermesfileSource = document.getElementById("hermesfile-source");
-const hermesfileValidate = document.getElementById("hermesfile-validate");
-const hermesfileSave = document.getElementById("hermesfile-save");
-const hermesfileValidity = document.getElementById("hermesfile-validity");
-const hermesfileDiagnostics = document.getElementById("hermesfile-diagnostics");
-const hermesfilePreview = document.getElementById("hermesfile-preview");
-const hermesfileRevisionCount = document.getElementById("hermesfile-revision-count");
-const hermesfileRevisions = document.getElementById("hermesfile-revisions");
-const hermesfileDiffFrom = document.getElementById("hermesfile-diff-from");
-const hermesfileDiffTo = document.getElementById("hermesfile-diff-to");
-const hermesfileCompare = document.getElementById("hermesfile-compare");
-const hermesfileDiff = document.getElementById("hermesfile-diff");
+const blueprintPanel = document.getElementById("blueprint-panel");
+const blueprintRefresh = document.getElementById("blueprint-refresh");
+const blueprintStatus = document.getElementById("blueprint-status");
+const blueprintCount = document.getElementById("blueprint-count");
+const blueprintList = document.getElementById("blueprint-list");
+const blueprintNew = document.getElementById("blueprint-new");
+const blueprintEditorTitle = document.getElementById("blueprint-editor-title");
+const blueprintEditorMode = document.getElementById("blueprint-editor-mode");
+const blueprintMeta = document.getElementById("blueprint-meta");
+const blueprintSource = document.getElementById("blueprint-source");
+const blueprintValidate = document.getElementById("blueprint-validate");
+const blueprintSave = document.getElementById("blueprint-save");
+const blueprintValidity = document.getElementById("blueprint-validity");
+const blueprintDiagnostics = document.getElementById("blueprint-diagnostics");
+const blueprintPreview = document.getElementById("blueprint-preview");
+const blueprintRevisionCount = document.getElementById("blueprint-revision-count");
+const blueprintRevisions = document.getElementById("blueprint-revisions");
+const blueprintDiffFrom = document.getElementById("blueprint-diff-from");
+const blueprintDiffTo = document.getElementById("blueprint-diff-to");
+const blueprintCompare = document.getElementById("blueprint-compare");
+const blueprintDiff = document.getElementById("blueprint-diff");
 const objectivePanel = document.getElementById("objective-panel");
 const objectiveRefresh = document.getElementById("objective-refresh");
 const objectiveStatus = document.getElementById("objective-status");
@@ -148,13 +148,13 @@ let projectsLoaded = false;
 let selectedProjectId = "";
 let selectedProjectEtag = "";
 let selectedProject = null;
-let hermesfileLoading = false;
-let hermesfileGeneration = 0;
-let hermesfilesLoaded = false;
-let selectedHermesfileId = "";
-let selectedHermesfileEtag = "";
-let selectedHermesfileRevision = 0;
-let hermesfileValidated = false;
+let blueprintLoading = false;
+let blueprintGeneration = 0;
+let blueprintsLoaded = false;
+let selectedBlueprintId = "";
+let selectedBlueprintEtag = "";
+let selectedBlueprintRevision = 0;
+let blueprintValidated = false;
 let objectiveLoading = false;
 let objectiveGeneration = 0;
 let objectivesLoaded = false;
@@ -196,13 +196,13 @@ function displayFunctionalPanel() {
   const key = currentRoute().key;
   const dashboardRoute = key === "dashboard";
   const projectsRoute = key === "projects";
-  const hermesfilesRoute = key === "hermesfiles";
+  const blueprintsRoute = key === "blueprints";
   const objectivesRoute = key === "objectives";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
-  hermesfilePanel.hidden = !hermesfilesRoute || !authenticated;
+  blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || hermesfilesRoute || objectivesRoute);
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -227,8 +227,8 @@ function render(pathname, focusMain = false) {
   if (route.key === "projects" && authenticated && !projectsLoaded) {
     void refreshProjects();
   }
-  if (route.key === "hermesfiles" && authenticated && !hermesfilesLoaded) {
-    void refreshHermesfiles();
+  if (route.key === "blueprints" && authenticated && !blueprintsLoaded) {
+    void refreshBlueprints();
   }
   if (route.key === "objectives" && authenticated && !objectivesLoaded) {
     void refreshObjectives();
@@ -252,7 +252,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   dashboardLoaded = false;
   dashboardRefresh.disabled = false;
   clearProjectState();
-  clearHermesfileState();
+  clearBlueprintState();
   clearObjectiveState();
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
@@ -286,8 +286,8 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "projects") {
     void refreshProjects();
   }
-  if (currentRoute().key === "hermesfiles") {
-    void refreshHermesfiles();
+  if (currentRoute().key === "blueprints") {
+    void refreshBlueprints();
   }
   if (currentRoute().key === "objectives") {
     void refreshObjectives();
@@ -301,7 +301,7 @@ function showUnavailable(error) {
   dashboardLoaded = false;
   dashboardRefresh.disabled = false;
   clearProjectState();
-  clearHermesfileState();
+  clearBlueprintState();
   clearObjectiveState();
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
@@ -741,51 +741,51 @@ async function submitProjectCreate() {
   }
 }
 
-function clearHermesfileState() {
-  hermesfileGeneration += 1;
-  hermesfileLoading = false;
-  hermesfilesLoaded = false;
-  selectedHermesfileId = "";
-  selectedHermesfileEtag = "";
-  selectedHermesfileRevision = 0;
-  hermesfileValidated = false;
-  hermesfileRefresh.disabled = false;
-  hermesfileValidate.disabled = false;
-  hermesfileSave.disabled = false;
-  hermesfileCount.textContent = "0";
-  hermesfileRevisionCount.textContent = "0";
-  hermesfileList.replaceChildren();
-  hermesfileRevisions.replaceChildren();
-  hermesfileDiagnostics.replaceChildren();
-  hermesfileDiffFrom.replaceChildren();
-  hermesfileDiffTo.replaceChildren();
-  hermesfileSource.value = "";
-  hermesfilePreview.textContent = "Aucune prévisualisation.";
-  hermesfileDiff.textContent = "Aucune comparaison.";
-  hermesfileValidity.textContent = "non validé";
-  hermesfileValidity.dataset.state = "unknown";
-  hermesfileEditorMode.textContent = "nouveau";
-  hermesfileEditorMode.dataset.state = "draft";
-  hermesfileEditorTitle.textContent = "Éditeur Hermesfile";
-  hermesfileMeta.textContent = "Chargez le modèle ou sélectionnez un profil.";
-  hermesfileSave.textContent = "Créer";
+function clearBlueprintState() {
+  blueprintGeneration += 1;
+  blueprintLoading = false;
+  blueprintsLoaded = false;
+  selectedBlueprintId = "";
+  selectedBlueprintEtag = "";
+  selectedBlueprintRevision = 0;
+  blueprintValidated = false;
+  blueprintRefresh.disabled = false;
+  blueprintValidate.disabled = false;
+  blueprintSave.disabled = false;
+  blueprintCount.textContent = "0";
+  blueprintRevisionCount.textContent = "0";
+  blueprintList.replaceChildren();
+  blueprintRevisions.replaceChildren();
+  blueprintDiagnostics.replaceChildren();
+  blueprintDiffFrom.replaceChildren();
+  blueprintDiffTo.replaceChildren();
+  blueprintSource.value = "";
+  blueprintPreview.textContent = "Aucune prévisualisation.";
+  blueprintDiff.textContent = "Aucune comparaison.";
+  blueprintValidity.textContent = "non validé";
+  blueprintValidity.dataset.state = "unknown";
+  blueprintEditorMode.textContent = "nouveau";
+  blueprintEditorMode.dataset.state = "draft";
+  blueprintEditorTitle.textContent = "Éditeur Blueprint";
+  blueprintMeta.textContent = "Chargez le modèle ou sélectionnez un profil.";
+  blueprintSave.textContent = "Créer";
 }
 
-function setHermesfileBusy(busy) {
-  hermesfileLoading = busy;
-  hermesfileRefresh.disabled = busy;
-  hermesfileNew.disabled = busy;
-  hermesfileValidate.disabled = busy;
-  hermesfileSave.disabled = busy;
-  hermesfileCompare.disabled = busy;
-  hermesfileSource.disabled = busy;
+function setBlueprintBusy(busy) {
+  blueprintLoading = busy;
+  blueprintRefresh.disabled = busy;
+  blueprintNew.disabled = busy;
+  blueprintValidate.disabled = busy;
+  blueprintSave.disabled = busy;
+  blueprintCompare.disabled = busy;
+  blueprintSource.disabled = busy;
 }
 
-function renderHermesfileList(collection) {
-  hermesfileList.replaceChildren();
-  hermesfileCount.textContent = String(collection.items.length);
+function renderBlueprintList(collection) {
+  blueprintList.replaceChildren();
+  blueprintCount.textContent = String(collection.items.length);
   if (collection.items.length === 0) {
-    appendEmpty(hermesfileList, "Aucun Hermesfile enregistré.");
+    appendEmpty(blueprintList, "Aucun Blueprint enregistré.");
     return;
   }
   for (const profile of collection.items) {
@@ -796,9 +796,9 @@ function renderHermesfileList(collection) {
     const state = document.createElement("span");
     const identifier = safeId(profile, "");
     button.type = "button";
-    button.dataset.hermesfileId = identifier;
+    button.dataset.blueprintId = identifier;
     button.className = "project-list-button";
-    if (identifier === selectedHermesfileId) {
+    if (identifier === selectedBlueprintId) {
       button.setAttribute("aria-current", "true");
     }
     heading.textContent = safeText(profile.name, safeText(profile.profile_name, identifier, 63), 120);
@@ -808,22 +808,22 @@ function renderHermesfileList(collection) {
     state.textContent = safeState(profile);
     button.append(heading, detail, state);
     item.append(button);
-    hermesfileList.append(item);
+    blueprintList.append(item);
   }
 }
 
-function renderHermesfileDiagnostics(preview) {
-  hermesfileDiagnostics.replaceChildren();
+function renderBlueprintDiagnostics(preview) {
+  blueprintDiagnostics.replaceChildren();
   const diagnostics = Array.isArray(preview && preview.diagnostics) ? preview.diagnostics.slice(0, 100) : [];
   const valid = preview && preview.valid === true;
-  hermesfileValidated = valid;
-  hermesfileValidity.textContent = valid ? "valide" : "invalide";
-  hermesfileValidity.dataset.state = valid ? "ready" : "failed";
+  blueprintValidated = valid;
+  blueprintValidity.textContent = valid ? "valide" : "invalide";
+  blueprintValidity.dataset.state = valid ? "ready" : "failed";
   if (diagnostics.length === 0) {
-    appendEmpty(hermesfileDiagnostics, valid ? "Aucun diagnostic bloquant." : "Aucun diagnostic disponible.");
+    appendEmpty(blueprintDiagnostics, valid ? "Aucun diagnostic bloquant." : "Aucun diagnostic disponible.");
   } else {
     for (const diagnostic of diagnostics) {
-      appendOperationalItem(hermesfileDiagnostics, {
+      appendOperationalItem(blueprintDiagnostics, {
         label: safeText(diagnostic.severity, "diagnostic", 16),
         title: safeText(diagnostic.code, "validation", 128),
         state: safeText(diagnostic.severity, "unknown", 16).toLowerCase(),
@@ -837,17 +837,17 @@ function renderHermesfileDiagnostics(preview) {
     source_sha256: preview && typeof preview.source_sha256 === "string" ? preview.source_sha256 : null,
     canonical_sha256: preview && typeof preview.canonical_sha256 === "string" ? preview.canonical_sha256 : null,
   };
-  hermesfilePreview.textContent = JSON.stringify(projection, null, 2);
+  blueprintPreview.textContent = JSON.stringify(projection, null, 2);
 }
 
-function renderHermesfileRevisions(collection) {
+function renderBlueprintRevisions(collection) {
   const revisions = collection.items;
-  hermesfileRevisions.replaceChildren();
-  hermesfileDiffFrom.replaceChildren();
-  hermesfileDiffTo.replaceChildren();
-  hermesfileRevisionCount.textContent = String(revisions.length);
+  blueprintRevisions.replaceChildren();
+  blueprintDiffFrom.replaceChildren();
+  blueprintDiffTo.replaceChildren();
+  blueprintRevisionCount.textContent = String(revisions.length);
   if (revisions.length === 0) {
-    appendEmpty(hermesfileRevisions, "Aucune révision disponible.");
+    appendEmpty(blueprintRevisions, "Aucune révision disponible.");
     return;
   }
   for (const revision of revisions) {
@@ -857,14 +857,14 @@ function renderHermesfileRevisions(collection) {
     const heading = document.createElement("strong");
     const detail = document.createElement("span");
     button.type = "button";
-    button.dataset.hermesfileRevision = String(number);
+    button.dataset.blueprintRevision = String(number);
     button.className = "project-list-button";
     heading.textContent = `Révision ${number}`;
     detail.textContent = `${safeText(revision.canonical_sha256, "empreinte inconnue", 64).slice(0, 16)}… · ${safeText(revision.created_at, "date inconnue", 40)}`;
     button.append(heading, detail);
     item.append(button);
-    hermesfileRevisions.append(item);
-    for (const select of [hermesfileDiffFrom, hermesfileDiffTo]) {
+    blueprintRevisions.append(item);
+    for (const select of [blueprintDiffFrom, blueprintDiffTo]) {
       const option = document.createElement("option");
       option.value = String(number);
       option.textContent = `Révision ${number}`;
@@ -872,32 +872,32 @@ function renderHermesfileRevisions(collection) {
     }
   }
   if (revisions.length > 1) {
-    hermesfileDiffFrom.value = String(revisions[revisions.length - 1].source_revision);
-    hermesfileDiffTo.value = String(revisions[0].source_revision);
+    blueprintDiffFrom.value = String(revisions[revisions.length - 1].source_revision);
+    blueprintDiffTo.value = String(revisions[0].source_revision);
   }
 }
 
-async function loadHermesfile(identifier) {
-  if (!authenticated || hermesfileLoading) {
+async function loadBlueprint(identifier) {
+  if (!authenticated || blueprintLoading) {
     return;
   }
-  setHermesfileBusy(true);
-  hermesfileStatus.textContent = "Lecture du Hermesfile sélectionné…";
+  setBlueprintBusy(true);
+  blueprintStatus.textContent = "Lecture du Blueprint sélectionné…";
   try {
-    const result = await client.hermesfile(identifier);
-    const current = result.hermesfile;
+    const result = await client.blueprint(identifier);
+    const current = result.blueprint;
     const profile = current.profile || {};
     const revision = current.revision || {};
-    selectedHermesfileId = safeId(profile, "");
-    selectedHermesfileEtag = result.etag;
-    selectedHermesfileRevision = Number.isInteger(profile.source_revision) ? profile.source_revision : 0;
-    hermesfileSource.value = typeof revision.source === "string" ? revision.source : "";
-    hermesfileEditorTitle.textContent = safeText(profile.name, safeText(profile.profile_name, "Hermesfile", 63), 120);
-    hermesfileEditorMode.textContent = "édition";
-    hermesfileEditorMode.dataset.state = safeState(profile);
-    hermesfileMeta.textContent = `${selectedHermesfileId} · révision source ${selectedHermesfileRevision} · révision ressource ${Number.isInteger(profile.resource_revision) ? profile.resource_revision : "?"}`;
-    hermesfileSave.textContent = "Créer une nouvelle révision";
-    renderHermesfileDiagnostics({
+    selectedBlueprintId = safeId(profile, "");
+    selectedBlueprintEtag = result.etag;
+    selectedBlueprintRevision = Number.isInteger(profile.source_revision) ? profile.source_revision : 0;
+    blueprintSource.value = typeof revision.source === "string" ? revision.source : "";
+    blueprintEditorTitle.textContent = safeText(profile.name, safeText(profile.profile_name, "Blueprint", 63), 120);
+    blueprintEditorMode.textContent = "édition";
+    blueprintEditorMode.dataset.state = safeState(profile);
+    blueprintMeta.textContent = `${selectedBlueprintId} · révision source ${selectedBlueprintRevision} · révision ressource ${Number.isInteger(profile.resource_revision) ? profile.resource_revision : "?"}`;
+    blueprintSave.textContent = "Créer une nouvelle révision";
+    renderBlueprintDiagnostics({
       valid: true,
       diagnostics: revision.diagnostics || [],
       canonical: revision.canonical || null,
@@ -905,154 +905,154 @@ async function loadHermesfile(identifier) {
       source_sha256: revision.source_sha256 || null,
       canonical_sha256: revision.canonical_sha256 || null,
     });
-    const revisions = await client.hermesfileRevisions(selectedHermesfileId);
-    renderHermesfileRevisions(revisions);
-    const collection = await client.hermesfiles();
-    renderHermesfileList(collection);
-    hermesfileStatus.textContent = "Hermesfile et historique chargés depuis le Controller.";
+    const revisions = await client.blueprintRevisions(selectedBlueprintId);
+    renderBlueprintRevisions(revisions);
+    const collection = await client.blueprints();
+    renderBlueprintList(collection);
+    blueprintStatus.textContent = "Blueprint et historique chargés depuis le Controller.";
   } catch (error) {
     if (error instanceof ControllerClientError && error.status === 401) {
-      showSignedOut("Session expirée. Reconnectez-vous pour administrer les Hermesfiles.");
+      showSignedOut("Session expirée. Reconnectez-vous pour administrer les Blueprints.");
       return;
     }
-    hermesfileStatus.textContent = projectErrorMessage(error, "Lecture du Hermesfile impossible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Lecture du Blueprint impossible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
-async function refreshHermesfiles() {
-  if (!authenticated || hermesfileLoading) {
+async function refreshBlueprints() {
+  if (!authenticated || blueprintLoading) {
     return;
   }
-  const generation = ++hermesfileGeneration;
-  setHermesfileBusy(true);
-  hermesfileStatus.textContent = "Lecture des Hermesfiles…";
+  const generation = ++blueprintGeneration;
+  setBlueprintBusy(true);
+  blueprintStatus.textContent = "Lecture des Blueprints…";
   try {
-    const collection = await client.hermesfiles();
-    if (generation !== hermesfileGeneration || !authenticated) {
+    const collection = await client.blueprints();
+    if (generation !== blueprintGeneration || !authenticated) {
       return;
     }
-    renderHermesfileList(collection);
-    hermesfilesLoaded = true;
-    hermesfileStatus.textContent = `${collection.items.length} Hermesfile(s) reçu(s) du Controller.`;
-    if (selectedHermesfileId && collection.items.some((item) => safeId(item, "") === selectedHermesfileId)) {
-      setHermesfileBusy(false);
-      await loadHermesfile(selectedHermesfileId);
+    renderBlueprintList(collection);
+    blueprintsLoaded = true;
+    blueprintStatus.textContent = `${collection.items.length} Blueprint(s) reçu(s) du Controller.`;
+    if (selectedBlueprintId && collection.items.some((item) => safeId(item, "") === selectedBlueprintId)) {
+      setBlueprintBusy(false);
+      await loadBlueprint(selectedBlueprintId);
     }
   } catch (error) {
     if (error instanceof ControllerClientError && error.status === 401) {
-      showSignedOut("Session expirée. Reconnectez-vous pour administrer les Hermesfiles.");
+      showSignedOut("Session expirée. Reconnectez-vous pour administrer les Blueprints.");
       return;
     }
-    hermesfileStatus.textContent = projectErrorMessage(error, "Registre Hermesfile indisponible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Registre Blueprint indisponible.");
   } finally {
-    if (generation === hermesfileGeneration) {
-      setHermesfileBusy(false);
+    if (generation === blueprintGeneration) {
+      setBlueprintBusy(false);
     }
   }
 }
 
-async function loadHermesfileTemplate() {
-  if (!authenticated || hermesfileLoading) {
+async function loadBlueprintTemplate() {
+  if (!authenticated || blueprintLoading) {
     return;
   }
-  setHermesfileBusy(true);
+  setBlueprintBusy(true);
   try {
-    const template = await client.hermesfileTemplate();
-    selectedHermesfileId = "";
-    selectedHermesfileEtag = "";
-    selectedHermesfileRevision = 0;
-    hermesfileSource.value = typeof template.source === "string" ? template.source : "";
-    hermesfileEditorTitle.textContent = "Nouveau Hermesfile";
-    hermesfileEditorMode.textContent = "nouveau";
-    hermesfileEditorMode.dataset.state = "draft";
-    hermesfileMeta.textContent = "Modèle officiel chargé. La création reste séparée de la validation.";
-    hermesfileSave.textContent = "Créer";
-    hermesfileDiagnostics.replaceChildren();
-    appendEmpty(hermesfileDiagnostics, "Validez la source avant de la créer.");
-    hermesfilePreview.textContent = "Aucune prévisualisation.";
-    hermesfileRevisions.replaceChildren();
-    hermesfileDiffFrom.replaceChildren();
-    hermesfileDiffTo.replaceChildren();
-    hermesfileRevisionCount.textContent = "0";
-    hermesfileDiff.textContent = "Aucune comparaison.";
-    hermesfileValidated = false;
-    hermesfileValidity.textContent = "non validé";
-    hermesfileValidity.dataset.state = "unknown";
-    hermesfileStatus.textContent = "Modèle Hermesfile chargé depuis le Controller.";
+    const template = await client.blueprintTemplate();
+    selectedBlueprintId = "";
+    selectedBlueprintEtag = "";
+    selectedBlueprintRevision = 0;
+    blueprintSource.value = typeof template.source === "string" ? template.source : "";
+    blueprintEditorTitle.textContent = "Nouveau Blueprint";
+    blueprintEditorMode.textContent = "nouveau";
+    blueprintEditorMode.dataset.state = "draft";
+    blueprintMeta.textContent = "Modèle officiel chargé. La création reste séparée de la validation.";
+    blueprintSave.textContent = "Créer";
+    blueprintDiagnostics.replaceChildren();
+    appendEmpty(blueprintDiagnostics, "Validez la source avant de la créer.");
+    blueprintPreview.textContent = "Aucune prévisualisation.";
+    blueprintRevisions.replaceChildren();
+    blueprintDiffFrom.replaceChildren();
+    blueprintDiffTo.replaceChildren();
+    blueprintRevisionCount.textContent = "0";
+    blueprintDiff.textContent = "Aucune comparaison.";
+    blueprintValidated = false;
+    blueprintValidity.textContent = "non validé";
+    blueprintValidity.dataset.state = "unknown";
+    blueprintStatus.textContent = "Modèle Blueprint chargé depuis le Controller.";
   } catch (error) {
-    hermesfileStatus.textContent = projectErrorMessage(error, "Modèle Hermesfile indisponible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Modèle Blueprint indisponible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
-async function validateHermesfileEditor() {
-  if (!authenticated || hermesfileLoading) {
+async function validateBlueprintEditor() {
+  if (!authenticated || blueprintLoading) {
     return;
   }
-  setHermesfileBusy(true);
-  hermesfileStatus.textContent = "Validation stricte du Hermesfile…";
+  setBlueprintBusy(true);
+  blueprintStatus.textContent = "Validation stricte du Blueprint…";
   try {
-    const preview = await client.validateHermesfile(hermesfileSource.value);
-    renderHermesfileDiagnostics(preview);
-    hermesfileStatus.textContent = preview.valid
-      ? "Hermesfile valide. La configuration canonique et runtime est prévisualisée."
-      : "Hermesfile invalide. Corrigez les diagnostics avant persistance.";
+    const preview = await client.validateBlueprint(blueprintSource.value);
+    renderBlueprintDiagnostics(preview);
+    blueprintStatus.textContent = preview.valid
+      ? "Blueprint valide. La configuration canonique et runtime est prévisualisée."
+      : "Blueprint invalide. Corrigez les diagnostics avant persistance.";
   } catch (error) {
-    hermesfileValidated = false;
-    hermesfileStatus.textContent = projectErrorMessage(error, "Validation Hermesfile impossible.");
+    blueprintValidated = false;
+    blueprintStatus.textContent = projectErrorMessage(error, "Validation Blueprint impossible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
-async function saveHermesfileEditor() {
-  if (!authenticated || hermesfileLoading) {
+async function saveBlueprintEditor() {
+  if (!authenticated || blueprintLoading) {
     return;
   }
-  if (!hermesfileValidated) {
-    hermesfileStatus.textContent = "Validez la source avant de la persister.";
+  if (!blueprintValidated) {
+    blueprintStatus.textContent = "Validez la source avant de la persister.";
     return;
   }
-  setHermesfileBusy(true);
-  hermesfileStatus.textContent = selectedHermesfileId ? "Création d’une nouvelle révision…" : "Création du Hermesfile…";
+  setBlueprintBusy(true);
+  blueprintStatus.textContent = selectedBlueprintId ? "Création d’une nouvelle révision…" : "Création du Blueprint…";
   try {
-    const operation = selectedHermesfileId
-      ? await client.updateHermesfile(selectedHermesfileId, selectedHermesfileEtag, hermesfileSource.value)
-      : await client.createHermesfile(hermesfileSource.value);
+    const operation = selectedBlueprintId
+      ? await client.updateBlueprint(selectedBlueprintId, selectedBlueprintEtag, blueprintSource.value)
+      : await client.createBlueprint(blueprintSource.value);
     const target = operation && operation.result && typeof operation.result.sandbox_id === "string"
       ? operation.result.sandbox_id
-      : selectedHermesfileId;
-    hermesfileStatus.textContent = `Opération ${safeText(operation.id, "acceptée", 96)} terminée.`;
-    hermesfilesLoaded = false;
-    setHermesfileBusy(false);
+      : selectedBlueprintId;
+    blueprintStatus.textContent = `Opération ${safeText(operation.id, "acceptée", 96)} terminée.`;
+    blueprintsLoaded = false;
+    setBlueprintBusy(false);
     if (target) {
-      await loadHermesfile(target);
+      await loadBlueprint(target);
     } else {
-      await refreshHermesfiles();
+      await refreshBlueprints();
     }
   } catch (error) {
     if (error instanceof ControllerClientError && error.status === 401) {
-      showSignedOut("Session expirée. Reconnectez-vous avant toute persistance Hermesfile.");
+      showSignedOut("Session expirée. Reconnectez-vous avant toute persistance Blueprint.");
       return;
     }
-    hermesfileStatus.textContent = projectErrorMessage(error, "Persistance Hermesfile impossible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Persistance Blueprint impossible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
 async function loadHistoricalRevision(revision) {
-  if (!selectedHermesfileId || hermesfileLoading) {
+  if (!selectedBlueprintId || blueprintLoading) {
     return;
   }
-  setHermesfileBusy(true);
+  setBlueprintBusy(true);
   try {
-    const historical = await client.hermesfileRevision(selectedHermesfileId, revision);
-    hermesfileSource.value = typeof historical.source === "string" ? historical.source : "";
-    renderHermesfileDiagnostics({
+    const historical = await client.blueprintRevision(selectedBlueprintId, revision);
+    blueprintSource.value = typeof historical.source === "string" ? historical.source : "";
+    renderBlueprintDiagnostics({
       valid: true,
       diagnostics: historical.diagnostics || [],
       canonical: historical.canonical || null,
@@ -1060,34 +1060,34 @@ async function loadHistoricalRevision(revision) {
       source_sha256: historical.source_sha256 || null,
       canonical_sha256: historical.canonical_sha256 || null,
     });
-    hermesfileMeta.textContent = `Révision historique ${revision} chargée en lecture. Enregistrer créera une nouvelle révision depuis l’ETag courant.`;
-    hermesfileStatus.textContent = `Révision ${revision} chargée.`;
+    blueprintMeta.textContent = `Révision historique ${revision} chargée en lecture. Enregistrer créera une nouvelle révision depuis l’ETag courant.`;
+    blueprintStatus.textContent = `Révision ${revision} chargée.`;
   } catch (error) {
-    hermesfileStatus.textContent = projectErrorMessage(error, "Révision Hermesfile indisponible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Révision Blueprint indisponible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
-async function compareHermesfileHistory() {
-  if (!selectedHermesfileId || hermesfileLoading) {
+async function compareBlueprintHistory() {
+  if (!selectedBlueprintId || blueprintLoading) {
     return;
   }
-  const fromRevision = Number(hermesfileDiffFrom.value);
-  const toRevision = Number(hermesfileDiffTo.value);
+  const fromRevision = Number(blueprintDiffFrom.value);
+  const toRevision = Number(blueprintDiffTo.value);
   if (!Number.isInteger(fromRevision) || !Number.isInteger(toRevision) || fromRevision === toRevision) {
-    hermesfileStatus.textContent = "Choisissez deux révisions différentes.";
+    blueprintStatus.textContent = "Choisissez deux révisions différentes.";
     return;
   }
-  setHermesfileBusy(true);
+  setBlueprintBusy(true);
   try {
-    const comparison = await client.compareHermesfileRevisions(selectedHermesfileId, fromRevision, toRevision);
-    hermesfileDiff.textContent = JSON.stringify(comparison, null, 2);
-    hermesfileStatus.textContent = `${Array.isArray(comparison.changes) ? comparison.changes.length : 0} chemin(s) canonique(s) modifié(s).`;
+    const comparison = await client.compareBlueprintRevisions(selectedBlueprintId, fromRevision, toRevision);
+    blueprintDiff.textContent = JSON.stringify(comparison, null, 2);
+    blueprintStatus.textContent = `${Array.isArray(comparison.changes) ? comparison.changes.length : 0} chemin(s) canonique(s) modifié(s).`;
   } catch (error) {
-    hermesfileStatus.textContent = projectErrorMessage(error, "Comparaison Hermesfile impossible.");
+    blueprintStatus.textContent = projectErrorMessage(error, "Comparaison Blueprint impossible.");
   } finally {
-    setHermesfileBusy(false);
+    setBlueprintBusy(false);
   }
 }
 
@@ -1570,45 +1570,45 @@ projectCommandButtons.addEventListener("click", (event) => {
   );
 });
 
-hermesfileRefresh.addEventListener("click", () => {
-  hermesfilesLoaded = false;
-  void refreshHermesfiles();
+blueprintRefresh.addEventListener("click", () => {
+  blueprintsLoaded = false;
+  void refreshBlueprints();
 });
 
-hermesfileNew.addEventListener("click", () => {
-  void loadHermesfileTemplate();
+blueprintNew.addEventListener("click", () => {
+  void loadBlueprintTemplate();
 });
 
-hermesfileList.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-hermesfile-id]");
+blueprintList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-blueprint-id]");
   if (button) {
-    void loadHermesfile(button.dataset.hermesfileId || "");
+    void loadBlueprint(button.dataset.blueprintId || "");
   }
 });
 
-hermesfileRevisions.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-hermesfile-revision]");
+blueprintRevisions.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-blueprint-revision]");
   if (button) {
-    void loadHistoricalRevision(Number(button.dataset.hermesfileRevision));
+    void loadHistoricalRevision(Number(button.dataset.blueprintRevision));
   }
 });
 
-hermesfileValidate.addEventListener("click", () => {
-  void validateHermesfileEditor();
+blueprintValidate.addEventListener("click", () => {
+  void validateBlueprintEditor();
 });
 
-hermesfileSave.addEventListener("click", () => {
-  void saveHermesfileEditor();
+blueprintSave.addEventListener("click", () => {
+  void saveBlueprintEditor();
 });
 
-hermesfileCompare.addEventListener("click", () => {
-  void compareHermesfileHistory();
+blueprintCompare.addEventListener("click", () => {
+  void compareBlueprintHistory();
 });
 
-hermesfileSource.addEventListener("input", () => {
-  hermesfileValidated = false;
-  hermesfileValidity.textContent = "à revalider";
-  hermesfileValidity.dataset.state = "unknown";
+blueprintSource.addEventListener("input", () => {
+  blueprintValidated = false;
+  blueprintValidity.textContent = "à revalider";
+  blueprintValidity.dataset.state = "unknown";
 });
 
 objectiveRefresh.addEventListener("click", () => {

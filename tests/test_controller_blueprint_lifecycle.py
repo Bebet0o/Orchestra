@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from controller_api.core import ControllerError, Settings
-from controller_api.hermesfile_lifecycle import HermesfileLifecycleStore
+from controller_api.blueprint_lifecycle import BlueprintLifecycleStore
 from controller_api.sandbox_profiles import SandboxProfileStore
 from controller_api.server import build_server
 
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "b" * 64
 
 
-class HermesfileLifecycleFixture:
+class BlueprintLifecycleFixture:
     def __init__(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -31,7 +31,7 @@ class HermesfileLifecycleFixture:
         (self.root / "repo/VERSION").write_text("0.1.0-alpha\n", encoding="utf-8")
         (self.root / "secrets/controller-session").write_text(TOKEN + "\n", encoding="utf-8")
         os.chmod(self.root / "secrets/controller-session", 0o600)
-        shutil.copy2(ROOT / "config/examples/Hermesfile", self.root / "repo/config/examples/Hermesfile")
+        shutil.copy2(ROOT / "config/examples/Blueprint", self.root / "repo/config/examples/Blueprint")
         shutil.copy2(ROOT / "config/policies/default.toml", self.root / "repo/config/policies/default.toml")
         shutil.copy2(ROOT / "config/controller.toml", self.root / "repo/config/controller.toml")
         self.database = self.root / "state/controller/hermesops.db"
@@ -41,12 +41,12 @@ class HermesfileLifecycleFixture:
                 connection.executescript(migration.read_text(encoding="utf-8"))
         self.settings = Settings.from_root(self.root)
         profiles = SandboxProfileStore(self.settings)
-        self.store = HermesfileLifecycleStore(self.settings, profiles)
-        self.source = (self.root / "repo/config/examples/Hermesfile").read_text(encoding="utf-8")
+        self.store = BlueprintLifecycleStore(self.settings, profiles)
+        self.source = (self.root / "repo/config/examples/Blueprint").read_text(encoding="utf-8")
 
     @staticmethod
     def meta(revision: int | None) -> dict[str, object]:
-        return {"request_id": "request-hermesfile-test", "resource_revision": revision}
+        return {"request_id": "request-blueprint-test", "resource_revision": revision}
 
     def changed_source(self) -> str:
         return self.source.replace(
@@ -57,11 +57,11 @@ class HermesfileLifecycleFixture:
     def renamed_source(self) -> str:
         return self.source.replace("name: python-project", "name: renamed-profile")
 
-    def create(self, *, key: str = "hermesfile-create-0001") -> tuple[int, dict[str, object]]:
+    def create(self, *, key: str = "blueprint-create-0001") -> tuple[int, dict[str, object]]:
         return self.store.create(
             session_token=TOKEN,
             idempotency_key=key,
-            route="/api/v1/hermesfiles",
+            route="/api/v1/blueprints",
             body={"source": self.source},
             meta_factory=self.meta,
         )
@@ -107,9 +107,9 @@ class HermesfileLifecycleFixture:
         self.temporary.cleanup()
 
 
-class HermesfileLifecycleTest(unittest.TestCase):
+class BlueprintLifecycleTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.fixture = HermesfileLifecycleFixture()
+        self.fixture = BlueprintLifecycleFixture()
 
     def tearDown(self) -> None:
         self.fixture.close()
@@ -117,20 +117,20 @@ class HermesfileLifecycleTest(unittest.TestCase):
     def test_schema_readiness_and_immutable_audit(self) -> None:
         self.assertEqual(self.fixture.store.readiness(), (True, "ready"))
         with sqlite3.connect(self.fixture.database) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 22)
-            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 22)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
+            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 23)
         _, payload = self.fixture.create()
         operation_id = payload["data"]["id"]
         with sqlite3.connect(self.fixture.database) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
-                    "UPDATE controller_hermesfile_command_audit SET outcome='FAILED' WHERE operation_id=?",
+                    "UPDATE controller_blueprint_command_audit SET outcome='FAILED' WHERE operation_id=?",
                     (operation_id,),
                 )
             connection.rollback()
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
-                    "DELETE FROM controller_hermesfile_command_audit WHERE operation_id=?",
+                    "DELETE FROM controller_blueprint_command_audit WHERE operation_id=?",
                     (operation_id,),
                 )
 
@@ -156,15 +156,17 @@ class HermesfileLifecycleTest(unittest.TestCase):
         sandbox_id = operation["result"]["sandbox_id"]
         current = self.fixture.store.current(sandbox_id)
         self.assertEqual(current["profile"]["source_revision"], 1)
+        self.assertEqual(current["profile"]["source_format"], "blueprint-v1")
+        self.assertEqual(current["revision"]["source_format"], "blueprint-v1")
         self.assertEqual(current["revision"]["source"], self.fixture.source)
         self.assertEqual(current["revision"]["runtime_config"]["profile_name"], "python-project")
         self.assertEqual(self.fixture.store.get_operation(operation["id"])["target"]["id"], sandbox_id)
         with sqlite3.connect(self.fixture.database) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM sandbox_profiles").fetchone()[0], 1)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM sandbox_profile_revisions").fetchone()[0], 1)
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_hermesfile_operations").fetchone()[0], 1)
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_hermesfile_idempotency").fetchone()[0], 1)
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_hermesfile_command_audit").fetchone()[0], 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_blueprint_operations").fetchone()[0], 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_blueprint_idempotency").fetchone()[0], 1)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_blueprint_command_audit").fetchone()[0], 1)
             event_type, event_data = connection.execute(
                 "SELECT event_type, redacted_data_json FROM controller_event_journal"
             ).fetchone()
@@ -176,9 +178,9 @@ class HermesfileLifecycleTest(unittest.TestCase):
             sensitive_free = "\n".join(
                 str(value)
                 for table in (
-                    "controller_hermesfile_operations",
-                    "controller_hermesfile_idempotency",
-                    "controller_hermesfile_command_audit",
+                    "controller_blueprint_operations",
+                    "controller_blueprint_idempotency",
+                    "controller_blueprint_command_audit",
                     "controller_event_journal",
                 )
                 for row in connection.execute(f"SELECT * FROM {table}").fetchall()
@@ -189,15 +191,15 @@ class HermesfileLifecycleTest(unittest.TestCase):
         self.assertNotIn(self.fixture.source, sensitive_free)
 
     def test_idempotency_conflict_and_canonical_equivalent_revision(self) -> None:
-        status, created = self.fixture.create(key="hermesfile-create-conflict")
+        status, created = self.fixture.create(key="blueprint-create-conflict")
         self.assertEqual(status, 202)
         sandbox_id = created["data"]["result"]["sandbox_id"]
 
         with self.assertRaises(ControllerError) as conflict:
             self.fixture.store.create(
                 session_token=TOKEN,
-                idempotency_key="hermesfile-create-conflict",
-                route="/api/v1/hermesfiles",
+                idempotency_key="blueprint-create-conflict",
+                route="/api/v1/blueprints",
                 body={"source": self.fixture.changed_source()},
                 meta_factory=self.fixture.meta,
             )
@@ -206,8 +208,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
         equivalent = "# formatting-only revision\n" + self.fixture.source
         status, updated = self.fixture.store.update(
             session_token=TOKEN,
-            idempotency_key="hermesfile-update-equivalent",
-            route=f"/api/v1/hermesfiles/{sandbox_id}",
+            idempotency_key="blueprint-update-equivalent",
+            route=f"/api/v1/blueprints/{sandbox_id}",
             sandbox_id=sandbox_id,
             if_match='"1"',
             body={"source": equivalent},
@@ -229,8 +231,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
         with self.assertRaises(ControllerError) as missing:
             self.fixture.store.update(
                 session_token=TOKEN,
-                idempotency_key="hermesfile-update-missing",
-                route=f"/api/v1/hermesfiles/{sandbox_id}",
+                idempotency_key="blueprint-update-missing",
+                route=f"/api/v1/blueprints/{sandbox_id}",
                 sandbox_id=sandbox_id,
                 if_match=None,
                 body={"source": self.fixture.changed_source()},
@@ -239,8 +241,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
         self.assertEqual(missing.exception.code, "precondition_required")
         status, updated = self.fixture.store.update(
             session_token=TOKEN,
-            idempotency_key="hermesfile-update-0001",
-            route=f"/api/v1/hermesfiles/{sandbox_id}",
+            idempotency_key="blueprint-update-0001",
+            route=f"/api/v1/blueprints/{sandbox_id}",
             sandbox_id=sandbox_id,
             if_match='"1"',
             body={"source": self.fixture.changed_source()},
@@ -259,8 +261,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
         with self.assertRaises(ControllerError) as stale:
             self.fixture.store.update(
                 session_token=TOKEN,
-                idempotency_key="hermesfile-update-stale",
-                route=f"/api/v1/hermesfiles/{sandbox_id}",
+                idempotency_key="blueprint-update-stale",
+                route=f"/api/v1/blueprints/{sandbox_id}",
                 sandbox_id=sandbox_id,
                 if_match='"1"',
                 body={"source": self.fixture.source.replace("cpu: 4", "cpu: 2")},
@@ -272,8 +274,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
         _, created = self.fixture.create()
         sandbox_id = created["data"]["result"]["sandbox_id"]
         cases = (
-            ("identity", self.fixture.renamed_source(), "hermesfile_identity_immutable"),
-            ("noop", self.fixture.source, "hermesfile_unchanged"),
+            ("identity", self.fixture.renamed_source(), "blueprint_identity_immutable"),
+            ("noop", self.fixture.source, "blueprint_unchanged"),
             (
                 "secret",
                 "# password=private-sentinel\n" + self.fixture.changed_source(),
@@ -282,7 +284,7 @@ class HermesfileLifecycleTest(unittest.TestCase):
             (
                 "invalid",
                 self.fixture.source.replace("privileged: false", "privileged: true"),
-                "hermesfile_source_invalid",
+                "blueprint_source_invalid",
             ),
         )
         for label, source, code in cases:
@@ -290,8 +292,8 @@ class HermesfileLifecycleTest(unittest.TestCase):
                 with self.assertRaises(ControllerError) as caught:
                     self.fixture.store.update(
                         session_token=TOKEN,
-                        idempotency_key=f"hermesfile-update-{label}-01",
-                        route=f"/api/v1/hermesfiles/{sandbox_id}",
+                        idempotency_key=f"blueprint-update-{label}-01",
+                        route=f"/api/v1/blueprints/{sandbox_id}",
                         sandbox_id=sandbox_id,
                         if_match='"1"',
                         body={"source": source},
@@ -306,57 +308,70 @@ class HermesfileLifecycleTest(unittest.TestCase):
 
     def test_http_lifecycle_validation_history_diff_and_closed_delete_boundary(self) -> None:
         status, _, csrf_payload = self.fixture.request(
-            "POST", "/api/v1/auth/csrf", body={}, key="hermesfile-http-csrf"
+            "POST", "/api/v1/auth/csrf", body={}, key="blueprint-http-csrf"
         )
         self.assertEqual(status, 200)
         csrf = csrf_payload["data"]["token"]
         status, _, validated = self.fixture.request(
             "POST",
-            "/api/v1/hermesfiles/validate",
+            "/api/v1/blueprints/validate",
             body={"source": self.fixture.source},
-            key="hermesfile-http-validate",
+            key="blueprint-http-validate",
             csrf=csrf,
         )
         self.assertEqual(status, 200)
         self.assertTrue(validated["data"]["valid"])
         status, _, created = self.fixture.request(
             "POST",
-            "/api/v1/hermesfiles",
+            "/api/v1/blueprints",
             body={"source": self.fixture.source},
-            key="hermesfile-http-create",
+            key="blueprint-http-create",
             csrf=csrf,
         )
         self.assertEqual(status, 202)
         operation_id = created["data"]["id"]
         sandbox_id = created["data"]["result"]["sandbox_id"]
-        status, _, collection = self.fixture.request("GET", "/api/v1/hermesfiles")
+        status, _, collection = self.fixture.request("GET", "/api/v1/blueprints")
         self.assertEqual(status, 200)
         self.assertEqual(collection["data"][0]["id"], sandbox_id)
-        status, headers, current = self.fixture.request("GET", f"/api/v1/hermesfiles/{sandbox_id}")
+        status, headers, current = self.fixture.request("GET", f"/api/v1/blueprints/{sandbox_id}")
         self.assertEqual(status, 200)
         self.assertEqual(headers["etag"], '"1"')
         self.assertEqual(current["data"]["revision"]["source"], self.fixture.source)
         status, _, updated = self.fixture.request(
             "PATCH",
-            f"/api/v1/hermesfiles/{sandbox_id}",
+            f"/api/v1/blueprints/{sandbox_id}",
             body={"source": self.fixture.changed_source()},
-            key="hermesfile-http-update",
+            key="blueprint-http-update",
             csrf=csrf,
             if_match='"1"',
         )
         self.assertEqual(status, 202)
         self.assertEqual(updated["meta"]["resource_revision"], 2)
-        status, _, history = self.fixture.request("GET", f"/api/v1/hermesfiles/{sandbox_id}/revisions")
+        status, _, history = self.fixture.request("GET", f"/api/v1/blueprints/{sandbox_id}/revisions")
         self.assertEqual(status, 200)
         self.assertEqual([item["source_revision"] for item in history["data"]], [2, 1])
-        status, _, diff = self.fixture.request("GET", f"/api/v1/hermesfiles/{sandbox_id}/diff?from=1&to=2")
+        status, _, diff = self.fixture.request("GET", f"/api/v1/blueprints/{sandbox_id}/diff?from=1&to=2")
         self.assertEqual(status, 200)
         self.assertTrue(diff["data"]["changed"])
         status, _, operation = self.fixture.request("GET", f"/api/v1/operations/{operation_id}")
         self.assertEqual(status, 200)
         self.assertEqual(operation["data"]["target"]["id"], sandbox_id)
-        status, _, _ = self.fixture.request("DELETE", f"/api/v1/hermesfiles/{sandbox_id}")
+        status, _, _ = self.fixture.request("DELETE", f"/api/v1/blueprints/{sandbox_id}")
         self.assertEqual(status, 405)
+
+    def test_legacy_hermesfile_routes_are_unavailable(self) -> None:
+        for method, path in (
+            ("GET", "/api/v1/hermesfiles"),
+            ("GET", "/api/v1/hermesfiles/template"),
+            ("POST", "/api/v1/hermesfiles"),
+            ("POST", "/api/v1/hermesfiles/validate"),
+            ("PATCH", "/api/v1/hermesfiles/sandbox-" + "a" * 32),
+        ):
+            with self.subTest(method=method, path=path):
+                status, _, payload = self.fixture.request(method, path)
+                self.assertIn(status, {404, 405})
+                self.assertIn(payload["code"], {"route_not_found", "method_not_allowed"})
 
 
 if __name__ == "__main__":

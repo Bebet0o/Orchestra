@@ -260,7 +260,7 @@ GET /system/capabilities
 
 `/system/health` returns liveness/readiness without secrets.
 
-`/system/capabilities` lets the Console feature-detect API and Hermesfile
+`/system/capabilities` lets the Console feature-detect API and Blueprint
 versions.
 
 ### Authentication
@@ -514,7 +514,7 @@ Create/update operations accept:
 ```json
 {
   "name": "Default Python Worker",
-  "source_format": "hermesfile-v1",
+  "source_format": "blueprint-v1",
   "source": "apiVersion: hermesops.dev/v1\n..."
 }
 ```
@@ -526,21 +526,21 @@ Milestone 2O implements authenticated `GET /sandboxes` and
 `GET /sandboxes/{sandbox_id}` reads over validated durable source revisions.
 The public projection excludes raw source and canonical JSON.
 
-### Hermesfile lifecycle
+### Blueprint lifecycle
 
-Milestone 2T exposes a dedicated source lifecycle rather than enabling the
-broader future sandbox build and activation contract:
+The current Controller exposes a dedicated Blueprint source lifecycle rather
+than enabling the broader future sandbox build and activation contract:
 
 ```text
-GET /hermesfiles
-POST /hermesfiles
-GET /hermesfiles/template
-POST /hermesfiles/validate
-GET /hermesfiles/{sandbox_id}
-PATCH /hermesfiles/{sandbox_id}
-GET /hermesfiles/{sandbox_id}/revisions
-GET /hermesfiles/{sandbox_id}/revisions/{source_revision}
-GET /hermesfiles/{sandbox_id}/diff
+GET /blueprints
+POST /blueprints
+GET /blueprints/template
+POST /blueprints/validate
+GET /blueprints/{sandbox_id}
+PATCH /blueprints/{sandbox_id}
+GET /blueprints/{sandbox_id}/revisions
+GET /blueprints/{sandbox_id}/revisions/{source_revision}
+GET /blueprints/{sandbox_id}/diff
 ```
 
 The validation endpoint is non-persisting. Create and update accept exactly one
@@ -746,7 +746,7 @@ The Controller is the only authority for transitions.
 {
   "api_versions": ["v1"],
   "event_schema_versions": [1],
-  "hermesfile_versions": ["v1"]
+  "blueprint_versions": ["v1"]
 }
 ```
 

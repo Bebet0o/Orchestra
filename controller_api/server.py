@@ -33,7 +33,7 @@ ALLOWED_REVIEW_RECOVERY_QUERY_FIELDS = {"cursor", "limit", "project_id", "state"
 ALLOWED_PLAN_QUERY_FIELDS = {"cursor", "limit", "project_id", "state"}
 ALLOWED_ASSIGNMENT_QUERY_FIELDS = {"cursor", "limit", "project_id", "state", "run_id"}
 ALLOWED_SANDBOX_QUERY_FIELDS = {"cursor", "limit", "state"}
-ALLOWED_HERMESFILE_LIST_QUERY_FIELDS = {"cursor", "limit", "state"}
+ALLOWED_BLUEPRINT_LIST_QUERY_FIELDS = {"cursor", "limit", "state"}
 ALLOWED_LOG_QUERY_FIELDS = {"after_sequence", "limit"}
 
 
@@ -525,16 +525,16 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                 ),
             }, {"ETag": f'"{revision}"'}
 
-        if path == "/api/v1/hermesfiles/template":
+        if path == "/api/v1/blueprints/template":
             if query:
                 raise ControllerError(400, "unknown_query_parameter", "Unknown query parameter")
             return 200, {
-                "data": service.hermesfiles.template(),
+                "data": service.blueprints.template(),
                 "meta": service.meta(request_id),
             }, {}
 
-        if path == "/api/v1/hermesfiles":
-            unknown = set(query) - ALLOWED_HERMESFILE_LIST_QUERY_FIELDS
+        if path == "/api/v1/blueprints":
+            unknown = set(query) - ALLOWED_BLUEPRINT_LIST_QUERY_FIELDS
             if unknown:
                 raise ControllerError(
                     400,
@@ -562,9 +562,9 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                 "meta": service.meta(request_id, next_cursor=next_cursor),
             }, {}
 
-        hermesfile_prefix = "/api/v1/hermesfiles/"
-        if path.startswith(hermesfile_prefix):
-            suffix = path[len(hermesfile_prefix):]
+        blueprint_prefix = "/api/v1/blueprints/"
+        if path.startswith(blueprint_prefix):
+            suffix = path[len(blueprint_prefix):]
             parts = [unquote(part) for part in suffix.split("/")]
             if not parts or not parts[0] or any(not part for part in parts):
                 raise ControllerError(404, "route_not_found", "Route not found")
@@ -572,7 +572,7 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 1:
                 if query:
                     raise ControllerError(400, "unknown_query_parameter", "Unknown query parameter")
-                current = service.hermesfiles.current(sandbox_id)
+                current = service.blueprints.current(sandbox_id)
                 revision = int(current["profile"]["resource_revision"])
                 return 200, {
                     "data": current,
@@ -586,7 +586,7 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                     limit = int(query.get("limit", ["50"])[0])
                 except ValueError as error:
                     raise ControllerError(400, "invalid_limit", "Invalid pagination limit") from error
-                revisions = service.hermesfiles.list_revisions(sandbox_id, limit=limit)
+                revisions = service.blueprints.list_revisions(sandbox_id, limit=limit)
                 return 200, {
                     "data": revisions,
                     "meta": service.meta(request_id),
@@ -597,8 +597,8 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                 try:
                     source_revision = int(parts[2])
                 except ValueError as error:
-                    raise ControllerError(404, "hermesfile_revision_not_found", "Hermesfile revision not found") from error
-                revision_data = service.hermesfiles.get_revision(sandbox_id, source_revision)
+                    raise ControllerError(404, "blueprint_revision_not_found", "Blueprint revision not found") from error
+                revision_data = service.blueprints.get_revision(sandbox_id, source_revision)
                 return 200, {
                     "data": revision_data,
                     "meta": service.meta(request_id),
@@ -611,7 +611,7 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                     to_revision = int(query["to"][0])
                 except ValueError as error:
                     raise ControllerError(400, "invalid_revision_comparison", "Invalid revision comparison") from error
-                comparison = service.hermesfiles.compare(sandbox_id, from_revision, to_revision)
+                comparison = service.blueprints.compare(sandbox_id, from_revision, to_revision)
                 return 200, {
                     "data": comparison,
                     "meta": service.meta(request_id),
@@ -1381,17 +1381,17 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             self._single_header("X-CSRF-Token"),
         )
         key = service.commands.validate_idempotency_key(idempotency_key)
-        if path == "/api/v1/hermesfiles/validate":
-            service.hermesfiles.validate_idempotency_key(key)
-            source = service.hermesfiles._source_bytes(body)
-            preview = service.hermesfiles.preview_source(source)
+        if path == "/api/v1/blueprints/validate":
+            service.blueprints.validate_idempotency_key(key)
+            source = service.blueprints._source_bytes(body)
+            preview = service.blueprints.preview_source(source)
             return 200, {
                 "data": preview,
                 "meta": service.meta(request_id),
             }, {}
 
-        if path == "/api/v1/hermesfiles":
-            status, payload = service.hermesfiles.create(
+        if path == "/api/v1/blueprints":
+            status, payload = service.blueprints.create(
                 session_token=session_token,
                 idempotency_key=key,
                 route=path,
@@ -1529,8 +1529,8 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                     "/api/v1/auth/csrf",
                     "/api/v1/projects",
                     "/api/v1/objectives",
-                    "/api/v1/hermesfiles",
-                    "/api/v1/hermesfiles/validate",
+                    "/api/v1/blueprints",
+                    "/api/v1/blueprints/validate",
                 }
                 and not is_project_command
                 and not is_objective_command
@@ -1600,12 +1600,12 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             )
             return status, payload, {}
 
-        hermesfile_prefix = "/api/v1/hermesfiles/"
-        if path.startswith(hermesfile_prefix):
-            sandbox_id = unquote(path[len(hermesfile_prefix):])
+        blueprint_prefix = "/api/v1/blueprints/"
+        if path.startswith(blueprint_prefix):
+            sandbox_id = unquote(path[len(blueprint_prefix):])
             if not sandbox_id or "/" in sandbox_id:
                 raise ControllerError(404, "route_not_found", "Route not found")
-            status, payload = service.hermesfiles.update(
+            status, payload = service.blueprints.update(
                 session_token=session_token,
                 idempotency_key=key,
                 route=path,
@@ -1628,7 +1628,7 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             self._validate_request_target()
             parsed = urlsplit(self.path)
             path = parsed.path
-            prefixes = ("/api/v1/projects/", "/api/v1/hermesfiles/")
+            prefixes = ("/api/v1/projects/", "/api/v1/blueprints/")
             matched = next((prefix for prefix in prefixes if path.startswith(prefix)), None)
             if matched is None or "/" in path[len(matched):]:
                 self._method_not_allowed()

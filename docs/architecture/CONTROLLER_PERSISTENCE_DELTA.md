@@ -118,3 +118,13 @@ pointer and resource revision remain owned by `sandbox_profiles`. Accepted
 create/update transactions also append redacted sandbox events. No audit,
 idempotency, operation, or event record stores raw source, canonical content,
 secret-like input, or diagnostics containing the rejected value.
+
+## Milestone 3B implemented delta
+
+Schema version 23 promotes Orchestra Blueprint as the current source authority.
+Persisted current source formats become `blueprint-v1`, and current lifecycle,
+idempotency, operation, and audit table names use Blueprint terminology. The
+migration deliberately retains historical routes, request hashes, key hashes,
+and the historical HMAC domain so existing integrity material remains valid.
+Projects continue to reference `sandbox_profile_id`; no parallel Blueprint
+resource identity is introduced.

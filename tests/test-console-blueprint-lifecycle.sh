@@ -25,6 +25,6 @@ else
   echo "HERMESOPS_2T_CONSOLE_NODE_SYNTAX_SKIPPED reason=node_unavailable"
 fi
 
-python3 -m unittest -v tests.test_console_hermesfile_lifecycle
+python3 -m unittest -v tests.test_console_blueprint_lifecycle
 
-echo "HERMESOPS_2T_CONSOLE_HERMESFILE_LIFECYCLE_PASS"
+echo "HERMESOPS_3B_CONSOLE_BLUEPRINT_LIFECYCLE_PASS"

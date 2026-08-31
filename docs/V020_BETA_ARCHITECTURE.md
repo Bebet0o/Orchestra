@@ -13,7 +13,7 @@ API, HermesOps Console, and Hermesfile builder are developed.
 - [Controller internal components](architecture/CONTROLLER_COMPONENTS.md)
 - [Controller API v1](api/CONTROLLER_API_V1.md)
 - [Replayable events v1](api/EVENTS_V1.md)
-- [Hermesfile v1](hermesfile/SPECIFICATION_V1.md)
+- [Current Orchestra Blueprint v1](blueprint/SPECIFICATION_V1.md)
 - [Historical Hermesfile v0 design](hermesfile/SPECIFICATION_V0.md)
 - [Console information architecture](console/INFORMATION_ARCHITECTURE.md)
 - [Console foundation](console/FOUNDATION.md)
@@ -24,7 +24,7 @@ API, HermesOps Console, and Hermesfile builder are developed.
 
 - [Controller OpenAPI 3.1 design contract](../specs/controller-api-v1.openapi.json)
 - [Event envelope JSON Schema](../specs/events-v1.schema.json)
-- [Hermesfile v1 JSON Schema](../specs/hermesfile-v1.schema.json)
+- [Current Orchestra Blueprint v1 JSON Schema](../specs/blueprint-v1.schema.json)
 
 These files are design contracts. They do not imply that the corresponding
 runtime features are already implemented.

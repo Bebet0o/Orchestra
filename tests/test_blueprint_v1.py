@@ -10,7 +10,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from controller_api.hermesfile import API_VERSION, SOURCE_FORMAT, validate_path, validate_source
+from controller_api.blueprint import API_VERSION, SOURCE_FORMAT, validate_path, validate_source
 
 
 VALID = """
@@ -87,7 +87,7 @@ def codes(report) -> set[str]:
     return {item.code for item in report.diagnostics}
 
 
-class HermesfileV1Test(unittest.TestCase):
+class BlueprintV1Test(unittest.TestCase):
     def test_valid_source_and_canonical_defaults(self) -> None:
         report = validate_source(textwrap.dedent(VALID))
         self.assertTrue(report.valid, report.as_dict())
@@ -246,9 +246,9 @@ class HermesfileV1Test(unittest.TestCase):
     def test_path_validation_rejects_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            real = root / "Hermesfile"
+            real = root / "Blueprint"
             real.write_text(textwrap.dedent(VALID), encoding="utf-8")
-            link = root / "Hermesfile.link"
+            link = root / "Blueprint.link"
             link.symlink_to(real)
             report = validate_path(link)
             self.assertFalse(report.valid)
@@ -257,7 +257,7 @@ class HermesfileV1Test(unittest.TestCase):
     def test_schema_contract_and_example(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         schema = json.loads(
-            (repository / "specs/hermesfile-v1.schema.json").read_text(encoding="utf-8")
+            (repository / "specs/blueprint-v1.schema.json").read_text(encoding="utf-8")
         )
         self.assertEqual(schema["properties"]["apiVersion"]["const"], API_VERSION)
         self.assertEqual(schema["properties"]["kind"]["const"], "SandboxProfile")
@@ -265,14 +265,27 @@ class HermesfileV1Test(unittest.TestCase):
         self.assertIs(security["privileged"]["const"], False)
         self.assertIs(security["secrets"]["const"], False)
         self.assertIs(security["allowDockerSocket"]["const"], False)
-        example = repository / "config/examples/Hermesfile"
+        example = repository / "config/examples/Blueprint"
         report = validate_path(example)
         self.assertTrue(report.valid, report.as_dict())
 
     def test_cli_validate_fingerprint_and_canonicalize(self) -> None:
         repository = Path(__file__).resolve().parents[1]
-        cli = repository / "scripts/hermesops-hermesfile.py"
-        example = repository / "config/examples/Hermesfile"
+        cli = repository / "scripts/hermesops-blueprint.py"
+        self.assertTrue(cli.is_file())
+        self.assertFalse((repository / "scripts/hermesops-hermesfile.py").exists())
+        example = repository / "config/examples/Blueprint"
+        help_result = subprocess.run(
+            [sys.executable, str(cli), "--help"],
+            cwd=repository,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        self.assertIn("Blueprint v1", help_result.stdout)
+        self.assertNotIn("Hermesfile", help_result.stdout)
         validate = subprocess.run(
             [sys.executable, str(cli), "validate", str(example), "--json"],
             cwd=repository,

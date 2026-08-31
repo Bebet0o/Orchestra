@@ -116,7 +116,7 @@ Hermes Agent must not become the source of truth for:
 
 The sandbox manager may:
 
-- validate a Hermesfile;
+- validate a Blueprint;
 - build an image in the dedicated sandbox engine;
 - run validation commands;
 - assign an immutable image digest;
@@ -127,7 +127,7 @@ The sandbox manager may:
 It must not:
 
 - expose the host Docker socket to the Console, Agent, or workers;
-- permit arbitrary host-path mounts from a Hermesfile;
+- permit arbitrary host-path mounts from a Blueprint;
 - run privileged containers;
 - activate an unvalidated mutable tag;
 - delete the last known-good image during a failed activation;

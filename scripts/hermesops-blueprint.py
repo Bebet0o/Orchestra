@@ -11,10 +11,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from controller_api.hermesfile import HermesfileReport, validate_path
+from controller_api.blueprint import BlueprintReport, validate_path
 
 
-def emit_human(report: HermesfileReport) -> None:
+def emit_human(report: BlueprintReport) -> None:
     for diagnostic in report.diagnostics:
         stream = sys.stderr if diagnostic.severity == "error" else sys.stdout
         print(
@@ -24,7 +24,7 @@ def emit_human(report: HermesfileReport) -> None:
         )
     if report.valid and report.result is not None:
         print(
-            "Hermesfile validation: PASS "
+            "Blueprint validation: PASS "
             f"name={report.result.name} "
             f"source_sha256={report.result.source_sha256} "
             f"canonical_sha256={report.result.canonical_sha256}"
@@ -110,10 +110,10 @@ def command_canonicalize(arguments: argparse.Namespace) -> int:
     try:
         _write_output(arguments.output, payload, force=arguments.force)
     except OSError as error:
-        print(f"hermesfile_output_failed: {error}", file=sys.stderr)
+        print(f"blueprint_output_failed: {error}", file=sys.stderr)
         return 1
     print(
-        "Hermesfile canonicalization: PASS "
+        "Blueprint canonicalization: PASS "
         f"output={arguments.output} "
         f"canonical_sha256={report.result.canonical_sha256}"
     )
@@ -122,7 +122,7 @@ def command_canonicalize(arguments: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        description="Validate and canonicalize Hermesfile v1 sources"
+        description="Validate and canonicalize Blueprint v1 sources"
     )
     subparsers = result.add_subparsers(dest="command", required=True)
 

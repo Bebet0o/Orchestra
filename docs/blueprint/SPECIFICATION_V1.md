@@ -1,4 +1,4 @@
-# Hermesfile v1 Specification
+# Orchestra Blueprint v1 Specification
 
 Status: **Executable source contract**
 
@@ -7,23 +7,24 @@ API version: `hermesops.dev/v1`
 Kind: `SandboxProfile`
 
 Machine schema:
-[`../../specs/hermesfile-v1.schema.json`](../../specs/hermesfile-v1.schema.json)
+[`../../specs/blueprint-v1.schema.json`](../../specs/blueprint-v1.schema.json)
 
 ## Purpose
 
-A Hermesfile is one strict YAML source file describing a reproducibility-oriented
-HermesOps sandbox profile.
+A Blueprint is one strict YAML source file describing a reproducibility-oriented
+Orchestra sandbox profile.
 
-A Hermesfile is **not a project configuration**. Project identity, repository
+A Blueprint is **not a project configuration**. Project identity, repository
 paths, Git policy, task concurrency, role definitions, objective scheduling and
 review requirements remain in their existing Controller, project-registry,
 role and policy contracts.
 
-Milestone 2N makes source parsing, validation, canonicalization and
-fingerprinting executable. It does not build or activate images.
+The current implementation makes source parsing, validation, canonicalization,
+fingerprinting, persistence, and bounded lifecycle operations executable. It
+does not build or activate images from a Blueprint.
 
 ```text
-Hermesfile
+Blueprint
     ↓ strict YAML parsing
 validated SandboxProfile
     ↓ deterministic canonicalization
@@ -37,15 +38,15 @@ immutable image build and validation
 The conventional source name is:
 
 ```text
-Hermesfile
+Blueprint
 ```
 
 Alternative profiles may use names such as:
 
 ```text
-Hermesfile.python
-Hermesfile.cpp
-Hermesfile.docs
+Blueprint.python
+Blueprint.cpp
+Blueprint.docs
 ```
 
 The file name does not change the schema or grant permissions.
@@ -72,7 +73,7 @@ Unknown fields are rejected.
 
 ## Parsing boundary
 
-Hermesfile v1 uses YAML data compatible with the YAML 1.2 core data model.
+Blueprint v1 uses YAML data compatible with the YAML 1.2 core data model.
 
 The parser:
 
@@ -149,7 +150,7 @@ informational.
 
 The registry value cannot contain a URL scheme, embedded credentials, path or
 secret-like value. Registry allow/deny policy remains external to the
-Hermesfile.
+Blueprint.
 
 ## Build declaration
 
@@ -189,7 +190,7 @@ run: [python3, --version]
 They are not shell strings. Shell executables such as `sh`, `bash`, PowerShell
 or `cmd` are rejected, including shell dispatch through `env` or `busybox`.
 
-Hermesfile v1 does not provide host command execution.
+Blueprint v1 does not provide host command execution.
 
 ## Workspace
 
@@ -233,7 +234,7 @@ CPU, memory, PID and duration values are structurally bounded. Global and
 project policies may impose lower limits.
 
 Concurrency is intentionally absent. One image may back several containers,
-but a Hermesfile never authorizes parallel writers.
+but a Blueprint never authorizes parallel writers.
 
 ## Network
 
@@ -284,9 +285,9 @@ security:
   allowDeviceAccess: false
 ```
 
-Hermesfile v1 cannot weaken these invariants.
+Blueprint v1 cannot weaken these invariants.
 
-A Hermesfile does not contain secret values and does not contain secret
+A Blueprint does not contain secret values and does not contain secret
 references. Runtime secret binding remains a separate future Controller
 contract.
 
@@ -337,12 +338,12 @@ validation:
       expectExitCode: 0
 ```
 
-Milestone 2N validates this declaration only. Running these commands belongs to
-the later sandbox-builder lifecycle.
+The current source validator validates this declaration only. Running these
+commands belongs to the separate sandbox-builder lifecycle.
 
 ## Canonicalization
 
-After successful validation, HermesOps:
+After successful validation, Orchestra:
 
 1. applies explicit defaults;
 2. normalizes CPU integers;
@@ -381,7 +382,7 @@ Diagnostics are bounded objects:
   "code": "security_invariant_violation",
   "path": "/spec/security/privileged",
   "message": "This security value cannot be weakened.",
-  "documentation": "docs/hermesfile/SPECIFICATION_V1.md"
+  "documentation": "docs/blueprint/SPECIFICATION_V1.md"
 }
 ```
 
@@ -402,18 +403,18 @@ or stack traces.
 ## CLI
 
 ```bash
-scripts/hermesops-hermesfile.py validate Hermesfile
-scripts/hermesops-hermesfile.py validate Hermesfile --json
-scripts/hermesops-hermesfile.py fingerprint Hermesfile --json
-scripts/hermesops-hermesfile.py canonicalize Hermesfile
-scripts/hermesops-hermesfile.py canonicalize Hermesfile --output canonical.json
+scripts/hermesops-blueprint.py validate Blueprint
+scripts/hermesops-blueprint.py validate Blueprint --json
+scripts/hermesops-blueprint.py fingerprint Blueprint --json
+scripts/hermesops-blueprint.py canonicalize Blueprint
+scripts/hermesops-blueprint.py canonicalize Blueprint --output canonical.json
 ```
 
 Input paths must be regular files and cannot be symlinks.
 
 Canonical output replacement requires `--force`.
 
-## Milestone 2N boundary
+## Current implementation boundary
 
 Implemented:
 
@@ -424,13 +425,13 @@ Implemented:
 - source and canonical SHA-256;
 - bounded safe diagnostics;
 - CLI and example source;
+- immutable source revisions in SQLite;
+- authenticated Controller validation and lifecycle endpoints;
+- Console validation, editing, history, and comparison;
 - regression and adversarial tests.
 
 Not implemented:
 
-- source persistence in SQLite;
-- Controller HTTP validation endpoint;
-- WebUI editor;
 - build-plan compilation;
 - package resolution;
 - image build;
@@ -439,4 +440,4 @@ Not implemented:
 - rollback;
 - runtime secret binding.
 
-Those capabilities remain separate milestones.
+Those capabilities remain separate lifecycle concerns.

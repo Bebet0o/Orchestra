@@ -246,36 +246,36 @@ select:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: 
   .project-command-buttons button { width: 100%; }
 }
 
-/* Milestone 2T Hermesfile lifecycle */
-.hermesfile-panel { margin-top: 1rem; }
-.hermesfile-grid { display: grid; grid-template-columns: minmax(17rem, 0.72fr) minmax(24rem, 1.28fr); gap: 1rem; margin-top: 1rem; align-items: start; }
-.hermesfile-editor-card { grid-row: span 2; }
-.hermesfile-source-label { display: block; margin: 1rem 0 0.4rem; color: var(--muted); font-size: 0.8rem; }
-.hermesfile-source { min-height: 34rem; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.79rem; line-height: 1.55; tab-size: 2; }
-.hermesfile-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 0.8rem; }
-.hermesfile-actions button { padding: 0.72rem 0.9rem; border: 1px solid rgba(142, 230, 194, 0.34); background: var(--accent-soft); color: #e9fff6; font-weight: 700; }
-.hermesfile-preview { max-height: 28rem; margin: 0.8rem 0 0; padding: 0.9rem; overflow: auto; border: 1px solid rgba(155, 176, 216, 0.13); border-radius: 0.75rem; background: #070b13; color: #dfe8f7; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.76rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.hermesfile-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 0.7rem; margin-top: 1rem; align-items: end; }
-.hermesfile-compare label { display: grid; gap: 0.38rem; color: var(--muted); font-size: 0.8rem; }
-.hermesfile-compare .secondary-button { min-width: 7rem; }
-.hermesfile-list-button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem 0.7rem; padding: 0.85rem; border: 1px solid rgba(155, 176, 216, 0.13); background: rgba(7, 11, 19, 0.42); color: #f4f7fc; text-align: left; }
-.hermesfile-list-button:hover, .hermesfile-list-button[aria-current="true"] { border-color: rgba(142, 230, 194, 0.32); background: var(--accent-soft); }
-.hermesfile-list-button strong { min-width: 0; overflow-wrap: anywhere; }
-.hermesfile-list-button > span:not(.state-badge) { grid-column: 1; color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
-.hermesfile-list-button .state-badge { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+/* Milestone 2T Blueprint lifecycle */
+.blueprint-panel { margin-top: 1rem; }
+.blueprint-grid { display: grid; grid-template-columns: minmax(17rem, 0.72fr) minmax(24rem, 1.28fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.blueprint-editor-card { grid-row: span 2; }
+.blueprint-source-label { display: block; margin: 1rem 0 0.4rem; color: var(--muted); font-size: 0.8rem; }
+.blueprint-source { min-height: 34rem; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.79rem; line-height: 1.55; tab-size: 2; }
+.blueprint-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 0.8rem; }
+.blueprint-actions button { padding: 0.72rem 0.9rem; border: 1px solid rgba(142, 230, 194, 0.34); background: var(--accent-soft); color: #e9fff6; font-weight: 700; }
+.blueprint-preview { max-height: 28rem; margin: 0.8rem 0 0; padding: 0.9rem; overflow: auto; border: 1px solid rgba(155, 176, 216, 0.13); border-radius: 0.75rem; background: #070b13; color: #dfe8f7; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.76rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.blueprint-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 0.7rem; margin-top: 1rem; align-items: end; }
+.blueprint-compare label { display: grid; gap: 0.38rem; color: var(--muted); font-size: 0.8rem; }
+.blueprint-compare .secondary-button { min-width: 7rem; }
+.blueprint-list-button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem 0.7rem; padding: 0.85rem; border: 1px solid rgba(155, 176, 216, 0.13); background: rgba(7, 11, 19, 0.42); color: #f4f7fc; text-align: left; }
+.blueprint-list-button:hover, .blueprint-list-button[aria-current="true"] { border-color: rgba(142, 230, 194, 0.32); background: var(--accent-soft); }
+.blueprint-list-button strong { min-width: 0; overflow-wrap: anywhere; }
+.blueprint-list-button > span:not(.state-badge) { grid-column: 1; color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.blueprint-list-button .state-badge { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 details { margin-top: 0.9rem; }
 summary { cursor: pointer; color: var(--accent); font-weight: 700; }
 .state-badge[data-state="ready"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
 .state-badge[data-state="draft"] { border-color: rgba(255, 213, 128, 0.30); color: #ffe6b5; background: rgba(180, 126, 61, 0.10); }
 .state-badge[data-state="unknown"] { color: var(--muted); }
 @media (max-width: 1040px) {
-  .hermesfile-grid { grid-template-columns: 1fr; }
-  .hermesfile-editor-card { grid-row: auto; }
+  .blueprint-grid { grid-template-columns: 1fr; }
+  .blueprint-editor-card { grid-row: auto; }
 }
 @media (max-width: 620px) {
-  .hermesfile-actions, .hermesfile-compare { display: grid; grid-template-columns: 1fr; }
-  .hermesfile-actions button, .hermesfile-compare .secondary-button { width: 100%; }
-  .hermesfile-source { min-height: 26rem; }
+  .blueprint-actions, .blueprint-compare { display: grid; grid-template-columns: 1fr; }
+  .blueprint-actions button, .blueprint-compare .secondary-button { width: 100%; }
+  .blueprint-source { min-height: 26rem; }
 }
 
 

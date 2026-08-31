@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from .core import ControllerError, Settings
 from .event_journal import EventJournal
-from .hermesfile import MAX_SOURCE_BYTES, validate_source
+from .blueprint import MAX_SOURCE_BYTES, validate_source
 from .objective_commands import canonical_json, utc_now
 from .sandbox_profiles import (
     PROFILE_NAME_PATTERN,
@@ -26,13 +26,13 @@ MAX_REVISION_LIMIT = 200
 MAX_DIFF_CHANGES = 500
 
 
-class HermesfileLifecycleStore:
+class BlueprintLifecycleStore:
     REQUIRED_TABLES = {
         "sandbox_profiles",
         "sandbox_profile_revisions",
-        "controller_hermesfile_operations",
-        "controller_hermesfile_idempotency",
-        "controller_hermesfile_command_audit",
+        "controller_blueprint_operations",
+        "controller_blueprint_idempotency",
+        "controller_blueprint_command_audit",
         "controller_event_journal",
         "schema_migrations",
     }
@@ -40,7 +40,7 @@ class HermesfileLifecycleStore:
     def __init__(self, settings: Settings, profiles: SandboxProfileStore) -> None:
         self.settings = settings
         self.profiles = profiles
-        self.template_path = settings.root / "repo" / "config" / "examples" / "Hermesfile"
+        self.template_path = settings.root / "repo" / "config" / "examples" / "Blueprint"
 
     def connect(self, *, write: bool = False) -> sqlite3.Connection:
         try:
@@ -68,9 +68,9 @@ class HermesfileLifecycleStore:
         except sqlite3.Error as error:
             raise ControllerError(
                 503,
-                "hermesfile_lifecycle_unavailable",
-                "Hermesfile lifecycle unavailable",
-                "The Hermesfile lifecycle store cannot be opened.",
+                "blueprint_lifecycle_unavailable",
+                "Blueprint lifecycle unavailable",
+                "The Blueprint lifecycle store cannot be opened.",
             ) from error
 
     def readiness(self) -> tuple[bool, str]:
@@ -83,15 +83,15 @@ class HermesfileLifecycleStore:
                     )
                 }
                 if self.REQUIRED_TABLES - tables:
-                    return False, "Hermesfile lifecycle tables are missing"
+                    return False, "Blueprint lifecycle tables are missing"
                 version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-                if version < 22:
-                    return False, "Hermesfile lifecycle migration is missing"
+                if version < 23:
+                    return False, "Blueprint lifecycle migration is missing"
                 connection.execute(
-                    "SELECT operation_id FROM controller_hermesfile_operations LIMIT 1"
+                    "SELECT operation_id FROM controller_blueprint_operations LIMIT 1"
                 ).fetchone()
         except (sqlite3.Error, ControllerError, TypeError, ValueError):
-            return False, "Hermesfile lifecycle persistence cannot be read"
+            return False, "Blueprint lifecycle persistence cannot be read"
         return True, "ready"
 
     @staticmethod
@@ -110,8 +110,8 @@ class HermesfileLifecycleStore:
         if set(body) != {"source"} or not isinstance(body.get("source"), str):
             raise ControllerError(
                 400,
-                "invalid_hermesfile_request",
-                "Invalid Hermesfile request",
+                "invalid_blueprint_request",
+                "Invalid Blueprint request",
                 "The JSON body must contain exactly one string field named source.",
             )
         try:
@@ -119,14 +119,14 @@ class HermesfileLifecycleStore:
         except UnicodeEncodeError as error:
             raise ControllerError(
                 400,
-                "invalid_hermesfile_source",
-                "Invalid Hermesfile source",
+                "invalid_blueprint_source",
+                "Invalid Blueprint source",
             ) from error
         if not 1 <= len(source) <= MAX_SOURCE_BYTES:
             raise ControllerError(
                 400,
-                "hermesfile_source_size_invalid",
-                "Hermesfile source size invalid",
+                "blueprint_source_size_invalid",
+                "Blueprint source size invalid",
                 "The source must contain between 1 byte and 256 KiB.",
             )
         return source
@@ -169,7 +169,7 @@ class HermesfileLifecycleStore:
                             "Credential-like material was detected. "
                             "The source was not persisted or echoed."
                         ),
-                        "documentation": "docs/hermesfile/SPECIFICATION_V1.md",
+                        "documentation": "specs/blueprint-v1.schema.json",
                     }
                 ],
             }
@@ -184,15 +184,15 @@ class HermesfileLifecycleStore:
         if not 1 <= len(source) <= MAX_SOURCE_BYTES:
             raise ControllerError(
                 503,
-                "hermesfile_template_unavailable",
-                "Hermesfile template unavailable",
+                "blueprint_template_unavailable",
+                "Blueprint template unavailable",
             )
         preview = self.preview_source(source)
         if not preview.get("valid"):
             raise ControllerError(
                 503,
-                "hermesfile_template_invalid",
-                "Hermesfile template is invalid",
+                "blueprint_template_invalid",
+                "Blueprint template is invalid",
             )
         return {
             "source": source.decode("utf-8"),
@@ -208,6 +208,8 @@ class HermesfileLifecycleStore:
     def _key_hash(session_token: str, key: str) -> str:
         return hmac.new(
             session_token.encode("ascii"),
+            # Historical integrity boundary: persisted key hashes from the v22
+            # lifecycle cannot be recomputed or renamed during migration.
             b"hermesops-hermesfile-idempotency-v1\0" + key.encode("ascii"),
             hashlib.sha256,
         ).hexdigest()
@@ -296,7 +298,7 @@ class HermesfileLifecycleStore:
         request_hash = self._request_hash(method, route, body)
         row = connection.execute(
             "SELECT method, route, request_hash, response_json "
-            "FROM controller_hermesfile_idempotency "
+            "FROM controller_blueprint_idempotency "
             "WHERE session_fingerprint=? AND key_hash=?",
             (session_fp, key_hash),
         ).fetchone()
@@ -329,7 +331,7 @@ class HermesfileLifecycleStore:
                 )
             return replay, session_fp, key_hash, request_hash
         connection.execute(
-            "INSERT INTO controller_hermesfile_idempotency ("
+            "INSERT INTO controller_blueprint_idempotency ("
             "session_fingerprint,key_hash,method,route,request_hash,created_at"
             ") VALUES (?,?,?,?,?,?)",
             (session_fp, key_hash, method, route, request_hash, utc_now()),
@@ -348,7 +350,7 @@ class HermesfileLifecycleStore:
         now: str,
     ) -> None:
         connection.execute(
-            "UPDATE controller_hermesfile_idempotency SET response_status=?, "
+            "UPDATE controller_blueprint_idempotency SET response_status=?, "
             "response_json=?, operation_id=?, completed_at=? "
             "WHERE session_fingerprint=? AND key_hash=?",
             (
@@ -373,7 +375,7 @@ class HermesfileLifecycleStore:
         now: str,
     ) -> dict[str, Any]:
         connection.execute(
-            "INSERT INTO controller_hermesfile_operations ("
+            "INSERT INTO controller_blueprint_operations ("
             "operation_id,command_kind,state,target_id,result_json,created_at,updated_at,finished_at"
             ") VALUES (?,?, 'SUCCEEDED', ?, ?, ?, ?, ?)",
             (
@@ -387,7 +389,7 @@ class HermesfileLifecycleStore:
             ),
         )
         row = connection.execute(
-            "SELECT * FROM controller_hermesfile_operations WHERE operation_id=?",
+            "SELECT * FROM controller_blueprint_operations WHERE operation_id=?",
             (operation_id,),
         ).fetchone()
         assert row is not None
@@ -406,7 +408,7 @@ class HermesfileLifecycleStore:
         now: str,
     ) -> None:
         connection.execute(
-            "INSERT INTO controller_hermesfile_command_audit ("
+            "INSERT INTO controller_blueprint_command_audit ("
             "audit_id,operation_id,actor_type,actor_id,action,resource_type,resource_id,"
             "session_fingerprint,idempotency_key_hash,request_hash,outcome,created_at"
             ") VALUES (?,?,'session','operator',?,'sandbox_profile',?,?,?,?, 'SUCCEEDED',?)",
@@ -452,8 +454,8 @@ class HermesfileLifecycleStore:
         if not report.valid or report.result is None:
             raise ControllerError(
                 400,
-                "hermesfile_source_invalid",
-                "Hermesfile source is invalid",
+                "blueprint_source_invalid",
+                "Blueprint source is invalid",
                 "Validate the source and correct all errors before persistence.",
             )
         return report, report.result
@@ -498,8 +500,8 @@ class HermesfileLifecycleStore:
                 if existing is not None:
                     raise ControllerError(
                         409,
-                        "hermesfile_profile_conflict",
-                        "Hermesfile profile already exists",
+                        "blueprint_profile_conflict",
+                        "Blueprint profile already exists",
                         resource={
                             "type": "sandbox_profile",
                             "id": str(existing["sandbox_id"]),
@@ -557,7 +559,7 @@ class HermesfileLifecycleStore:
                 operation = self._record_operation(
                     connection,
                     operation_id=operation_id,
-                    kind="hermesfile.create",
+                    kind="blueprint.create",
                     sandbox_id=sandbox_id,
                     result={
                         "sandbox_id": sandbox_id,
@@ -571,7 +573,7 @@ class HermesfileLifecycleStore:
                 self._audit(
                     connection,
                     operation_id=operation_id,
-                    action="hermesfile.create",
+                    action="blueprint.create",
                     sandbox_id=sandbox_id,
                     session_fp=session_fp,
                     key_hash=key_hash,
@@ -649,7 +651,7 @@ class HermesfileLifecycleStore:
                     raise ControllerError(
                         409,
                         "resource_revision_conflict",
-                        "Hermesfile revision conflict",
+                        "Blueprint revision conflict",
                     )
                 if str(row["state"]) == "archived":
                     raise ControllerError(
@@ -660,14 +662,14 @@ class HermesfileLifecycleStore:
                 if profile_name != str(row["profile_name"]):
                     raise ControllerError(
                         409,
-                        "hermesfile_identity_immutable",
-                        "Hermesfile profile identity is immutable",
+                        "blueprint_identity_immutable",
+                        "Blueprint profile identity is immutable",
                     )
                 if hmac.compare_digest(str(row["source_sha256"]), result.source_sha256):
                     raise ControllerError(
                         409,
-                        "hermesfile_unchanged",
-                        "Hermesfile source is unchanged",
+                        "blueprint_unchanged",
+                        "Blueprint source is unchanged",
                     )
                 source_revision = int(row["current_source_revision"]) + 1
                 resource_revision = current_resource_revision + 1
@@ -720,7 +722,7 @@ class HermesfileLifecycleStore:
                 operation = self._record_operation(
                     connection,
                     operation_id=operation_id,
-                    kind="hermesfile.update",
+                    kind="blueprint.update",
                     sandbox_id=sandbox_id,
                     result={
                         "sandbox_id": sandbox_id,
@@ -734,7 +736,7 @@ class HermesfileLifecycleStore:
                 self._audit(
                     connection,
                     operation_id=operation_id,
-                    action="hermesfile.update",
+                    action="blueprint.update",
                     sandbox_id=sandbox_id,
                     session_fp=session_fp,
                     key_hash=key_hash,
@@ -809,7 +811,7 @@ class HermesfileLifecycleStore:
 
     def get_revision(self, sandbox_id: str, source_revision: int) -> dict[str, Any]:
         if SANDBOX_ID_PATTERN.fullmatch(sandbox_id) is None or source_revision < 1:
-            raise ControllerError(404, "hermesfile_revision_not_found", "Hermesfile revision not found")
+            raise ControllerError(404, "blueprint_revision_not_found", "Blueprint revision not found")
         with closing(self.connect()) as connection:
             row = connection.execute(
                 """
@@ -819,15 +821,15 @@ class HermesfileLifecycleStore:
                 (sandbox_id, source_revision),
             ).fetchone()
         if row is None:
-            raise ControllerError(404, "hermesfile_revision_not_found", "Hermesfile revision not found")
+            raise ControllerError(404, "blueprint_revision_not_found", "Blueprint revision not found")
         try:
             canonical = json.loads(str(row["canonical_json"]))
             diagnostics = json.loads(str(row["diagnostics_json"]))
         except json.JSONDecodeError as error:
             raise ControllerError(
                 503,
-                "hermesfile_revision_projection_failed",
-                "Hermesfile revision projection failed",
+                "blueprint_revision_projection_failed",
+                "Blueprint revision projection failed",
             ) from error
         result = self._revision_metadata(row)
         result.update(
@@ -938,7 +940,7 @@ class HermesfileLifecycleStore:
         try:
             with closing(self.connect()) as connection:
                 row = connection.execute(
-                    "SELECT * FROM controller_hermesfile_operations WHERE operation_id=?",
+                    "SELECT * FROM controller_blueprint_operations WHERE operation_id=?",
                     (operation_id,),
                 ).fetchone()
         except sqlite3.Error as error:

@@ -9,9 +9,9 @@ Controller. Milestone 2P installed the deterministic static build, hardened
 loopback HTTP service, navigation shell, and bounded probes. Milestone 2Q adds
 the narrow same-origin browser session and Controller client boundary. Milestone
 2R adds six explicit, query-free, read-only operational collection routes.
-Milestone 2S adds a closed project lifecycle gateway and project page. Milestone
-2T adds a dedicated Hermesfile editor, validation preview, immutable history,
-and canonical path comparison.
+Milestone 2S adds a closed project lifecycle gateway and project page. The
+current Console includes a dedicated Blueprint editor, validation preview,
+immutable history, and canonical path comparison.
 
 The Console remains unprivileged. It never opens SQLite, project workspaces,
 the Hermes Agent endpoint, Docker sockets, or host paths.
@@ -57,7 +57,7 @@ rejected before output is replaced.
 
 ## Routes
 
-The product shell serves `/dashboard`, `/projects`, `/hermesfiles`, `/objectives`, `/executions`,
+The product shell serves `/dashboard`, `/projects`, `/blueprints`, `/objectives`, `/executions`,
 `/reviews`, `/events`, and `/administration`. The service endpoints remain
 `GET|HEAD /health` and `GET|HEAD /version`. Controller gateway paths are
 separately allowlisted and never use generic filesystem or URL routing.
@@ -79,8 +79,8 @@ python3 scripts/hermesops-console-probe.py   --base-url http://127.0.0.1:8788
 
 ## Current non-goals
 
-The Console implements the bounded 2R dashboard, 2S project lifecycle, 2T
-Hermesfile lifecycle, and 2U objective lifecycle. It does not build or activate
+The Console implements the bounded dashboard, project lifecycle, Blueprint
+lifecycle, and objective lifecycle. It does not build or activate
 images, bind secrets, delete revisions, expose objective task details or
 unsupported objective commands, implement execution views, human review
 actions, WebSocket events, browser persistence, service workers, or offline

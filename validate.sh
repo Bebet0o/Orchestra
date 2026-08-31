@@ -85,15 +85,16 @@ static_validation() {
   tests/test-controller-browser-auth-adversarial.sh \
   tests/test_controller_browser_auth_adversarial.py \
   controller_api/orchestration_reads.py \
-  controller_api/hermesfile.py \
-  controller_api/hermesfile_lifecycle.py \
+  controller_api/blueprint.py \
+  controller_api/blueprint_lifecycle.py \
   controller_api/sandbox_profiles.py \
   controller_api/sandbox_profile_probe.py \
-  scripts/hermesops-hermesfile.py \
+  scripts/hermesops-blueprint.py \
   scripts/hermesops-sandbox-profile.py \
   scripts/hermesops-controller-sandbox-profile-probe.py \
-  tests/test_hermesfile_v1.py \
-  tests/test-hermesfile-v1.sh \
+  tests/test_blueprint_v1.py \
+  tests/test_blueprint_migration.py \
+  tests/test-blueprint-v1.sh \
   tests/test_sandbox_profiles.py \
   tests/test_controller_sandbox_profile_reads.py \
   tests/test-sandbox-profiles.sh \
@@ -124,16 +125,16 @@ static_validation() {
         tests/test-console-operational-dashboard.sh \
         tests/test-controller-project-lifecycle.sh \
         tests/test-console-project-lifecycle.sh \
-        tests/test-controller-hermesfile-lifecycle.sh \
-        tests/test-console-hermesfile-lifecycle.sh \
+        tests/test-controller-blueprint-lifecycle.sh \
+        tests/test-console-blueprint-lifecycle.sh \
         tests/test-console-objective-lifecycle.sh \
         tests/test_console_service.py \
         tests/test_console_controller_client.py \
         tests/test_console_operational_dashboard.py \
         tests/test_controller_project_lifecycle.py \
         tests/test_console_project_lifecycle.py \
-        tests/test_controller_hermesfile_lifecycle.py \
-        tests/test_console_hermesfile_lifecycle.py \
+        tests/test_controller_blueprint_lifecycle.py \
+        tests/test_console_blueprint_lifecycle.py \
         tests/test_console_objective_lifecycle.py \
         controller_api/__init__.py controller_api/core.py \
         controller_api/server.py controller_api/service_support.py \
@@ -160,6 +161,7 @@ static_validation() {
   migrations/020_sandbox_profile_persistence.sql \
   migrations/021_project_lifecycle.sql \
   migrations/022_hermesfile_lifecycle.sql \
+  migrations/023_blueprint_migration.sql \
         systemd/user/hermesops-controller-api.service \
         systemd/user/hermesops-console.service \
         docs/milestones/2B_CONTROLLER_API_SKELETON.md \
@@ -186,9 +188,9 @@ static_validation() {
   console/dist/index.html console/dist/assets/app.js \
   console/dist/assets/controller-client.js \
   console/dist/assets/styles.css console/dist/asset-manifest.json \
-  docs/hermesfile/SPECIFICATION_V1.md \
-  specs/hermesfile-v1.schema.json \
-  config/examples/Hermesfile \
+  docs/blueprint/SPECIFICATION_V1.md \
+  specs/blueprint-v1.schema.json \
+  config/examples/Blueprint \
         compose/agent.yaml compose/images.lock.env \
         compose/agent.env.example compose/webui.env.example \
         compose/notifications.env.example config/host-packages.lock.toml
@@ -293,15 +295,15 @@ PY
   "${REPO}/tests/test-controller-browser-auth.sh"
   "${REPO}/tests/test-controller-browser-auth-adversarial.sh"
   "${REPO}/tests/test-controller-orchestration-reads.sh"
-  "${REPO}/tests/test-hermesfile-v1.sh"
+  "${REPO}/tests/test-blueprint-v1.sh"
   "${REPO}/tests/test-sandbox-profiles.sh"
   "${REPO}/tests/test-console-foundation.sh"
   "${REPO}/tests/test-console-controller-client.sh"
   "${REPO}/tests/test-console-operational-dashboard.sh"
   "${REPO}/tests/test-controller-project-lifecycle.sh"
   "${REPO}/tests/test-console-project-lifecycle.sh"
-  "${REPO}/tests/test-controller-hermesfile-lifecycle.sh"
-  "${REPO}/tests/test-console-hermesfile-lifecycle.sh"
+  "${REPO}/tests/test-controller-blueprint-lifecycle.sh"
+  "${REPO}/tests/test-console-blueprint-lifecycle.sh"
   "${REPO}/tests/test-console-objective-lifecycle.sh"
   "${REPO}/tests/test-reviewer-assignments.sh"
     "${REPO}/tests/test-controller-service-contract.sh"

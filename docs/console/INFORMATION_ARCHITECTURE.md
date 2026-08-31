@@ -498,7 +498,7 @@ Roll back
 Archive
 ```
 
-### Hermesfile editor
+### Blueprint editor
 
 The editor provides:
 
@@ -769,7 +769,7 @@ Mobile support may prioritize:
 - pause/cancel;
 - recovery decisions.
 
-The Hermesfile editor may require desktop width.
+The Blueprint editor may require desktop width.
 
 ## Initial beta route map
 
@@ -822,5 +822,5 @@ tests pass.
 - raw Docker management;
 - raw SQLite explorer;
 - generic shell execution;
-- mobile-first Hermesfile editing;
+- mobile-first Blueprint editing;
 - hidden autonomous destructive actions.
