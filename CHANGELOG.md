@@ -1,118 +1,123 @@
 # Changelog
-- Added durable, immutable Hermesfile v1 sandbox profile source revisions and authenticated profile reads.
 
-All notable changes to HermesOps will be documented in this file.
+Notable project changes are recorded here. The current project is Orchestra;
+older entries retain HermesOps and Hermesfile names where those were the names
+of the released or implemented historical interfaces.
+
+Post-transition Orchestra changes remain under [Unreleased] until an Orchestra
+release is published.
 
 ## [Unreleased]
 
-- Add milestone 2U bounded Objective Lifecycle Console integration.
-- Reuse the existing secure objective creation, pause, resume, cancel and operation read contracts without a schema migration.
-
-- Add milestone 2T Hermesfile lifecycle persistence and Controller routes.
-- Add strict non-persisting validation, guided template creation, immutable
-  source revisions, `If-Match` concurrency, path-only canonical comparison,
-  runtime projection, redacted operations/audit/events, and the dedicated
-  Console editor.
-
-- Add authenticated, redacted public reads for orchestration plans, DAG edges, attempts and reviewer assignments.
-- Add executable Hermesfile v1 parsing, semantic validation, canonical JSON and deterministic source/canonical SHA-256 fingerprints.
-
 ### Added
 
-- public Debian 12 installer, preflight, validation, and conservative
-  uninstaller;
-- local and CI secret scanning;
-- examples for Hermes Agent, the temporary upstream WebUI, and notifications;
-- reproducible worker-image export and verified import;
-- Apache License 2.0;
-- English public README covering architecture, installation, sandbox
-  concepts, security, current limitations, and roadmap;
-- explicit long-term direction for HermesOps Console and Hermesfiles in
-  `v0.2.0-beta`.
-- Milestone 2A architecture contracts for the future Controller, Console,
-  replayable event stream, and Hermesfile sandbox profiles;
-- machine-readable OpenAPI and JSON Schema design contracts;
-- accepted architecture decisions covering state ownership, privilege
-  boundaries, Agent adaptation, immutable images, replay, and confirmations.
-
-### Fixed
-
-- synchronized the complete Controller HTTP documentation with OpenAPI;
-- preserved multi-project objectives and numeric queue priorities in API v1;
-- added a machine-readable AsyncAPI WebSocket contract;
-- removed forward-compatibility contradictions from response and event schemas;
-- prohibited unsupported Hermesfile v0 secret eligibility;
-- documented the persistence delta required before Controller writes.
-
-- scanner-safe CSRF and Hermesfile schema identifiers that preserve the
-  security contract without resembling tracked secret assignments;
+- Orchestra project identity and public repository bootstrap on the preserved
+  HermesOps foundation.
+- Immutable OCI worker distribution data, environment resolution, exact
+  sandbox materialization, and shared worker/reviewer preparation.
+- A trusted two-phase worker publication and acceptance process with exact
+  candidate binding and fresh anonymous digest-pull verification.
+- Orchestra Blueprint v1 parsing, validation, canonicalization, fingerprinting,
+  persistence, immutable revisions, lifecycle operations, and current
+  API/CLI/Console/documentation surfaces.
+- SQLite schema migration 22 to 23 for the Blueprint authority cutover.
+- Refreshed public project, contribution, security, and changelog documentation
+  for the current Orchestra implementation.
 
 ### Changed
 
-- public version normalized to `0.1.0-alpha`;
-- a fresh public installation starts with zero registered projects;
-- local project configurations are ignored and test fixtures live only
-  under `tests/fixtures/projects/`;
-- the current upstream WebUI is documented as a temporary compatibility
-  interface rather than the final HermesOps product;
-- `v0.1.0-alpha` is explicitly positioned as the validated technical
-  foundation for future releases.
+- The current project-definition authority is Orchestra Blueprint with source
+  format `blueprint-v1`; Hermesfile remains only historical or migration input.
+- The default production worker environment resolves to the accepted immutable
+  `ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49`
+  artifact.
+- Production worker and reviewer paths materialize the same exact OCI authority
+  instead of silently selecting the legacy local-image environment.
+- Current Controller, OpenAPI, CLI, Console, schema, example, and specification
+  terminology and routes use Blueprint and `/blueprints`.
 
 ### Fixed
 
-- minimal Debian preflight no longer fails before installable dependencies
-  can be installed;
-- `/usr/sbin` and `/sbin` are included when locating administrative
-  commands;
-- `util-linux` is an explicit installer dependency;
-- local test fixtures are no longer accidentally tracked as active projects;
-- static validation works from source archives without `.git` metadata;
-- installation without `auth.json` defers AI-profile verification instead
-  of failing;
-- runtime layout validation accepts source-archive installations;
-- user systemd services no longer create a `default.target` ordering cycle;
-- the installer restarts user services deterministically and verifies that
-  all three are active.
+- Docker push digest parsing accepts the bounded tag-prefixed format emitted by
+  Docker while retaining strict tag, algorithm, digest, size, and ambiguity
+  checks.
+- The schema 22 to 23 migration preserves source and canonical bytes and hashes,
+  sandbox/profile/revision identity, project and objective linkage, historical
+  request routes, and historical integrity domains; malformed semantic input
+  fails atomically.
 
 ### Security
 
-- explicit protection for `auth.json` and `secrets/`;
-- backups before divergent upgrades;
-- no generated secret is stored in the source repository;
-- host Docker socket is not exposed to workers.
+- Published worker identity is bound to an immutable OCI digest rather than a
+  mutable tag or daemon-local image ID.
+- Final worker acceptance requires candidate reauthorization, detached exact
+  source checkout, a fresh anonymous exact-digest pull, RepoDigest validation,
+  and artifact metadata binding.
+- Worker and reviewer sandbox preparation rejects mismatched RepoDigests and
+  does not expose the host Docker socket.
 
-### Milestone 2P — Console Web Foundation
+## Historical HermesOps development
 
-- add the independent loopback-only HermesOps Console shell;
-- add a deterministic Python-only static build and manifest;
-- add a dedicated hardened user service on port 8788;
-- add bounded HTTP, build, install, probe, and adversarial test coverage;
-- keep Controller integration and all business workflows disabled until later
-  beta milestones.
+The entries below preserve the names and capabilities of the completed
+HermesOps foundation from which Orchestra was created.
 
-### Milestone 2Q — Browser Session and Controller Client
+### HermesOps 0.2.0 (historical release)
 
-- add a narrow same-origin Console gateway for browser session lifecycle and
-  capability reads;
-- add login, authoritative session refresh, CSRF-protected logout, and degraded
-  Controller-unavailable states;
-- keep passwords, cookies, CSRF values, and pending actions out of browser
-  storage;
-- add bounded proxy, origin, header, body, response, and live-probe coverage;
-- keep business workflows and WebSocket events assigned to later milestones.
+#### Added
 
-### Milestone 2R — Operational Dashboard
+- Durable, immutable Hermesfile v1 sandbox-profile source revisions and
+  authenticated profile reads.
+- `AgentRuntime`, `HermesRuntime`, runtime-neutral execution events, and the
+  first bounded `NativeRuntime` primitive.
+- `ModelProvider`, deterministic fake implementations, and the minimal
+  OpenAI-compatible provider adapter.
+- Bounded Objective Lifecycle Console integration using secure objective
+  creation, pause, resume, cancel, and operation-read contracts.
+- Hermesfile lifecycle persistence and Controller routes, including strict
+  non-persisting validation, guided template creation, immutable revisions,
+  `If-Match` concurrency, runtime projection, and redacted audit/events.
+- Authenticated, redacted reads for plans, DAG edges, attempts, and reviewer
+  assignments.
+- Executable Hermesfile v1 semantic validation, canonical JSON, and
+  deterministic source/canonical SHA-256 fingerprints.
+- Public Debian 12 installer, preflight, validation, conservative uninstaller,
+  local and CI secret scanning, examples, reproducible worker-image export,
+  Apache-2.0 licensing, and machine-readable API/event/schema contracts.
+- The Console web foundation, browser sessions, same-origin Controller client,
+  operational dashboard, project lifecycle, and objective lifecycle.
 
-- add six explicit query-free read-only Controller collections to the Console gateway;
-- add bounded project, objective, attention, plan and portfolio summaries;
-- add partial-data, session-expiry, empty-state and manual-refresh handling;
-- keep SQLite, host paths, browser storage, WebSocket and all mutations outside the Console;
-- add deterministic dashboard source, proxy, build and live-probe coverage.
+#### Changed
 
-### Milestone 2S — Project Lifecycle
+- Public version markers were normalized to `0.1.0-alpha` for the historical
+  foundation.
+- Fresh installation began with zero registered projects; local project
+  configuration stayed untracked and fixtures moved under `tests/fixtures/`.
+- The upstream Hermes WebUI was documented as a temporary compatibility
+  interface rather than the final control-plane Console.
+- Controller APIs gained bounded project, objective, execution, review,
+  recovery, event, and command surfaces with explicit contracts.
 
-- add schema 21 project revisions, archive state, repository mode, operations, idempotency and immutable audit;
-- add secure create/import, metadata update, enable, disable, rescan and archive Controller commands;
-- preserve compatibility project TOML files while making Controller mutations authoritative;
-- add a bounded same-origin Console project page with ETag/If-Match and fresh CSRF per intent;
-- keep delete, remote/default-branch mutation, automatic push and Hermesfile editing unavailable.
+#### Fixed
+
+- Controller HTTP documentation and OpenAPI were synchronized, multi-project
+  objectives and numeric priorities were preserved, and event transport gained
+  a machine-readable AsyncAPI contract.
+- Unsupported Hermesfile v0 secret eligibility was prohibited.
+- Minimal-host preflight, administrative command lookup, dependency handling,
+  source-archive validation, deferred authentication, user-service ordering,
+  and deterministic service restart behavior were corrected.
+- Scanner-safe CSRF and Hermesfile schema identifiers preserved their security
+  contracts without resembling tracked secret assignments.
+
+#### Security
+
+- Generated secrets remained outside the repository, `auth.json` and
+  `secrets/` received explicit protection, and divergent upgrades created
+  backups.
+- Workers did not receive the host Docker socket.
+- Controller browser sessions, CSRF, idempotency, immutable audit, replayable
+  events, read-only review, and deterministic recovery boundaries were added
+  incrementally through the historical 0.2.0 work.
+
+Historical architecture and milestone details remain under `docs/milestones/`,
+`docs/adr/`, and the v0 Hermesfile specification and schema.

@@ -4,32 +4,38 @@
 
     REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     README="${REPO}/README.md"
+    CHANGELOG="${REPO}/CHANGELOG.md"
+    SECURITY="${REPO}/SECURITY.md"
     LICENSE_FILE="${REPO}/LICENSE"
     VERSION_FILE="${REPO}/VERSION"
 
     [[ -f "$README" ]]
+    [[ -f "$CHANGELOG" ]]
+    [[ -f "$SECURITY" ]]
     [[ -f "$LICENSE_FILE" ]]
     [[ -f "$VERSION_FILE" ]]
 
     [[ "$(tr -d '\r\n' <"$VERSION_FILE")" == "0.1.0-alpha" ]]
 
     required_readme_text=(
-        'Current status: `v0.1.0-alpha` — foundation release'
-        '`v0.2.0-beta` — long-term product milestone'
-        'It has no committed release date'
-        'HermesOps Console'
-        'Blueprints'
-        '/blueprints'
+        'Orchestra is under active development'
+        'not yet a production-ready autonomous agent platform'
+        'Hermes Agent is an upstream integration'
+        'AgentRuntime'
+        'HermesRuntime'
+        'NativeRuntime'
+        'ModelProvider'
+        'repository@sha256:digest'
+        'blueprint-v1'
         'scripts/hermesops-blueprint.py'
         'docs/blueprint/SPECIFICATION_V1.md'
-        'temporary compatibility interface'
-        'hermesops-worker-sandbox-0.2.tar.gz'
-        'hermesops-worker-sandbox-0.2.tar.gz.sha256'
-        'HERMESOPS_PREFLIGHT_PASS'
-        'HERMESOPS_INSTALL_PASS'
-        './uninstall.sh --user "$USER"'
+        'specs/blueprint-v1.schema.json'
+        'config/examples/Blueprint'
+        './install.sh --user "$USER"'
+        './validate.sh --static --quiet'
+        'SECURITY.md'
+        'CONTRIBUTING.md'
         'Apache License 2.0'
-        'HermesOps does not replace Hermes Agent'
     )
 
     for text in "${required_readme_text[@]}"; do
@@ -51,6 +57,14 @@
             exit 1
         fi
     done
+
+    grep -Fq '### HermesOps 0.2.0 (historical release)' "$CHANGELOG"
+    ! grep -Fq 'HermesOps 0.2.0 development (unreleased historical material)' \
+        "$CHANGELOG"
+    grep -Fq 'working transitional deployment path' "$README"
+    grep -Fq 'and service layout is inherited from HermesOps' "$README"
+    grep -Fq 'GitHub private vulnerability reporting is not currently enabled' \
+        "$SECURITY"
 
     current_blueprint_docs=(
         docs/api/CONTROLLER_API_V1.md
@@ -85,19 +99,21 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
 
-if len(text.splitlines()) < 300:
+if len(text.splitlines()) < 150:
     raise SystemExit("README is unexpectedly short")
 
 required_headings = (
     "# Orchestra",
-    "## Release direction",
+    "## What is Orchestra?",
+    "## Why Orchestra?",
+    "## Current status",
     "## Architecture",
-    "## Roles",
-    "## Worker image, archive, engine, and containers",
     "## Orchestra Blueprint",
-    "## Security model",
-    "## Installation",
-    "## Current limitations",
+    "## Getting started",
+    "## Validation and tests",
+    "## Repository layout",
+    "## Security",
+    "## Contributing",
     "## Roadmap",
     "## License",
 )
@@ -106,16 +122,15 @@ for heading in required_headings:
     if heading not in text:
         raise SystemExit(f"Missing README heading: {heading}")
 
-future = text.index("### `v0.2.0-beta`")
-limitations = text.index("## Current limitations")
-if future > limitations:
-    raise SystemExit("Future milestone positioning is missing from introduction")
+if text.index("## Current status") > text.index("## Architecture"):
+    raise SystemExit("Current maturity must be established before architecture")
+if "Foundation-only or planned work includes" not in text:
+    raise SystemExit("README must distinguish foundations from planned work")
+if "Blueprint lifecycle operations produce and version the existing\n`SandboxProfile` identity" not in text:
+    raise SystemExit("README must describe the Blueprint/SandboxProfile identity model")
 
-if "strictly parse, validate, canonicalize and fingerprint\nBlueprint v1 sources" not in text:
-    raise SystemExit("README must describe the implemented Blueprint v1 source tooling")
-
-print("HermesOps release documentation structure: PASS")
+print("Orchestra public documentation structure: PASS")
 PY
 
-    echo "HermesOps Apache-2.0 license: PASS"
-    echo "HermesOps release documentation: PASS"
+    echo "Orchestra Apache-2.0 license: PASS"
+    echo "Orchestra release documentation: PASS"
