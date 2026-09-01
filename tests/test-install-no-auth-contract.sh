@@ -7,11 +7,11 @@
     VERIFY_LAYOUT="${REPO}/scripts/verify-layout.sh"
 
     grep -Fq \
-        'auth.json absent; validation des profils IA reportée.' \
+        'auth.json absent; les objectifs IA ne fonctionneront pas encore.' \
         "$INSTALLER"
 
     grep -Fq \
-        'if [[ -f "${ROOT}/state/hermes-home/auth.json" ]]; then' \
+        'if [[ -f "${ORCHESTRA_ROOT}/state/hermes-home/auth.json" ]]; then' \
         "$INSTALLER"
 
     grep -Fq \
@@ -27,24 +27,28 @@ text = Path(sys.argv[1]).read_text(encoding="utf-8")
 sync = text.index(
     '"${REPO}/scripts/orchestra-roles.py" sync'
 )
-condition = text.index(
-    'if [[ -f "${ROOT}/state/hermes-home/auth.json" ]]; then',
+registry = text.index(
+    '"${REPO}/scripts/orchestra-registry.py" validate',
     sync,
+)
+compose = text.index(
+    '"${REPO}/scripts/orchestra-compose.sh" up -d',
+    registry,
+)
+condition = text.index(
+    'if [[ -f "${ORCHESTRA_ROOT}/state/hermes-home/auth.json" ]]; then',
+    compose,
 )
 verify = text.index(
     '"${REPO}/scripts/orchestra-roles.py" verify-profiles',
     condition,
 )
 deferred = text.index(
-    'auth.json absent; validation des profils IA reportée.',
+    'auth.json absent; les objectifs IA ne fonctionneront pas encore.',
     verify,
 )
-registry = text.index(
-    '"${REPO}/scripts/orchestra-registry.py" validate',
-    deferred,
-)
 
-if not sync < condition < verify < deferred < registry:
+if not sync < registry < compose < condition < verify < deferred:
     raise SystemExit("Invalid no-auth role validation order")
 
 print("Orchestra no-auth installer order: PASS")

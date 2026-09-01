@@ -182,7 +182,10 @@ if ((${#MISSING_PACKAGES[@]})); then
     sudo_run env DEBIAN_FRONTEND=noninteractive apt-get install -y \
         --no-install-recommends "${MISSING_PACKAGES[@]}"
 fi
-command -v runuser >/dev/null 2>&1
+command -v runuser >/dev/null 2>&1 || {
+    echo "runuser reste absent après installation de util-linux." >&2
+    exit 1
+}
 
 HOST_LOCK="${SOURCE}/config/host-packages.lock.toml"
 readarray -t HOST_VERSIONS < <(
