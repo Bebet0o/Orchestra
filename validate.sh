@@ -32,6 +32,7 @@ static_validation() {
     for file in \
         install.sh uninstall.sh preflight.sh validate.sh \
         scripts/check-secrets.sh scripts/check-secrets.py \
+        scripts/platform-support.sh \
         scripts/export-worker-image.sh scripts/init-test-fixtures.sh \
         scripts/environment_resolution/__init__.py \
         scripts/environment_resolution/contract.py \
@@ -57,6 +58,7 @@ static_validation() {
         tests/test_trusted_worker_publisher.py \
         tests/test-public-empty-registry.sh \
         tests/test-preflight-minimal-host.sh \
+        tests/test-install-platform-support.sh \
         tests/test-install-no-auth-contract.sh \
         tests/test-systemd-user-boot-order.sh \
         tests/test-release-documentation.sh \
@@ -278,6 +280,7 @@ PY
     python3 "${REPO}/tests/test_trusted_worker_publisher.py"
     "${REPO}/tests/test-public-empty-registry.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
+    "${REPO}/tests/test-install-platform-support.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"
     "${REPO}/tests/test-systemd-user-boot-order.sh"
     "${REPO}/tests/test-release-documentation.sh"

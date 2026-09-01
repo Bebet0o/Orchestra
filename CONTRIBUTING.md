@@ -22,9 +22,9 @@ code, tests, and public documentation.
 
 Clone the repository and work from a topic branch. The CI environment uses
 Ubuntu 24.04 and installs `python3-yaml`, `rsync`, `sqlite3`, and `util-linux`
-before running static validation. The public host installer has a narrower
-Debian 12 amd64 contract; see [public installation](docs/PUBLIC_INSTALLATION.md)
-for deployment requirements.
+before running static validation. The public installer supports Debian 12+ or
+Ubuntu 22.04+ on amd64; see
+[public installation](docs/PUBLIC_INSTALLATION.md) for deployment requirements.
 
 Run these commands from the repository root:
 

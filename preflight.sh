@@ -8,6 +8,14 @@ ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
 TARGET_USER="${USER:-$(id -un)}"
 CI_MODE=0
 
+PLATFORM_SUPPORT="${SOURCE}/scripts/platform-support.sh"
+if [[ ! -r "$PLATFORM_SUPPORT" ]]; then
+    echo "Contrat de plateforme absent: $PLATFORM_SUPPORT" >&2
+    exit 1
+fi
+# shellcheck disable=SC1090
+. "$PLATFORM_SUPPORT"
+
 while (($#)); do
     case "$1" in
         --target-user)
@@ -22,7 +30,7 @@ while (($#)); do
             cat <<'HELP'
 Usage: ./preflight.sh [--target-user USER] [--ci]
 
-Lecture seule. Vérifie Debian 12, Docker, Compose, dépendances,
+Lecture seule. Vérifie Debian 12+ ou Ubuntu 22.04+, amd64, Docker, Compose, dépendances,
 ports et contenu public du dépôt.
 HELP
             exit 0
@@ -49,15 +57,17 @@ if [[ "$CI_MODE" == 0 ]]; then
     if [[ -r /etc/os-release ]]; then
         # shellcheck disable=SC1091
         . /etc/os-release
-        [[ "${ID:-}" == "debian" && "${VERSION_ID:-}" == "12" ]] \
-            && pass "Debian 12 détecté" \
-            || fail "Debian 12 requis"
+        if orchestra_os_supported "${ID:-}" "${VERSION_ID:-}"; then
+            pass "Système pris en charge: ${ID} ${VERSION_ID}"
+        else
+            fail "Système non pris en charge: ${ID:-inconnu} ${VERSION_ID:-inconnue}; $(orchestra_platform_contract) requis"
+        fi
     else
         fail "/etc/os-release absent"
     fi
 
     ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
-    [[ "$ARCH" == "amd64" || "$ARCH" == "x86_64" ]] \
+    orchestra_arch_supported "$ARCH" \
         && pass "Architecture amd64" \
         || fail "Architecture non prise en charge: $ARCH"
 fi

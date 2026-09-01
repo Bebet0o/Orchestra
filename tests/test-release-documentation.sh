@@ -32,6 +32,7 @@
         'specs/blueprint-v1.schema.json'
         'config/examples/Blueprint'
         './install.sh --user "$USER"'
+        'Debian 12+ or Ubuntu 22.04+ on amd64'
         './validate.sh --static --quiet'
         'SECURITY.md'
         'CONTRIBUTING.md'

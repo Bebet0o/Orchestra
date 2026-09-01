@@ -1,19 +1,20 @@
-# Installation publique Debian 12
+# Installation publique
 
 ## Contrat de la première alpha
 
-HermesOps `0.1.0-alpha` est volontairement limité à :
+Le chemin d'installation public actuel prend en charge :
 
-- Debian 12 Bookworm ;
+- Debian 12 ou version ultérieure ;
+- Ubuntu 22.04 ou version ultérieure ;
 - architecture amd64 ;
 - utilisateur de service avec UID/GID `1000:1000` ;
 - racine fixe `/opt/docker/hermesops` ;
 - Docker Engine testé en `29.6.1` ;
 - Docker Compose testé en `5.3.0`.
 
-L'installateur sait ajouter le dépôt APT officiel Docker et installer les
-versions verrouillées lorsqu'aucun Docker n'est présent. Il refuse de supprimer
-automatiquement des paquets Docker concurrents.
+L'installateur sélectionne le dépôt APT officiel Docker correspondant à Debian
+ou Ubuntu et installe les versions amont verrouillées lorsqu'aucun Docker n'est
+présent. Il refuse de supprimer automatiquement des paquets Docker concurrents.
 
 ## Installation recommandée
 

@@ -29,6 +29,14 @@ CONSOLE_UNIT_WAS_ENABLED=0
 CONSOLE_UNIT_WAS_ACTIVE=0
 CONSOLE_UNIT_TOUCHED=0
 
+PLATFORM_SUPPORT="${SOURCE}/scripts/platform-support.sh"
+[[ -r "$PLATFORM_SUPPORT" ]] || {
+    echo "Contrat de plateforme absent: $PLATFORM_SUPPORT" >&2
+    exit 1
+}
+# shellcheck disable=SC1090
+. "$PLATFORM_SUPPORT"
+
 usage() {
     cat <<'HELP'
 Usage: ./install.sh [options]
@@ -208,13 +216,18 @@ echo "Utilisateur : $TARGET_USER ($TARGET_UID:$TARGET_GID)"
 
 # shellcheck disable=SC1091
 . /etc/os-release
-[[ "${ID:-}" == "debian" && "${VERSION_ID:-}" == "12" ]] || {
-    echo "Debian 12 requis." >&2
+orchestra_os_supported "${ID:-}" "${VERSION_ID:-}" || {
+    echo "Système non pris en charge: ${ID:-inconnu} ${VERSION_ID:-inconnue}; $(orchestra_platform_contract) requis." >&2
     exit 1
 }
 ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
-[[ "$ARCH" == "amd64" || "$ARCH" == "x86_64" ]] || {
+orchestra_arch_supported "$ARCH" || {
     echo "Architecture amd64 requise." >&2
+    exit 1
+}
+DOCKER_REPOSITORY_FAMILY="$(orchestra_docker_repository_family "$ID")"
+[[ "${VERSION_CODENAME:-}" =~ ^[a-z][a-z0-9-]*$ ]] || {
+    echo "VERSION_CODENAME invalide ou absent dans /etc/os-release." >&2
     exit 1
 }
 
@@ -272,13 +285,13 @@ configure_docker_repository() {
     trap 'rm -f "$KEY_TMP" "$SOURCE_TMP"' RETURN
 
     curl --fail --silent --show-error --location \
-        https://download.docker.com/linux/debian/gpg \
+        "https://download.docker.com/linux/${DOCKER_REPOSITORY_FAMILY}/gpg" \
         -o "$KEY_TMP"
     sudo_run install -m 0644 "$KEY_TMP" /etc/apt/keyrings/docker.asc
 
     cat >"$SOURCE_TMP" <<EOF
 Types: deb
-URIs: https://download.docker.com/linux/debian
+URIs: https://download.docker.com/linux/${DOCKER_REPOSITORY_FAMILY}
 Suites: ${VERSION_CODENAME}
 Components: stable
 Architectures: $(dpkg --print-architecture)
@@ -290,6 +303,23 @@ EOF
 
     rm -f "$KEY_TMP" "$SOURCE_TMP"
     trap - RETURN
+}
+
+resolve_locked_apt_version() {
+    local package="${1:?Paquet manquant}"
+    local upstream_version="${2:?Version amont manquante}"
+    local selected
+
+    selected="$(
+        apt-cache madison "$package" | awk '{print $3}' |
+            orchestra_select_locked_apt_version "$upstream_version"
+    )" || {
+        echo "Version amont verrouillée indisponible pour ${package}: ${upstream_version}" >&2
+        return 1
+    }
+    printf '%s\n' "$selected"
+    return 0
+
 }
 
 install_docker_engine() {
@@ -308,23 +338,16 @@ install_docker_engine() {
 
     configure_docker_repository
 
-    apt-cache madison docker-ce | awk '{print $3}' |
-        grep -Fxq "$DOCKER_CE_VERSION" || {
-            echo "Version Docker CE verrouillée indisponible: $DOCKER_CE_VERSION" >&2
-            exit 1
-        }
-    apt-cache madison docker-compose-plugin | awk '{print $3}' |
-        grep -Fxq "$DOCKER_COMPOSE_VERSION" || {
-            echo "Version Compose verrouillée indisponible: $DOCKER_COMPOSE_VERSION" >&2
-            exit 1
-        }
+    DOCKER_CE_PACKAGE_VERSION="$(resolve_locked_apt_version docker-ce "$DOCKER_CE_VERSION")"
+    DOCKER_CLI_PACKAGE_VERSION="$(resolve_locked_apt_version docker-ce-cli "$DOCKER_CLI_VERSION")"
+    DOCKER_COMPOSE_PACKAGE_VERSION="$(resolve_locked_apt_version docker-compose-plugin "$DOCKER_COMPOSE_VERSION")"
 
     sudo_run env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        "docker-ce=${DOCKER_CE_VERSION}" \
-        "docker-ce-cli=${DOCKER_CLI_VERSION}" \
+        "docker-ce=${DOCKER_CE_PACKAGE_VERSION}" \
+        "docker-ce-cli=${DOCKER_CLI_PACKAGE_VERSION}" \
         containerd.io \
         docker-buildx-plugin \
-        "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}"
+        "docker-compose-plugin=${DOCKER_COMPOSE_PACKAGE_VERSION}"
     sudo_run systemctl enable --now docker.service containerd.service
 }
 
@@ -339,8 +362,9 @@ fi
 
 if ! docker compose version >/dev/null 2>&1; then
     configure_docker_repository
+    DOCKER_COMPOSE_PACKAGE_VERSION="$(resolve_locked_apt_version docker-compose-plugin "$DOCKER_COMPOSE_VERSION")"
     sudo_run env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        "docker-compose-plugin=${DOCKER_COMPOSE_VERSION}"
+        "docker-compose-plugin=${DOCKER_COMPOSE_PACKAGE_VERSION}"
 fi
 
 sudo_run systemctl enable --now docker.service containerd.service
