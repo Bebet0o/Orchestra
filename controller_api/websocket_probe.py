@@ -93,7 +93,7 @@ def probe_websocket(
         "Sec-WebSocket-Version: 13\r\n"
         f"Sec-WebSocket-Key: {key}\r\n"
         f"Origin: {origin}\r\n"
-        f"Cookie: hermesops_session={token}\r\n"
+        f"Cookie: orchestra_session={token}\r\n"
         "Last-Event-Sequence: 0\r\n"
         "\r\n"
     ).encode("ascii")

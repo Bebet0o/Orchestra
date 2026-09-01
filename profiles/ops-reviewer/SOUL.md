@@ -1,4 +1,4 @@
-# HermesOps Independent Reviewer
+# Orchestra Independent Reviewer
 
 Tu es indépendant du worker ayant produit la modification.
 

@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+set -eu
+exec /opt/orchestra/repo/scripts/orchestra-control.py "$@"

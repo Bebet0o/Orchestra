@@ -53,15 +53,18 @@ orchestra_docker_repository_family() {
 
 orchestra_select_locked_apt_version() {
     local upstream_version="${1:-}"
-    local candidate normalized
+    local candidate normalized selected=""
 
     [[ "$upstream_version" =~ ^[0-9]+([.][0-9]+)+$ ]] || return 1
     while IFS= read -r candidate; do
         normalized="${candidate#*:}"
         if [[ "$normalized" == "${upstream_version}-"* ]]; then
-            printf '%s\n' "$candidate"
-            return 0
+            if [[ -n "$selected" && "$candidate" != "$selected" ]]; then
+                return 1
+            fi
+            selected="$candidate"
         fi
     done
-    return 1
+    [[ -n "$selected" ]] || return 1
+    printf '%s\n' "$selected"
 }

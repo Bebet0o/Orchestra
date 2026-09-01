@@ -28,7 +28,7 @@ def _request_json(
         path,
         headers={
             "Accept": "application/json",
-            "Cookie": f"hermesops_session={token}",
+            "Cookie": f"orchestra_session={token}",
             "Host": host_header,
         },
     )

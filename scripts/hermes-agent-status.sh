@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 SECRET_FILE="${ROOT}/secrets/agent.env"
 
 [[ -r "$SECRET_FILE" ]] || {
@@ -15,7 +15,7 @@ API_KEY="$(
 )"
 
 echo "=== Container ==="
-docker inspect hermesops-agent \
+docker inspect orchestra-hermes-agent \
     --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restarts={{.RestartCount}}'
 
 echo

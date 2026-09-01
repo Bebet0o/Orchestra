@@ -461,7 +461,7 @@ class SandboxProfileStore:
     def _cursor_key(cursor_secret: str) -> bytes:
         return hmac.new(
             cursor_secret.encode("ascii"),
-            b"hermesops-sandbox-profile-cursor-v1",
+            b"orchestra-sandbox-profile-cursor-v1",
             hashlib.sha256,
         ).digest()
 

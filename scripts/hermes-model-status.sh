@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
-AGENT="hermesops-agent"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
+AGENT="orchestra-hermes-agent"
 
 echo "=== Modèle configuré ==="
 

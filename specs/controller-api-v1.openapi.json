@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "HermesOps Controller API",
+    "title": "Orchestra Controller API",
     "version": "1.0.0-design-rc1",
-    "description": "Milestone 2A design contract after adversarial review. No running API is included in v0.1.0-alpha. The API preserves the current multi-project objective and numeric-priority semantics while defining future projections.",
+    "description": "Current Controller API v1 contract. The API preserves multi-project objective and numeric-priority semantics while exposing the implemented bounded projections and command surfaces.",
     "license": {
       "name": "Apache-2.0"
     }
@@ -7273,7 +7273,7 @@
       "sessionCookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "hermesops_session"
+        "name": "orchestra_session"
       },
       "csrfHeader": {
         "type": "apiKey",

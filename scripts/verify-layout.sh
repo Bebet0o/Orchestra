@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
 
 required_directories=(
@@ -24,7 +24,6 @@ for directory in "${required_directories[@]}"; do
 done
 
 for file in \
-    "${REPO}/VERSION" \
     "${REPO}/compose/agent.yaml" \
     "${REPO}/config/controller.toml"
 do
@@ -43,12 +42,7 @@ secret_mode="$(stat -c '%a' "${ROOT}/secrets")"
 
 if [[ -d "${REPO}/.git" ]]; then
     git -C "$REPO" rev-parse --verify HEAD >/dev/null
-    echo "HermesOps layout: PASS (git checkout)"
+    echo "Orchestra layout: PASS (git checkout)"
 else
-    version="$(tr -d '\r\n' <"${REPO}/VERSION")"
-    [[ -n "$version" ]] || {
-        echo "VERSION vide dans la source installée." >&2
-        exit 1
-    }
-    echo "HermesOps layout: PASS (source archive ${version})"
+    echo "Orchestra layout: PASS (source archive)"
 fi

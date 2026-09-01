@@ -10,9 +10,9 @@ base_backoff_seconds = 15
 
 [channels.file]
 enabled = true
-path = "/opt/docker/hermesops/runtime/notifications/delivered.jsonl"
+path = "/opt/orchestra/runtime/notifications/delivered.jsonl"
 
 [channels.telegram]
 mode = "auto"
-secrets_file = "/opt/docker/hermesops/secrets/notifications.env"
+secrets_file = "/opt/orchestra/secrets/notifications.env"
 api_base = "https://api.telegram.org"

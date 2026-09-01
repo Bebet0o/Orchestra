@@ -45,7 +45,7 @@ def _post(
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Content-Length": str(len(raw)),
-        "Cookie": f"hermesops_session={token}",
+        "Cookie": f"orchestra_session={token}",
         "Idempotency-Key": idempotency_key,
     }
     if csrf_token is not None:
@@ -131,7 +131,7 @@ def probe_objective_commands(
         idempotency_key=f"probe-create-{nonce}",
         body={
             "project_ids": [project_id],
-            "title": "HermesOps Controller command probe",
+            "title": "Orchestra Controller command probe",
             "description": "Safe future-dated objective created by the installed-service probe.",
             "priority": 1000,
             "not_before": "2099-01-01T00:00:00Z",

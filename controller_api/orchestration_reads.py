@@ -599,7 +599,7 @@ class OrchestrationReadStore:
         decoded: ListCursor | None = None
         if cursor is not None:
             payload = self._decode_cursor(
-                cursor, secret=cursor_secret, namespace=b"hermesops-plan-cursor-v1"
+                cursor, secret=cursor_secret, namespace=b"orchestra-plan-cursor-v1"
             )
             if (
                 payload.get("v") != 1
@@ -648,7 +648,7 @@ class OrchestrationReadStore:
                     "i": str(last["plan_id"]),
                 },
                 secret=cursor_secret,
-                namespace=b"hermesops-plan-cursor-v1",
+                namespace=b"orchestra-plan-cursor-v1",
             )
         return items, next_cursor
 
@@ -856,7 +856,7 @@ class OrchestrationReadStore:
         decoded: TaskCursor | None = None
         if cursor is not None:
             payload = self._decode_cursor(
-                cursor, secret=cursor_secret, namespace=b"hermesops-plan-task-cursor-v1"
+                cursor, secret=cursor_secret, namespace=b"orchestra-plan-task-cursor-v1"
             )
             if (
                 payload.get("v") != 1
@@ -902,7 +902,7 @@ class OrchestrationReadStore:
                     "i": str(last["orchestration_task_id"]),
                 },
                 secret=cursor_secret,
-                namespace=b"hermesops-plan-task-cursor-v1",
+                namespace=b"orchestra-plan-task-cursor-v1",
             )
         return items, next_cursor
 
@@ -920,7 +920,7 @@ class OrchestrationReadStore:
         if cursor is not None:
             payload = self._decode_cursor(
                 cursor, secret=cursor_secret,
-                namespace=b"hermesops-plan-dependency-cursor-v1",
+                namespace=b"orchestra-plan-dependency-cursor-v1",
             )
             if (
                 payload.get("v") != 1
@@ -998,7 +998,7 @@ class OrchestrationReadStore:
                     "d": str(last["depends_on_task_id"]),
                 },
                 secret=cursor_secret,
-                namespace=b"hermesops-plan-dependency-cursor-v1",
+                namespace=b"orchestra-plan-dependency-cursor-v1",
             )
         return items, next_cursor
 
@@ -1128,7 +1128,7 @@ class OrchestrationReadStore:
         if cursor is not None:
             payload = self._decode_cursor(
                 cursor, secret=cursor_secret,
-                namespace=b"hermesops-plan-attempt-cursor-v1",
+                namespace=b"orchestra-plan-attempt-cursor-v1",
             )
             if (
                 payload.get("v") != 1
@@ -1170,7 +1170,7 @@ class OrchestrationReadStore:
                     "i": str(last["attempt_id"]),
                 },
                 secret=cursor_secret,
-                namespace=b"hermesops-plan-attempt-cursor-v1",
+                namespace=b"orchestra-plan-attempt-cursor-v1",
             )
         return items, next_cursor
 
@@ -1333,7 +1333,7 @@ class OrchestrationReadStore:
         if cursor is not None:
             payload = self._decode_cursor(
                 cursor, secret=cursor_secret,
-                namespace=b"hermesops-reviewer-assignment-cursor-v1",
+                namespace=b"orchestra-reviewer-assignment-cursor-v1",
             )
             if (
                 payload.get("v") != 1
@@ -1384,7 +1384,7 @@ class OrchestrationReadStore:
                     "i": str(last["assignment_id"]),
                 },
                 secret=cursor_secret,
-                namespace=b"hermesops-reviewer-assignment-cursor-v1",
+                namespace=b"orchestra-reviewer-assignment-cursor-v1",
             )
         return items, next_cursor
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-AGENT="hermesops-agent"
-ENGINE="hermesops-sandbox-engine"
-SOCKET="/run/hermes-docker/docker.sock"
+AGENT="orchestra-hermes-agent"
+ENGINE="orchestra-sandbox-engine"
+SOCKET="/run/orchestra-docker/docker.sock"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
+PRIVATE_DOCKER_HOST="unix://${ROOT}/runtime/sandbox-engine-socket/docker.sock"
 
 echo "=== Services hôte ==="
 docker ps \
@@ -16,18 +18,17 @@ echo "=== Transport sandbox ==="
 docker exec "$AGENT" sh -lc '
     printf "DOCKER_HOST=%s\n" "$DOCKER_HOST"
     stat -c "%A mode=%a uid=%u gid=%g path=%n" \
-      /run/hermes-docker/docker.sock
+      /run/orchestra-docker/docker.sock
 '
 
 echo
 echo "=== Docker dédié vu par Hermes ==="
-docker exec --user hermes "$AGENT" \
-    docker info \
+docker --host "$PRIVATE_DOCKER_HOST" info \
     --format 'Name={{.Name}} Driver={{.Driver}} Containers={{.Containers}} Images={{.Images}}'
 
 echo
 echo "=== Sandboxes imbriquées ==="
-docker exec "$ENGINE" docker ps -a \
+docker --host "$PRIVATE_DOCKER_HOST" ps -a \
     --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Labels}}'
 
 echo

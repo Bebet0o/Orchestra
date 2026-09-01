@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, TypeAlias, runtime_checkable
 
 from environment_resolution import DEFAULT_PLATFORM, ResolvedEnvironment
-from legacy_worker_environment import LegacyLocalEnvironment
 from oci_reference import parse_immutable_oci_reference
 
 
@@ -26,17 +25,20 @@ _FULL_CONTAINER_ID = re.compile(r"[0-9a-f]{64}")
 _FORBIDDEN_DOCKER_SOCKET_DESTINATIONS = {
     "/var/run/docker.sock",
     "/run/docker.sock",
-    "/run/hermes-docker/docker.sock",
+    "/run/orchestra-docker/docker.sock",
 }
-_DEDICATED_SANDBOX_ENGINE = "hermesops-sandbox-engine"
+_PRIVATE_DOCKER_SOCKET = "unix:///run/orchestra-docker/docker.sock"
+_HOST_PRIVATE_DOCKER_SOCKET = (
+    "unix:///opt/orchestra/runtime/sandbox-engine-socket/docker.sock"
+)
 _DOCKER_PULL_TIMEOUT_SECONDS = 900
 _DOCKER_INSPECT_TIMEOUT_SECONDS = 30
 _DOCKER_OUTPUT_LIMIT_BYTES = 262_144
-_OUTER_DOCKER_ENVIRONMENT = {
-    "PATH": os.defpath,
+_PRIVATE_DOCKER_ENVIRONMENT = {
+    "PATH": "/usr/local/bin:/usr/bin:/bin",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
-    "DOCKER_HOST": "unix:///var/run/docker.sock",
+    "DOCKER_HOST": _PRIVATE_DOCKER_SOCKET,
     "DOCKER_CONTEXT": "default",
     "DOCKER_CONFIG": "/nonexistent/orchestra-empty-docker-config",
 }
@@ -125,14 +127,20 @@ class NestedDockerImageClient:
             _run_bounded_command
         ),
         *,
-        engine: str = _DEDICATED_SANDBOX_ENGINE,
+        docker_host: str = _PRIVATE_DOCKER_SOCKET,
     ) -> None:
         if not callable(command_runner):
             raise TypeError("Nested Docker command runner must be callable")
-        if engine != _DEDICATED_SANDBOX_ENGINE:
-            raise ValueError("Nested Docker engine identity is invalid")
+        if docker_host not in {
+            _PRIVATE_DOCKER_SOCKET,
+            _HOST_PRIVATE_DOCKER_SOCKET,
+        }:
+            raise ValueError("Private Docker socket authority is invalid")
         self._command_runner = command_runner
-        self._engine = engine
+        self._environment = {
+            **_PRIVATE_DOCKER_ENVIRONMENT,
+            "DOCKER_HOST": docker_host,
+        }
 
     def _run(
         self,
@@ -141,14 +149,14 @@ class NestedDockerImageClient:
     ) -> subprocess.CompletedProcess[str]:
         try:
             result = self._command_runner(
-                ["docker", "exec", self._engine, "docker", *arguments],
+                ["docker", *arguments],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 check=False,
                 timeout=timeout,
                 output_limit=_DOCKER_OUTPUT_LIMIT_BYTES,
-                env=_OUTER_DOCKER_ENVIRONMENT,
+                env=self._environment,
             )
         except (OSError, subprocess.SubprocessError) as error:
             raise SandboxPreparationError(
@@ -261,37 +269,7 @@ class PreparedEnvironment:
         return self.resolved_environment.image_reference
 
 
-@dataclass(frozen=True)
-class LegacyPreparedEnvironment:
-    """Explicit same-daemon preparation while the worker OCI image is absent."""
-
-    legacy_environment: LegacyLocalEnvironment
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.legacy_environment, LegacyLocalEnvironment):
-            raise TypeError(
-                "Legacy preparation requires a LegacyLocalEnvironment"
-            )
-
-    @property
-    def executable_image_selector(self) -> str:
-        """Use the verified local config object ID, never an invented OCI ref."""
-        return self.legacy_environment.local_image_config_id
-
-    @property
-    def local_image_config_id(self) -> str:
-        return self.legacy_environment.local_image_config_id
-
-    @property
-    def oci_digest(self) -> None:
-        return None
-
-    @property
-    def image_reference(self) -> None:
-        return None
-
-
-SandboxPreparation: TypeAlias = PreparedEnvironment | LegacyPreparedEnvironment
+SandboxPreparation: TypeAlias = PreparedEnvironment
 
 
 @runtime_checkable
@@ -391,13 +369,6 @@ class NestedDaemonSandboxBackend:
             raise SandboxPreparationError(str(error)) from error
 
 
-def prepare_legacy_environment(
-    environment: LegacyLocalEnvironment,
-) -> LegacyPreparedEnvironment:
-    """Make the temporary local-only bridge visible at its call site."""
-    return LegacyPreparedEnvironment(legacy_environment=environment)
-
-
 @dataclass(frozen=True)
 class SandboxContainerExpectation:
     """Durable facts required to authorize use or deletion of one container."""
@@ -408,15 +379,12 @@ class SandboxContainerExpectation:
     runtime_request_id: str
     workspace: Path
     read_only: bool
-    expected_user: str = "1000:1000"
+    expected_user: str
 
     def __post_init__(self) -> None:
         if _FULL_CONTAINER_ID.fullmatch(self.container_id) is None:
             raise ValueError("Sandbox authority requires a full container ID")
-        if not isinstance(
-            self.preparation,
-            (PreparedEnvironment, LegacyPreparedEnvironment),
-        ):
+        if not isinstance(self.preparation, PreparedEnvironment):
             raise TypeError("Sandbox authority requires typed preparation")
         if not isinstance(self.workspace, Path) or not self.workspace.is_absolute():
             raise TypeError("Sandbox authority workspace must be an absolute Path")
@@ -426,7 +394,7 @@ class SandboxContainerExpectation:
             raise ValueError("Sandbox authority task identity is required")
         if not isinstance(self.runtime_request_id, str) or not self.runtime_request_id:
             raise ValueError("Sandbox authority runtime request is required")
-        if self.expected_user not in {"1000", "1000:1000"}:
+        if re.fullmatch(r"(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)", self.expected_user) is None:
             raise ValueError("Sandbox authority expected user is invalid")
 
 
@@ -446,12 +414,12 @@ def verify_prepared_container(
     labels = config.get("Labels")
     if not isinstance(labels, Mapping):
         raise SandboxPreparationError("Sandbox ownership labels are invalid")
-    if labels.get("hermesops-sandbox") != "1":
+    if labels.get("orchestra-sandbox") != "1":
         raise SandboxPreparationError("Sandbox ownership label mismatched")
-    if labels.get("hermesops-task-id") != expectation.task_id:
+    if labels.get("orchestra-task-id") != expectation.task_id:
         raise SandboxPreparationError("Sandbox task binding mismatched")
     if (
-        labels.get("hermesops-runtime-request-id")
+        labels.get("orchestra-runtime-request-id")
         != expectation.runtime_request_id
     ):
         raise SandboxPreparationError("Sandbox runtime request binding mismatched")
@@ -459,10 +427,7 @@ def verify_prepared_container(
         raise SandboxPreparationError("Sandbox executable image selector mismatched")
     if container.get("Image") != expectation.preparation.local_image_config_id:
         raise SandboxPreparationError("Sandbox local image config ID mismatched")
-    if str(config.get("User") or "") not in {
-        expectation.expected_user,
-        "1000" if expectation.expected_user == "1000:1000" else "",
-    }:
+    if str(config.get("User") or "") != expectation.expected_user:
         raise SandboxPreparationError("Sandbox user mismatched")
 
     mounts = container.get("Mounts")

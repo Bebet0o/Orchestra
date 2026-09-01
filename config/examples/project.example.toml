@@ -7,8 +7,8 @@ enabled = false
 policy = "default"
 
 [paths]
-repo = "/opt/docker/hermesops/workspaces/example-project"
-data = "/opt/docker/hermesops/project-data/example-project"
+repo = "/opt/orchestra/workspaces/example-project"
+data = "/opt/orchestra/project-data/example-project"
 
 [git]
 default_branch = "main"

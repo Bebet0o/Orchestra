@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hermesops.dev/schemas/blueprint-v1.schema.json",
+  "$id": "https://orchestra.dev/schemas/blueprint-v1.schema.json",
   "title": "Blueprint v1",
-  "description": "Strict executable source contract for one HermesOps sandbox profile.",
+  "description": "Strict executable source contract for one Orchestra sandbox profile.",
   "type": "object",
   "additionalProperties": false,
   "required": [

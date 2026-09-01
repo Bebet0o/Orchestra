@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 SECRET="${ROOT}/secrets/webui.env"
 
 [[ -r "$SECRET" ]] || {

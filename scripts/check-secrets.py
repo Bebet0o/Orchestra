@@ -114,7 +114,7 @@ def content_findings(path: Path) -> list[tuple[int, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Reject tracked HermesOps secrets without displaying values."
+        description="Reject tracked Orchestra secrets without displaying values."
     )
     parser.add_argument("--root", default=None)
     args = parser.parse_args()
@@ -144,9 +144,9 @@ def main() -> int:
         print("NONE")
 
     if filename_hits or content_hits:
-        print("\nHermesOps secret scan: FAIL")
+        print("\nOrchestra secret scan: FAIL")
         return 1
-    print("\nHermesOps secret scan: PASS")
+    print("\nOrchestra secret scan: PASS")
     return 0
 
 

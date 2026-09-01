@@ -3,7 +3,7 @@ set -Eeuo pipefail
 export LC_ALL=C
 export PYTHONDONTWRITEBYTECODE=1
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
 CONFIG_DIR="${REPO}/config/projects.d"
 TEMPLATE_DIR="${REPO}/tests/fixtures/projects"
@@ -12,15 +12,15 @@ DATA_ROOT="${ROOT}/project-data/.fixtures"
 PRIMARY="${FIXTURE_ROOT}/transaction-fixture"
 SECONDARY="${FIXTURE_ROOT}/transaction-fixture-b"
 
-[[ "${HERMESOPS_ENABLE_TEST_FIXTURES:-0}" == "1" ]] || {
+[[ "${ORCHESTRA_ENABLE_TEST_FIXTURES:-0}" == "1" ]] || {
     cat >&2 <<'EOF'
 Refus d'initialiser les fixtures de test.
 
 Cette commande ajoute deux projets désactivés au registre local.
 Relancer explicitement avec :
 
-  HERMESOPS_ENABLE_TEST_FIXTURES=1 \
-    /opt/docker/hermesops/repo/scripts/init-test-fixtures.sh
+  ORCHESTRA_ENABLE_TEST_FIXTURES=1 \
+    /opt/orchestra/repo/scripts/init-test-fixtures.sh
 EOF
     exit 2
 }
@@ -53,12 +53,12 @@ create_primary() {
     rm -rf "$PRIMARY"
     mkdir -p "$PRIMARY"
     git -C "$PRIMARY" init -b main
-    git -C "$PRIMARY" config user.name "HermesOps Fixture"
-    git -C "$PRIMARY" config user.email "fixture@hermesops.invalid"
+    git -C "$PRIMARY" config user.name "Orchestra Fixture"
+    git -C "$PRIMARY" config user.email "fixture@orchestra.invalid"
     cat >"${PRIMARY}/README.md" <<'EOF'
-# HermesOps Transaction Fixture
+# Orchestra Transaction Fixture
 
-Repository used only by HermesOps foundation tests.
+Repository used only by Orchestra foundation tests.
 No remote is configured.
 EOF
     git -C "$PRIMARY" add README.md
@@ -91,8 +91,8 @@ for fixture_repo in "$PRIMARY" "$SECONDARY"; do
     [[ -z "$(git -C "$fixture_repo" status --porcelain)" ]]
 done
 
-"${REPO}/scripts/hermesops-registry.py" validate
-"${REPO}/scripts/hermesops-registry.py" sync
+"${REPO}/scripts/orchestra-registry.py" validate
+"${REPO}/scripts/orchestra-registry.py" sync
 
-echo "HermesOps test fixtures: PASS"
+echo "Orchestra test fixtures: PASS"
 echo "Les deux projets de test sont enregistrés avec enabled=false."

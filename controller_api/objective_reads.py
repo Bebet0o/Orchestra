@@ -153,7 +153,7 @@ class ObjectiveReadStore:
     def _cursor_signature(raw: bytes, secret: str) -> bytes:
         return hmac.new(
             secret.encode("ascii"),
-            b"hermesops-objective-cursor-v1\0" + raw,
+            b"orchestra-objective-cursor-v1\0" + raw,
             hashlib.sha256,
         ).digest()
 

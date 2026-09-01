@@ -50,7 +50,7 @@ def _request(
     headers = {
         "Accept": "application/json",
         "Origin": origin,
-        "User-Agent": "HermesOps-Browser-Auth-Probe/1",
+        "User-Agent": "Orchestra-Browser-Auth-Probe/1",
     }
     if body is not None:
         encoded = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -86,10 +86,10 @@ def _cookie_from_headers(headers: list[tuple[str, str]]) -> str:
         raise BrowserAuthProbeError("Login did not return one session cookie.")
     parsed = SimpleCookie()
     parsed.load(values[0])
-    morsel = parsed.get("hermesops_session")
+    morsel = parsed.get("orchestra_session")
     if morsel is None or not morsel.value:
         raise BrowserAuthProbeError("Login session cookie is missing.")
-    return f"hermesops_session={morsel.value}"
+    return f"orchestra_session={morsel.value}"
 
 
 def probe_browser_auth(
@@ -123,7 +123,7 @@ def probe_browser_auth(
     if login_status != 200 or login.get("data", {}).get("authenticated") is not True:
         raise BrowserAuthProbeError(f"Browser login failed with HTTP {login_status}.")
     serialized = json.dumps(login, sort_keys=True)
-    if password in serialized or "hermesops_session" in serialized:
+    if password in serialized or "orchestra_session" in serialized:
         raise BrowserAuthProbeError("Login response leaked authentication material.")
     cookie = _cookie_from_headers(login_headers)
 

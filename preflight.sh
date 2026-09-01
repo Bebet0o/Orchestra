@@ -4,7 +4,8 @@ export LC_ALL=C
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="/opt/orchestra"
+LEGACY_ROOT="/opt/docker/hermesops"
 TARGET_USER="${USER:-$(id -un)}"
 CI_MODE=0
 
@@ -48,7 +49,7 @@ pass() { printf 'PASS  %s\n' "$*"; }
 warn() { printf 'WARN  %s\n' "$*"; WARNINGS=$((WARNINGS + 1)); }
 fail() { printf 'FAIL  %s\n' "$*"; FAILURES=$((FAILURES + 1)); }
 
-printf 'HermesOps preflight\n'
+printf 'Orchestra preflight\n'
 printf 'Source       : %s\n' "$SOURCE"
 printf 'Racine cible : %s\n' "$ROOT"
 printf 'Utilisateur  : %s\n\n' "$TARGET_USER"
@@ -73,7 +74,7 @@ if [[ "$CI_MODE" == 0 ]]; then
 fi
 
 for command_name in \
-    bash tar sha256sum systemctl loginctl timeout flock install \
+    bash sha256sum systemctl timeout flock install \
     stat find grep sed awk apt-get apt-cache dpkg-query getent
  do
     command -v "$command_name" >/dev/null 2>&1 \
@@ -138,23 +139,36 @@ if [[ "$CI_MODE" == 0 ]]; then
     if id "$TARGET_USER" >/dev/null 2>&1; then
         TARGET_UID="$(id -u "$TARGET_USER")"
         TARGET_GID="$(id -g "$TARGET_USER")"
-        [[ "$TARGET_UID" == "1000" && "$TARGET_GID" == "1000" ]] \
-            && pass "Contrat UID/GID 1000:1000" \
-            || fail "0.1.0-alpha exige UID/GID 1000:1000; observé ${TARGET_UID}:${TARGET_GID}"
+        [[ "$TARGET_UID" =~ ^[0-9]+$ && "$TARGET_GID" =~ ^[0-9]+$ ]] \
+            && pass "Identité cible numérique: ${TARGET_UID}:${TARGET_GID}" \
+            || fail "Identité cible invalide: ${TARGET_UID}:${TARGET_GID}"
         id -nG "$TARGET_USER" | tr ' ' '\n' | grep -Fxq docker \
             && pass "Utilisateur membre du groupe docker" \
             || warn "install.sh ajoutera $TARGET_USER au groupe docker puis demandera une reconnexion"
     fi
 
-    for port in 8642 8787 8788; do
+    LEGACY_FOUND=()
+    [[ ! -e "$LEGACY_ROOT" ]] || LEGACY_FOUND+=("$LEGACY_ROOT")
+    for unit in \
+        hermesops-controller-api.service hermesops-console.service \
+        hermesops-notifier.service hermesops-orchestrator.service \
+        hermesops-supervisor.service
+    do
+        candidate="$(getent passwd "$TARGET_USER" | cut -d: -f6)/.config/systemd/user/${unit}"
+        [[ ! -e "$candidate" ]] || LEGACY_FOUND+=("$candidate")
+    done
+    if ((${#LEGACY_FOUND[@]})); then
+        fail "Installation HermesOps historique détectée; migration explicite requise"
+    else
+        pass "Aucune installation HermesOps historique détectée"
+    fi
+
+    for port in 8642 8765 8787 8788; do
         if command -v ss >/dev/null 2>&1 &&
            ss -H -ltn "sport = :${port}" 2>/dev/null | grep -q .; then
-            if [[ "$port" == "8788" ]] &&
-               systemctl --user is-active --quiet hermesops-console.service 2>/dev/null; then
-                warn "Port ${port} déjà utilisé par la Console HermesOps"
-            elif docker ps --format '{{.Names}}' 2>/dev/null |
-                 grep -Eq '^hermesops-(agent|webui)$'; then
-                warn "Port ${port} déjà utilisé par l'installation HermesOps"
+            if docker ps --format '{{.Names}}' 2>/dev/null |
+                 grep -Eq '^orchestra-(controller|console|hermes-agent|hermes-webui)$'; then
+                warn "Port ${port} déjà utilisé par l'installation Orchestra"
             else
                 fail "Port ${port} déjà utilisé"
             fi
@@ -165,9 +179,10 @@ if [[ "$CI_MODE" == 0 ]]; then
 fi
 
 for required in \
-    VERSION README.md compose/agent.yaml compose/images.lock.env \
+    README.md compose/agent.yaml compose/images.lock.env \
     config/controller.toml config/roles.toml migrations \
-    console/src console/dist profiles scripts systemd/user tests
+    console/src console/dist profiles scripts \
+    images/orchestra-control-plane.Dockerfile tests
 do
     [[ -e "${SOURCE}/${required}" ]] \
         && pass "Présent: ${required}" \
@@ -202,7 +217,7 @@ fi
 
 printf '\nRésumé: failures=%d warnings=%d\n' "$FAILURES" "$WARNINGS"
 if ((FAILURES)); then
-    echo "HERMESOPS_PREFLIGHT_FAIL"
+    echo "ORCHESTRA_PREFLIGHT_FAIL"
     exit 1
 fi
-echo "HERMESOPS_PREFLIGHT_PASS"
+echo "ORCHESTRA_PREFLIGHT_PASS"
