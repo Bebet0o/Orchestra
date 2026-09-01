@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = ROOT / "scripts" / "hermesops_review_assignment.py"
+MODULE_PATH = ROOT / "scripts" / "orchestra_review_assignment.py"
 MIGRATION = ROOT / "migrations" / "019_reviewer_assignments.sql"
 
 spec = importlib.util.spec_from_file_location("reviewer_assignments", MODULE_PATH)

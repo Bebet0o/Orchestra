@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
-ENGINE="hermesops-sandbox-engine"
+DB="${ROOT}/state/controller/orchestra.db"
+PRIVATE_DOCKER_HOST="unix://${ROOT}/runtime/sandbox-engine-socket/docker.sock"
 
-[[ -x "${REPO}/scripts/hermesops-worker.py" ]]
-[[ -x "${REPO}/scripts/hermes-worker-entry.py" ]]
+[[ -x "${REPO}/scripts/orchestra-worker.py" ]]
+[[ -x "${REPO}/scripts/orchestra-worker-entry.py" ]]
 
-grep -Fq 'HERMESOPS_SANDBOX_AUTOMOUNTS_DISABLED' \
-    "${REPO}/scripts/hermes-worker-entry.py"
+grep -Fq 'ORCHESTRA_SANDBOX_AUTOMOUNTS_DISABLED' \
+    "${REPO}/scripts/orchestra-worker-entry.py"
 
-grep -Fq 'HERMESOPS_PRECREATED_SANDBOX_REUSE' \
-    "${REPO}/scripts/hermes-worker-entry.py"
+grep -Fq 'ORCHESTRA_PRECREATED_SANDBOX_REUSE' \
+    "${REPO}/scripts/orchestra-worker-entry.py"
 
 grep -Fq 'def precreate_worker_sandbox' \
-    "${REPO}/scripts/hermesops-worker.py"
+    "${REPO}/scripts/orchestra-worker.py"
 
 [[ -f "${REPO}/migrations/004_worker_executions.sql" ]]
-[[ -f "${REPO}/config/worker-sandbox.lock.toml" ]]
-[[ -f "${REPO}/images/worker-sandbox.Dockerfile" ]]
+[[ -f "${REPO}/config/environments/default-worker.toml" ]]
+[[ -f "${REPO}/images/orchestra-worker.Dockerfile" ]]
 
 LATEST_MIGRATION_FILE="$(
     find "${REPO}/migrations"         -maxdepth 1         -type f         -name '[0-9][0-9][0-9]_*.sql'         -printf '%f\n' |
@@ -87,7 +87,8 @@ OUTER_CONTAINER="$(
          WHERE execution_id='${EXECUTION_ID}';"
 )"
 
-if docker container inspect "$OUTER_CONTAINER" >/dev/null 2>&1; then
+if docker --host "$PRIVATE_DOCKER_HOST" \
+    container inspect "$OUTER_CONTAINER" >/dev/null 2>&1; then
     echo "Conteneur worker externe résiduel." >&2
     exit 1
 fi
@@ -99,8 +100,8 @@ SANDBOX_ID="$(
          WHERE execution_id='${EXECUTION_ID}';"
 )"
 
-if docker exec "$ENGINE" \
-    docker container inspect "$SANDBOX_ID" >/dev/null 2>&1; then
+if docker --host "$PRIVATE_DOCKER_HOST" \
+    container inspect "$SANDBOX_ID" >/dev/null 2>&1; then
     echo "Sandbox worker résiduelle." >&2
     exit 1
 fi
@@ -136,21 +137,21 @@ assert payload["sandbox_audit"]["workspace_rw"] is True
 assert payload["sandbox_audit"]["sensitive_env_count"] == 0
 PY
 
-IMAGE_ID="$(
+IMAGE_REFERENCE="$(
     python3 - <<'PY'
 import tomllib
 from pathlib import Path
 
 path = Path(
-    "/opt/docker/hermesops/repo/config/worker-sandbox.lock.toml"
+    "/opt/orchestra/repo/config/environments/default-worker.toml"
 )
 
 with path.open("rb") as stream:
-    print(tomllib.load(stream)["image_id"])
+    print(tomllib.load(stream)["image_reference"])
 PY
 )"
 
-docker exec "$ENGINE" docker image inspect "$IMAGE_ID" >/dev/null
+docker --host "$PRIVATE_DOCKER_HOST" image inspect "$IMAGE_REFERENCE" >/dev/null
 
 [[ "$(sqlite3 "$DB" 'SELECT COUNT(*) FROM project_locks;')" == "0" ]]
 
@@ -161,10 +162,10 @@ docker exec "$ENGINE" docker image inspect "$IMAGE_ID" >/dev/null
          WHERE project_id='transaction-fixture';"
 )" == "0" ]]
 
-if find "${ROOT}/workspaces/.hermesops-worker-clones" \
+if find "${ROOT}/workspaces/.orchestra-worker-clones" \
     -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
     echo "Clone worker résiduel." >&2
     exit 1
 fi
 
-echo "HermesOps controlled worker foundation: PASS"
+echo "Orchestra controlled worker foundation: PASS"

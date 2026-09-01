@@ -1,4 +1,4 @@
-# Rôles HermesOps
+# Rôles Orchestra
 
 ## Profils
 
@@ -33,10 +33,10 @@ Les règles suivantes seront imposées par le Controller :
 
 ## Source de vérité
 
-Le Kanban Hermes natif n'est pas encore utilisé par les profils HermesOps.
+Le Kanban Hermes natif n'est pas encore utilisé par les profils Orchestra.
 
 La source de vérité transactionnelle reste :
 
-`state/controller/hermesops.db`
+`state/controller/orchestra.db`
 
-Un plugin HermesOps exposera cette base aux profils dans un prochain jalon.
+Un plugin Orchestra exposera cette base aux profils dans un prochain jalon.

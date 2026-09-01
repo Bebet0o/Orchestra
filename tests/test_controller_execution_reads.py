@@ -205,7 +205,6 @@ class Fixture:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / "root"
         (self.root / "repo/config/projects.d").mkdir(parents=True)
-        (self.root / "repo/VERSION").write_text("0.1.0-alpha\n", encoding="utf-8")
         config = self.root / "repo/config/projects.d/alpha.toml"
         config.write_text('[git]\ndefault_branch="main"\n', encoding="utf-8")
         secrets = self.root / "secrets"
@@ -214,7 +213,7 @@ class Fixture:
         self.session = secrets / "controller-session"
         self.session.write_text(TOKEN + "\n", encoding="ascii")
         os.chmod(self.session, 0o600)
-        self.database = self.root / "state/controller/hermesops.db"
+        self.database = self.root / "state/controller/orchestra.db"
         self.database.parent.mkdir(parents=True)
         self.private_log = self.root / "private-worker-output.log"
         self.private_log.write_text("ULTRA_PRIVATE_WORKER_OUTPUT\n", encoding="utf-8")
@@ -387,7 +386,7 @@ class Fixture:
         token: str = TOKEN,
     ) -> tuple[int, dict[str, str], dict[str, object] | None]:
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
-        headers = {"Cookie": f"hermesops_session={token}"} if authenticated else {}
+        headers = {"Cookie": f"orchestra_session={token}"} if authenticated else {}
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()
         raw = response.read()

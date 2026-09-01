@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 
-"${REPO}/scripts/hermesops-roles.py" validate
-"${REPO}/scripts/hermesops-db.py" migrate
-"${REPO}/scripts/hermesops-roles.py" sync
-"${REPO}/scripts/hermesops-roles.py" verify-profiles
-"${REPO}/scripts/hermesops-db.py" integrity
+"${REPO}/scripts/orchestra-roles.py" validate
+"${REPO}/scripts/orchestra-db.py" migrate
+"${REPO}/scripts/orchestra-roles.py" sync
+"${REPO}/scripts/orchestra-roles.py" verify-profiles
+"${REPO}/scripts/orchestra-db.py" integrity
 
 ROLE_COUNT="$(
     sqlite3 "$DB" \
@@ -28,4 +28,4 @@ PUSH_COUNT="$(
 
 [[ "$PUSH_COUNT" == "0" ]]
 
-echo "HermesOps role fleet: PASS"
+echo "Orchestra role fleet: PASS"

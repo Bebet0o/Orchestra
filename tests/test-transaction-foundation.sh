@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 FIXTURE_ID="transaction-fixture"
 FIXTURE_REPO="${ROOT}/workspaces/.fixtures/${FIXTURE_ID}"
 
-[[ -x "${REPO}/scripts/hermesops-transaction.py" ]]
+[[ -x "${REPO}/scripts/orchestra-transaction.py" ]]
 [[ -f "${REPO}/migrations/003_git_transactions.sql" ]]
 
 LATEST_MIGRATION_FILE="$(
@@ -73,11 +73,11 @@ LATEST_RUN="$(
 
 [[ -n "$LATEST_RUN" ]]
 
-"${REPO}/scripts/hermesops-transaction.py" \
+"${REPO}/scripts/orchestra-transaction.py" \
     verify-snapshot \
     --run "$LATEST_RUN" \
     >/dev/null
 
 git -C "$FIXTURE_REPO" fsck --no-dangling
 
-echo "HermesOps transaction foundation: PASS"
+echo "Orchestra transaction foundation: PASS"

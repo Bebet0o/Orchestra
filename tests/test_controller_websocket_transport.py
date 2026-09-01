@@ -52,7 +52,7 @@ class RawWebSocketClient:
         if origin is not None:
             headers.append(f"Origin: {origin}")
         if token is not None:
-            headers.append(f"Cookie: hermesops_session={token}")
+            headers.append(f"Cookie: orchestra_session={token}")
         if last_sequence is not None:
             headers.append(f"Last-Event-Sequence: {last_sequence}")
         if extensions is not None:

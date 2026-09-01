@@ -11,7 +11,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-TEST_ROOT="${TMP}/hermesops"
+TEST_ROOT="${TMP}/orchestra"
 TEST_REPO="${TEST_ROOT}/repo"
 
 mkdir -p \
@@ -32,8 +32,8 @@ rsync -a \
 
 cp -a "${REPO}/migrations/." "${TEST_REPO}/migrations/"
 cp -a \
-    "${REPO}/scripts/hermesops-db.py" \
-    "${REPO}/scripts/hermesops-registry.py" \
+    "${REPO}/scripts/orchestra-db.py" \
+    "${REPO}/scripts/orchestra-registry.py" \
     "${TEST_REPO}/scripts/"
 
 if find "${TEST_REPO}/config/projects.d" \
@@ -46,37 +46,37 @@ then
     exit 1
 fi
 
-HERMESOPS_ROOT="$TEST_ROOT" \
-    "${TEST_REPO}/scripts/hermesops-db.py" migrate >/dev/null
+ORCHESTRA_ROOT="$TEST_ROOT" \
+    "${TEST_REPO}/scripts/orchestra-db.py" migrate >/dev/null
 
-HERMESOPS_ROOT="$TEST_ROOT" \
-    "${TEST_REPO}/scripts/hermesops-registry.py" validate >/dev/null
+ORCHESTRA_ROOT="$TEST_ROOT" \
+    "${TEST_REPO}/scripts/orchestra-registry.py" validate >/dev/null
 
-HERMESOPS_ROOT="$TEST_ROOT" \
-    "${TEST_REPO}/scripts/hermesops-registry.py" sync >/dev/null
+ORCHESTRA_ROOT="$TEST_ROOT" \
+    "${TEST_REPO}/scripts/orchestra-registry.py" sync >/dev/null
 
 project_count="$(
     sqlite3 \
-        "${TEST_ROOT}/state/controller/hermesops.db" \
+        "${TEST_ROOT}/state/controller/orchestra.db" \
         'SELECT COUNT(*) FROM projects;'
 )"
 
 enabled_count="$(
     sqlite3 \
-        "${TEST_ROOT}/state/controller/hermesops.db" \
+        "${TEST_ROOT}/state/controller/orchestra.db" \
         'SELECT COUNT(*) FROM projects WHERE enabled = 1;'
 )"
 
 [[ "$project_count" == "0" ]]
 [[ "$enabled_count" == "0" ]]
 
-sqlite3 "${TEST_ROOT}/state/controller/hermesops.db" \
+sqlite3 "${TEST_ROOT}/state/controller/orchestra.db" \
     'PRAGMA quick_check;' |
     grep -Fxq ok
 
 [[ -z "$(
-    sqlite3 "${TEST_ROOT}/state/controller/hermesops.db" \
+    sqlite3 "${TEST_ROOT}/state/controller/orchestra.db" \
         'PRAGMA foreign_key_check;'
 )" ]]
 
-echo "HermesOps public empty registry: PASS"
+echo "Orchestra public empty registry: PASS"

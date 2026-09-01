@@ -31,15 +31,15 @@ def load_script(name: str, filename: str) -> Any:
 
 ORCHESTRATOR = load_script(
     "lifecycle_stabilization_orchestrator",
-    "hermesops-orchestrator.py",
+    "orchestra-orchestrator.py",
 )
 OBJECTIVES = load_script(
     "lifecycle_stabilization_objectives",
-    "hermesops-objectives.py",
+    "orchestra-objectives.py",
 )
 INTEGRATOR = load_script(
     "lifecycle_stabilization_integrator",
-    "hermesops-integrator.py",
+    "orchestra-integrator.py",
 )
 
 
@@ -52,7 +52,7 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        self.database = self.root / "hermesops.db"
+        self.database = self.root / "orchestra.db"
         self.runtime = self.root / "runtime"
         self._apply_migrations()
         self._seed_roles_and_project()
@@ -321,7 +321,7 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
                     NOW,
                     NOW,
                     NOW,
-                    "hermesops/test-run",
+                    "orchestra/test-run",
                     OWNER,
                 ),
             )
@@ -607,13 +607,13 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         def fake_run_json(arguments: list[str], *, timeout: int) -> dict[str, Any]:
             command = Path(arguments[0]).name
             action = arguments[1]
-            if command == "hermesops-transaction.py" and action == "begin":
+            if command == "orchestra-transaction.py" and action == "begin":
                 return {"run_id": run_id}
-            if command == "hermesops-worker.py":
+            if command == "orchestra-worker.py":
                 return {"execution_id": f"worker-{suffix}", "exit_code": 0}
-            if command == "hermesops-transaction.py" and action == "submit":
+            if command == "orchestra-transaction.py" and action == "submit":
                 return {"run_id": run_id, "status": "REVIEWING"}
-            if command == "hermesops-integrator.py" and action == "apply":
+            if command == "orchestra-integrator.py" and action == "apply":
                 integration_calls.append(arguments)
                 return {
                     "integration_id": None,
@@ -1953,14 +1953,14 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         def fake_run_json(arguments: list[str], *, timeout: int) -> dict[str, Any]:
             command = Path(arguments[0]).name
             action = arguments[1]
-            if command == "hermesops-transaction.py" and action == "begin":
+            if command == "orchestra-transaction.py" and action == "begin":
                 return {"run_id": run_id}
-            if command == "hermesops-worker.py":
+            if command == "orchestra-worker.py":
                 self._command(OBJECTIVES.command_cancel, objective_id)
                 return {"execution_id": "worker-after-cancel", "exit_code": 0}
-            if command == "hermesops-transaction.py" and action == "submit":
+            if command == "orchestra-transaction.py" and action == "submit":
                 return {"run_id": run_id, "status": "REVIEWING"}
-            if command == "hermesops-integrator.py":
+            if command == "orchestra-integrator.py":
                 integration_calls.append(arguments)
                 return {
                     "integration_id": "integration-after-cancel",
@@ -2333,13 +2333,13 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         def fake_run_json(arguments: list[str], *, timeout: int) -> dict[str, Any]:
             command = Path(arguments[0]).name
             action = arguments[1]
-            if command == "hermesops-transaction.py" and action == "begin":
+            if command == "orchestra-transaction.py" and action == "begin":
                 return {"run_id": run_id}
-            if command == "hermesops-worker.py":
+            if command == "orchestra-worker.py":
                 return {"execution_id": "worker-parallel-review", "exit_code": 0}
-            if command == "hermesops-transaction.py" and action == "submit":
+            if command == "orchestra-transaction.py" and action == "submit":
                 return {"run_id": run_id, "status": "REVIEWING"}
-            if command == "hermesops-integrator.py":
+            if command == "orchestra-integrator.py":
                 integration_calls.append(arguments)
                 return {"status": "COMPLETED", "integrated": True}
             raise AssertionError(arguments)
@@ -2457,12 +2457,12 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         def fake_run_json(arguments: list[str], *, timeout: int) -> dict[str, Any]:
             command = Path(arguments[0]).name
             action = arguments[1]
-            if command == "hermesops-transaction.py" and action == "begin":
+            if command == "orchestra-transaction.py" and action == "begin":
                 return {"run_id": run_id}
-            if command == "hermesops-worker.py":
+            if command == "orchestra-worker.py":
                 self._command(OBJECTIVES.command_cancel, objective_id)
                 return {"execution_id": "worker-cancel-cleanup", "exit_code": 0}
-            if command == "hermesops-transaction.py" and action == "submit":
+            if command == "orchestra-transaction.py" and action == "submit":
                 return {"run_id": run_id, "status": "REVIEWING"}
             raise AssertionError(arguments)
 
@@ -2559,13 +2559,13 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         def fake_run_json(arguments: list[str], *, timeout: int) -> dict[str, Any]:
             command = Path(arguments[0]).name
             action = arguments[1]
-            if command == "hermesops-transaction.py" and action == "begin":
+            if command == "orchestra-transaction.py" and action == "begin":
                 return {"run_id": run_id}
-            if command == "hermesops-worker.py":
+            if command == "orchestra-worker.py":
                 return {"execution_id": "worker-block-human", "exit_code": 0}
-            if command == "hermesops-transaction.py" and action == "submit":
+            if command == "orchestra-transaction.py" and action == "submit":
                 return {"run_id": run_id, "status": "REVIEWING"}
-            if command == "hermesops-integrator.py":
+            if command == "orchestra-integrator.py":
                 with contextlib.closing(self.connect()) as connection:
                     run = INTEGRATOR.get_run(connection, run_id)
                     review = connection.execute(

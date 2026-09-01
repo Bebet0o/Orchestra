@@ -90,7 +90,7 @@ Console source lives in `console/src/`; the committed deterministic build lives
 in `console/dist/`. When source assets change, rebuild them with:
 
 ```bash
-python3 scripts/hermesops-console-build.py build \
+python3 scripts/orchestra-console-build.py build \
   --source console/src \
   --output console/dist
 ```

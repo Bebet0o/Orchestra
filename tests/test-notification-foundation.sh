@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
-
-[[ -x "${REPO}/scripts/hermesops-notifier.py" ]]
-[[ -x "${REPO}/scripts/hermesops-control.py" ]]
-[[ -x "${REPO}/scripts/hermesopsctl" ]]
-[[ -x "${REPO}/scripts/configure-hermesops-telegram.sh" ]]
+[[ -x "${REPO}/scripts/orchestra-notifier.py" ]]
+[[ -x "${REPO}/scripts/orchestra-control.py" ]]
+[[ -x "${REPO}/scripts/orchestractl" ]]
+[[ -x "${REPO}/scripts/configure-orchestra-telegram.sh" ]]
 [[ -f "${REPO}/migrations/011_notification_outbox.sql" ]]
 [[ -f "${REPO}/config/notifier.toml" ]]
-[[ -f "${REPO}/systemd/user/hermesops-notifier.service" ]]
+[[ -f "${REPO}/compose/agent.yaml" ]]
 [[ -f "${REPO}/docs/NOTIFICATIONS.md" ]]
 
 [[ "$(sqlite3 "$DB" 'PRAGMA user_version;')" == "11" ]]
@@ -34,10 +31,10 @@ do
     )" == "1" ]]
 done
 
-[[ "$(systemctl --user is-enabled hermesops-notifier.service)" == "enabled" ]]
-[[ "$(systemctl --user is-active hermesops-notifier.service)" == "active" ]]
+"${REPO}/scripts/orchestra-compose.sh" ps --status running --services |
+    grep -Fxq notifier
 
-STATUS_JSON="$("${REPO}/scripts/hermesops-notifier.py" status)"
+STATUS_JSON="$("${REPO}/scripts/orchestra-notifier.py" status)"
 python3 - "$STATUS_JSON" <<'PY'
 import json
 import sys
@@ -49,10 +46,10 @@ assert payload["instance"]["status"] == "RUNNING"
 assert payload["outbox_counts"].get("DEAD_LETTER", 0) == 0
 PY
 
-"${REPO}/scripts/hermesops-notifier.py" self-test
-"${REPO}/scripts/hermesops-control.py" self-test
-"${REPO}/scripts/hermesops-control.py" queue --json >/dev/null
-"${REPO}/scripts/hermesops-control.py" approvals --all --json >/dev/null
+"${REPO}/scripts/orchestra-notifier.py" self-test
+"${REPO}/scripts/orchestra-control.py" self-test
+"${REPO}/scripts/orchestra-control.py" queue --json >/dev/null
+"${REPO}/scripts/orchestra-control.py" approvals --all --json >/dev/null
 
 notification_foundation_ready() {
     [[ -s "${ROOT}/runtime/notifications/delivered.jsonl" ]] || return 1
@@ -101,18 +98,14 @@ do
 done
 
 if [[ "$NOTIFICATION_FOUNDATION_READY" != "1" ]]; then
-    "${REPO}/scripts/hermesops-notifier.py" status >&2 || true
-    "${REPO}/scripts/hermesops-notifier.py" list --limit 200 >&2 || true
+    "${REPO}/scripts/orchestra-notifier.py" status >&2 || true
+    "${REPO}/scripts/orchestra-notifier.py" list --limit 200 >&2 || true
     echo "Notification foundation did not reach a drained state." >&2
     exit 1
 fi
 
-grep -Fq 'NoNewPrivileges=true' \
-    "${REPO}/systemd/user/hermesops-notifier.service"
-grep -Fq 'PrivateTmp=true' \
-    "${REPO}/systemd/user/hermesops-notifier.service"
-! grep -Eq \
-    'ProtectSystem|ProtectHome|ReadWritePaths|CapabilityBoundingSet|AmbientCapabilities' \
-    "${REPO}/systemd/user/hermesops-notifier.service"
+grep -Fq '  notifier:' "${REPO}/compose/agent.yaml"
+grep -Fq 'container_name: orchestra-notifier' "${REPO}/compose/agent.yaml"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
 
-echo "HermesOps durable operator notification foundation: PASS"
+echo "Orchestra durable operator notification foundation: PASS"

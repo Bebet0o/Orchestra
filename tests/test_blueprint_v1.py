@@ -271,9 +271,9 @@ class BlueprintV1Test(unittest.TestCase):
 
     def test_cli_validate_fingerprint_and_canonicalize(self) -> None:
         repository = Path(__file__).resolve().parents[1]
-        cli = repository / "scripts/hermesops-blueprint.py"
+        cli = repository / "scripts/orchestra-blueprint.py"
         self.assertTrue(cli.is_file())
-        self.assertFalse((repository / "scripts/hermesops-hermesfile.py").exists())
+        self.assertFalse((repository / "scripts/orchestra-hermesfile.py").exists())
         example = repository / "config/examples/Blueprint"
         help_result = subprocess.run(
             [sys.executable, str(cli), "--help"],

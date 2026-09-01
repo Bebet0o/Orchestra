@@ -176,10 +176,9 @@ class Fixture:
     def __init__(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "root"
-        self.database = self.root / "state/controller/hermesops.db"
+        self.database = self.root / "state/controller/orchestra.db"
         self.session = self.root / "secrets/controller-session"
         (self.root / "repo/config/projects.d").mkdir(parents=True)
-        (self.root / "repo/VERSION").write_text("0.1.0-alpha\n", encoding="utf-8")
         config = self.root / "repo/config/projects.d/alpha.toml"
         config.write_text('[git]\ndefault_branch="main"\n', encoding="utf-8")
         self.session.parent.mkdir(parents=True)
@@ -326,7 +325,7 @@ class Fixture:
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         headers = {"Host": f"127.0.0.1:{self.port}"}
         if authenticated:
-            headers["Cookie"] = f"hermesops_session={token}"
+            headers["Cookie"] = f"orchestra_session={token}"
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()
         payload = json.loads(response.read().decode("utf-8"))

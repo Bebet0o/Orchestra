@@ -88,7 +88,7 @@ it from a later commit is not sufficient.
 ## Supported versions
 
 Orchestra has no formal stable-release support matrix yet. Development occurs
-on the default branch, and older commits or historical HermesOps releases do
+on the default branch, and older commits or historical Orchestra releases do
 not receive an implied security-maintenance guarantee.
 
 When reporting a problem, identify the exact commit or deployed artifact. Check

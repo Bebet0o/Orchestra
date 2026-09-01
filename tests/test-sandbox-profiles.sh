@@ -130,4 +130,4 @@ for schema in feature_schemas:
 print("Sandbox profile migration/read/capability contract: PASS")
 PY
 
-echo HERMESOPS_SANDBOX_PROFILE_PERSISTENCE_PASS
+echo ORCHESTRA_SANDBOX_PROFILE_PERSISTENCE_PASS

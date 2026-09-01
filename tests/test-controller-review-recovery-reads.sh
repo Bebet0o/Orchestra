@@ -11,15 +11,15 @@ export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 python3 -m compileall -q \
     controller_api/review_recovery_reads.py \
     controller_api/review_recovery_probe.py \
-    scripts/hermesops-controller-review-recovery-probe.py \
+    scripts/orchestra-controller-review-recovery-probe.py \
     tests/test_controller_review_recovery_reads.py
 
 python3 tests/test_controller_review_recovery_reads.py
-python3 scripts/hermesops-controller-review-recovery-probe.py --help >/dev/null
+python3 scripts/orchestra-controller-review-recovery-probe.py --help >/dev/null
 (
     cd /tmp
     env -u PYTHONPATH \
-        python3 "$REPO/scripts/hermesops-controller-review-recovery-probe.py" \
+        python3 "$REPO/scripts/orchestra-controller-review-recovery-probe.py" \
         --help >/dev/null
 )
 
@@ -139,7 +139,7 @@ for marker in (
 print("Controller review/recovery readiness fixture: PASS")
 PY
 
-python3 - "$REPO/scripts/hermesops-controller-review-recovery-probe.py" <<'PY'
+python3 - "$REPO/scripts/orchestra-controller-review-recovery-probe.py" <<'PY'
 from pathlib import Path
 import sys
 
@@ -166,4 +166,4 @@ if server.count("cursor_secret=session_token") < 5:
 print("Controller review/recovery cursor authentication binding: PASS")
 PY
 
-echo "HERMESOPS_CONTROLLER_REVIEW_RECOVERY_READS_PASS"
+echo "ORCHESTRA_CONTROLLER_REVIEW_RECOVERY_READS_PASS"

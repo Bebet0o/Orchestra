@@ -96,10 +96,6 @@ class ControllerProbeTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "root"
         (self.root / "repo").mkdir(parents=True)
-        (self.root / "repo" / "VERSION").write_text(
-            "0.1.0-alpha\n",
-            encoding="utf-8",
-        )
         projects = self.root / "repo" / "config" / "projects.d"
         projects.mkdir(parents=True)
         project_config = projects / "alpha.toml"
@@ -114,7 +110,7 @@ class ControllerProbeTest(unittest.TestCase):
         self.session = secrets_dir / "controller-session"
         ensure_session(self.session)
 
-        database = self.root / "state" / "controller" / "hermesops.db"
+        database = self.root / "state" / "controller" / "orchestra.db"
         database.parent.mkdir(parents=True)
         with sqlite3.connect(database) as connection:
             connection.executescript(
@@ -255,7 +251,7 @@ class ControllerProbeTest(unittest.TestCase):
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
-                -- HermesOps milestone 2I: durable Controller event journal.
+                -- Orchestra milestone 2I: durable Controller event journal.
                 -- The legacy events and objective_events tables remain untouched.
 
                 CREATE TABLE controller_event_journal (
@@ -492,7 +488,7 @@ class ControllerProbeTest(unittest.TestCase):
         )
         self.assertEqual(result.ready_status, 200)
 
-        database = self.root / "state" / "controller" / "hermesops.db"
+        database = self.root / "state" / "controller" / "orchestra.db"
         with sqlite3.connect(database) as connection:
             tables = {
                 row[0]
@@ -553,7 +549,7 @@ class ControllerProbeTest(unittest.TestCase):
                 "GET",
                 "/api/v1/system/capabilities",
                 headers={
-                    "Cookie": f"hermesops_session={old_token}",
+                    "Cookie": f"orchestra_session={old_token}",
                 },
             )
             response = connection.getresponse()

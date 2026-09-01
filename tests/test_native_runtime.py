@@ -42,8 +42,8 @@ from model_provider import (  # noqa: E402
     OpenAICompatibleConfig,
     OpenAICompatibleProvider,
 )
-from legacy_worker_environment import LegacyLocalEnvironment  # noqa: E402
-from sandbox_backend import LegacyPreparedEnvironment  # noqa: E402
+from environment_resolution import ResolvedEnvironment  # noqa: E402
+from sandbox_backend import PreparedEnvironment  # noqa: E402
 
 
 EVENT_TIME = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
@@ -85,14 +85,21 @@ class NativeRuntimeTest(unittest.TestCase):
         return RuntimeRequest(**values)
 
     def sandbox(self) -> RuntimeSandboxContext:
+        digest = "sha256:" + "b" * 64
         return RuntimeSandboxContext(
             workspace=Path("/tmp/native-runtime-workspace"),
-            prepared_environment=LegacyPreparedEnvironment(
-                LegacyLocalEnvironment(
+            prepared_environment=PreparedEnvironment(
+                ResolvedEnvironment(
+                    schema_version=1,
                     environment_id="default-worker",
-                    local_image_config_id="sha256:" + "a" * 64,
-                    local_image_tag="hermesops-worker-sandbox:0.2",
-                )
+                    image_reference=(
+                        "registry.example.com/orchestra/worker@" + digest
+                    ),
+                    oci_digest=digest,
+                    platform="linux/amd64",
+                    provenance="native-runtime-test",
+                ),
+                "sha256:" + "a" * 64,
             ),
             cpu_limit=2,
             memory_mb=1024,
@@ -100,6 +107,7 @@ class NativeRuntimeTest(unittest.TestCase):
             network_enabled=False,
             sandbox_handle="b" * 64,
             task_id="task-native",
+            runtime_user="2001:3001",
         )
 
     def runtime(self, provider: object, model: str = "fixed-model") -> NativeRuntime:

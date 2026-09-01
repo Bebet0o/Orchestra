@@ -1,4 +1,4 @@
-# Plan de contrôle HermesOps
+# Plan de contrôle Orchestra
 
 Le plan de contrôle est indépendant des sessions Hermes.
 
@@ -24,7 +24,7 @@ Contraintes initiales :
 
 La base se trouve dans :
 
-`state/controller/hermesops.db`
+`state/controller/orchestra.db`
 
 Elle utilise :
 
@@ -45,6 +45,6 @@ Elle utilise :
 - résultats de revue ;
 - mémoire permanente.
 
-HermesOps ne considère jamais la WebUI, Telegram ou une session LLM comme la
+Orchestra ne considère jamais la WebUI, Telegram ou une session LLM comme la
 source de vérité transactionnelle. La source de vérité est la base Controller,
 complétée par Git et les snapshots.

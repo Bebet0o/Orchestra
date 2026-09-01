@@ -97,7 +97,7 @@ class ConsoleBlueprintLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
     def test_console_blueprint_route_replaces_hermesfiles(self) -> None:
         status, _, payload = self.request("GET", "/blueprints")
         self.assertEqual(status, 200)
-        self.assertIn(b"HermesOps Console", payload)
+        self.assertIn(b"Orchestra Console", payload)
 
         before = len(self.controller.records)
         status, _, _ = self.request("GET", "/hermesfiles")
@@ -121,7 +121,7 @@ class ConsoleBlueprintLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
         common = {
             "Origin": f"http://127.0.0.1:{self.port}",
             "Content-Type": "application/json",
-            "Cookie": "hermesops_session=" + "a" * 64,
+            "Cookie": "orchestra_session=" + "a" * 64,
             "X-CSRF-Token": "csrf1.example",
             "Idempotency-Key": "blueprint-console-0001",
         }
@@ -173,7 +173,7 @@ class ConsoleBlueprintLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
                 self.assertEqual(status, 404)
                 self.assertEqual(
                     json.loads(payload)["type"],
-                    "urn:hermesops:console:controller_route_not_exposed",
+                    "urn:orchestra:console:controller_route_not_exposed",
                 )
         self.assertEqual(len(self.controller.records), before)
 

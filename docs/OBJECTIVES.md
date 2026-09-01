@@ -1,4 +1,4 @@
-# HermesOps objective queue
+# Orchestra objective queue
 
 Milestone 4B adds a durable queue above the 4A orchestration DAG engine.
 Operators submit an objective once; the persistent Orchestrator plans, orders,
@@ -32,16 +32,16 @@ reconciled after daemon restart.
 ## Commands
 
 ```bash
-hermesops-objectives.py submit \
+orchestra-objectives.py submit \
   --objective-file objective.txt \
   --project PROJECT_ID \
   --priority 100
 
-hermesops-objectives.py list
-hermesops-objectives.py status --objective OBJECTIVE_ID
-hermesops-objectives.py pause --objective OBJECTIVE_ID
-hermesops-objectives.py resume --objective OBJECTIVE_ID
-hermesops-objectives.py cancel --objective OBJECTIVE_ID
+orchestra-objectives.py list
+orchestra-objectives.py status --objective OBJECTIVE_ID
+orchestra-objectives.py pause --objective OBJECTIVE_ID
+orchestra-objectives.py resume --objective OBJECTIVE_ID
+orchestra-objectives.py cancel --objective OBJECTIVE_ID
 ```
 
 Declarative DAGs may be queued with `submit-plan`. `--allow-test-actions` is

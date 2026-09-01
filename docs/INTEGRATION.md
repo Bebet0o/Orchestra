@@ -1,7 +1,7 @@
 # Reviewed integration gate
 
-HermesOps integrates a transaction only through the Controller-owned
-`hermesops-integrator.py` gate. Workers and reviewers never receive this
+Orchestra integrates a transaction only through the Controller-owned
+`orchestra-integrator.py` gate. Workers and reviewers never receive this
 script, the Controller database, or the project default-branch checkout.
 
 ## APPROVE

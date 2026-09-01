@@ -63,7 +63,7 @@ if (root / "docs/hermesfile/SPECIFICATION_V1.md").exists():
 for phrase in (
     "Orchestra Blueprint v1 Specification",
     "../../specs/blueprint-v1.schema.json",
-    "scripts/hermesops-blueprint.py",
+    "scripts/orchestra-blueprint.py",
     "The conventional source name is",
     "not a project configuration",
     "does not contain secret values",
@@ -110,10 +110,10 @@ for version_schema in version_schemas:
 print("Blueprint v1 schema/code/capability contract: PASS")
 PY
 
-python3 scripts/hermesops-blueprint.py \
+python3 scripts/orchestra-blueprint.py \
     validate config/examples/Blueprint
 
-python3 scripts/hermesops-blueprint.py \
+python3 scripts/orchestra-blueprint.py \
     fingerprint config/examples/Blueprint --json \
     | python3 -c '
 import json, sys
@@ -125,4 +125,4 @@ assert len(payload["canonical_sha256"]) == 64
 print("Blueprint v1 CLI fingerprint: PASS")
 '
 
-echo HERMESOPS_BLUEPRINT_V1_PASS
+echo ORCHESTRA_BLUEPRINT_V1_PASS

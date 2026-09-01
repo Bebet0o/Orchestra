@@ -191,7 +191,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         with closing(sqlite3.connect(self.fixture.database)) as connection:
             row = connection.execute(
                 "SELECT status, not_before FROM objective_queue "
-                "WHERE objective LIKE 'HermesOps Controller command probe%'"
+                "WHERE objective LIKE 'Orchestra Controller command probe%'"
             ).fetchone()
             self.assertEqual(row[0], "CANCELLED")
             self.assertEqual(row[1], "2099-01-01T00:00:00.000Z")
@@ -478,7 +478,7 @@ class ObjectiveCommandTest(unittest.TestCase):
 
     def test_duplicate_security_headers_are_rejected(self) -> None:
         base = [
-            ("Cookie", f"hermesops_session={TOKEN}"),
+            ("Cookie", f"orchestra_session={TOKEN}"),
             ("Content-Type", "application/json"),
             ("Content-Length", "2"),
             ("Idempotency-Key", "duplicate-header-01"),
@@ -486,7 +486,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         cases = (
             base + [("Content-Length", "2")],
             base + [("Idempotency-Key", "duplicate-header-02")],
-            base + [("Cookie", f"hermesops_session={'b' * 64}")],
+            base + [("Cookie", f"orchestra_session={'b' * 64}")],
             base + [("Content-Type", "application/json")],
             base + [("Origin", f"http://127.0.0.1:{self.fixture.port}"), ("Origin", "https://evil.invalid")],
         )
@@ -510,7 +510,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             "/api/v1/objectives",
             raw,
             [
-                ("Cookie", f"hermesops_session={TOKEN}"),
+                ("Cookie", f"orchestra_session={TOKEN}"),
                 ("Content-Type", "application/json"),
                 ("Content-Length", str(len(raw))),
                 ("Idempotency-Key", "duplicate-json-01"),
@@ -533,7 +533,7 @@ class ObjectiveCommandTest(unittest.TestCase):
                     "/api/v1/objectives",
                     raw,
                     [
-                        ("Cookie", f"hermesops_session={TOKEN}"),
+                        ("Cookie", f"orchestra_session={TOKEN}"),
                         ("Content-Type", "application/json"),
                         ("Content-Length", str(len(raw))),
                         ("Idempotency-Key", f"pathological-{index:02d}"),

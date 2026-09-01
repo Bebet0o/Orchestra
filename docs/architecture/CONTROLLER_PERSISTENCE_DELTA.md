@@ -4,7 +4,7 @@ Status: **Design contract after adversarial review**
 
 ## Purpose
 
-API v1 is a stable domain projection over the existing HermesOps runtime. It is
+API v1 is a stable domain projection over the existing Orchestra runtime. It is
 not a direct exposure of SQLite tables. This document records which existing
 semantics must be preserved and which durable structures are still required
 before write endpoints can be implemented.

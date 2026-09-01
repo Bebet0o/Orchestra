@@ -5,7 +5,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-python3 "${REPO}/scripts/hermesops-console-build.py" check \
+python3 "${REPO}/scripts/orchestra-console-build.py" check \
     --source "${REPO}/console/src" \
     --expected "${REPO}/console/dist"
 
@@ -26,11 +26,12 @@ grep -Fq 'createControllerClient' "$APP_SOURCE"
 ! grep -RInF '127.0.0.1:8765' \
     "${REPO}/console/src" "${REPO}/console/dist/assets"
 
-grep -Fq "connect-src 'self'" "${REPO}/scripts/hermesops-console.py"
-grep -Fq "form-action 'self'" "${REPO}/scripts/hermesops-console.py"
-grep -Fq 'CONTROLLER_ROUTES' "${REPO}/scripts/hermesops-console.py"
+grep -Fq "connect-src 'self'" "${REPO}/scripts/orchestra-console.py"
+grep -Fq "form-action 'self'" "${REPO}/scripts/orchestra-console.py"
+grep -Fq 'CONTROLLER_ROUTES' "${REPO}/scripts/orchestra-console.py"
 
-systemd-analyze verify \
-    "${REPO}/systemd/user/hermesops-console.service" >/dev/null
+grep -Fq '  console:' "${REPO}/compose/agent.yaml"
+grep -Fq 'container_name: orchestra-console' "${REPO}/compose/agent.yaml"
+grep -Fq 'condition: service_healthy' "${REPO}/compose/agent.yaml"
 
-echo "HERMESOPS_CONSOLE_CONTROLLER_CLIENT_PASS"
+echo "ORCHESTRA_CONSOLE_CONTROLLER_CLIENT_PASS"

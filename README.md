@@ -30,8 +30,9 @@ for one execution:
   sandbox execution.
 
 Hermes Agent is an upstream integration, not a component owned by Orchestra.
-Some installed commands and services retain historical `hermesops-*` technical
-names while the infrastructure transition continues.
+Current Orchestra commands, services, paths, labels, and resources use the
+Orchestra namespace; Hermes names remain only at the upstream integration
+boundary.
 
 ## Why Orchestra?
 
@@ -121,9 +122,9 @@ The current implementation can validate, fingerprint, and canonicalize a
 Blueprint:
 
 ```bash
-scripts/hermesops-blueprint.py validate config/examples/Blueprint
-scripts/hermesops-blueprint.py fingerprint config/examples/Blueprint --json
-scripts/hermesops-blueprint.py canonicalize config/examples/Blueprint
+scripts/orchestra-blueprint.py validate config/examples/Blueprint
+scripts/orchestra-blueprint.py fingerprint config/examples/Blueprint --json
+scripts/orchestra-blueprint.py canonicalize config/examples/Blueprint
 ```
 
 References:
@@ -134,13 +135,19 @@ References:
 
 ## Getting started
 
-The current installer is the working transitional deployment path for the
-existing stack. It supports Debian 12+ or Ubuntu 22.04+ on amd64, with UID/GID
-`1000:1000`, Docker Engine with the Compose plugin, and user-level systemd. Its
-filesystem and service layout is inherited from HermesOps, including the
-installation root `/opt/docker/hermesops` and `hermesops-*` technical names.
-This path remains available while Orchestra's longer-term distribution
-architecture evolves; it does not define that future architecture.
+The public installer supports Debian 12+ or Ubuntu 22.04+ on amd64. It uses
+the selected operator's numeric UID/GID, installs at `/opt/orchestra`, and
+uses Docker Compose for the complete application lifecycle. It requires no
+application user-systemd units, user DBus session, or lingering. Docker Engine,
+CLI, and Compose upstream versions are pinned while distribution-specific APT
+revision suffixes are resolved uniquely from the validated Debian or Ubuntu
+repository.
+
+The default worker is the already accepted immutable OCI artifact recorded in
+`config/environments/default-worker.toml`. Installation pulls that exact
+`repository@sha256:digest` into Orchestra's private sandbox Docker daemon and
+verifies its exact RepoDigest; it does not build, import, or select a local
+worker tag.
 
 Review the preflight before changing the host:
 
@@ -223,8 +230,8 @@ The current direction includes:
   behavior.
 
 Completed distribution and Blueprint foundations are recorded in
-[CHANGELOG.md](CHANGELOG.md). Historical HermesOps milestone documents remain
-in the repository as an accurate record, not as current product naming.
+[CHANGELOG.md](CHANGELOG.md). Historical milestone documents remain in the
+repository as an accurate record and are not current product authority.
 
 ## License
 

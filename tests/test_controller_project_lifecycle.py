@@ -27,12 +27,11 @@ class ProjectLifecycleFixture:
         (self.root / "repo/config/projects.d").mkdir(parents=True)
         (self.root / "state/controller").mkdir(parents=True)
         (self.root / "secrets").mkdir(parents=True)
-        (self.root / "repo/VERSION").write_text("0.1.0-alpha\n", encoding="utf-8")
         (self.root / "secrets/controller-session").write_text(TOKEN + "\n", encoding="utf-8")
         os.chmod(self.root / "secrets/controller-session", 0o600)
         shutil.copy2(ROOT / "config/policies/default.toml", self.root / "repo/config/policies/default.toml")
         shutil.copy2(ROOT / "config/controller.toml", self.root / "repo/config/controller.toml")
-        self.database = self.root / "state/controller/hermesops.db"
+        self.database = self.root / "state/controller/orchestra.db"
         with sqlite3.connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
@@ -54,7 +53,7 @@ class ProjectLifecycleFixture:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        headers = {"Cookie": f"hermesops_session={TOKEN}"}
+        headers = {"Cookie": f"orchestra_session={TOKEN}"}
         encoded = None
         if body is not None:
             encoded = json.dumps(body, separators=(",", ":")).encode()
@@ -333,9 +332,9 @@ class ProjectLifecycleTest(unittest.TestCase):
                 "UPDATE projects SET default_branch='unknown', resource_revision=resource_revision+1 WHERE project_id='alpha'"
             )
         environment = dict(os.environ)
-        environment["HERMESOPS_ROOT"] = str(self.fixture.root)
+        environment["ORCHESTRA_ROOT"] = str(self.fixture.root)
         result = subprocess.run(
-            ["python3", str(ROOT / "scripts/hermesops-registry.py"), "sync"],
+            ["python3", str(ROOT / "scripts/orchestra-registry.py"), "sync"],
             env=environment,
             text=True,
             stdout=subprocess.PIPE,

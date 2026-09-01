@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-WEBUI="hermesops-webui"
+WEBUI="orchestra-hermes-webui"
 
 [[ "$(
     docker inspect "$WEBUI" \
@@ -27,7 +27,7 @@ jq -e '
     .[0].Mounts |
     all(
       .Destination != "/var/run/docker.sock"
-      and .Destination != "/run/hermes-docker/docker.sock"
+      and .Destination != "/run/orchestra-docker/docker.sock"
     )
 ' >/dev/null
 
@@ -51,7 +51,7 @@ jq -e '
 ' >/dev/null
 
 docker exec \
-    --user 1000:1000 \
+    --user "$(id -u):$(id -g)" \
     "$WEBUI" \
     python - <<'PY'
 import json

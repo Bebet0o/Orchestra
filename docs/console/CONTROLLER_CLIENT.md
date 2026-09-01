@@ -4,7 +4,7 @@ Status: **implemented by milestone 2Q and extended through 2U**
 
 ## Boundary
 
-The browser communicates only with the HermesOps Console origin on
+The browser communicates only with the Orchestra Console origin on
 `http://127.0.0.1:8788`. JavaScript never embeds or calls the Controller port
 `8765` directly.
 
@@ -42,7 +42,7 @@ ID headers.
 
 - The operator password exists only in the form field and current request body.
 - JavaScript clears the password field after every attempt.
-- The HTTP-only `hermesops_session` cookie is never visible to JavaScript.
+- The HTTP-only `orchestra_session` cookie is never visible to JavaScript.
 - The Console forwards `Set-Cookie` unchanged.
 - No token, password, CSRF value, command, or pending action is written to
   `localStorage`, `sessionStorage`, IndexedDB, a service worker, or a URL.

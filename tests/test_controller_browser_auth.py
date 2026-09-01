@@ -43,7 +43,7 @@ class BrowserAuthFixture:
         csrf: str | None = None,
         origin: str = ORIGIN,
     ) -> tuple[int, dict[str, str], dict[str, object] | None]:
-        headers = {"Origin": origin, "User-Agent": "HermesOps-Test-Browser/1"}
+        headers = {"Origin": origin, "User-Agent": "Orchestra-Test-Browser/1"}
         encoded = None
         if body is not None:
             encoded = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -67,8 +67,8 @@ class BrowserAuthFixture:
         raw = headers["set-cookie"]
         parsed = SimpleCookie()
         parsed.load(raw)
-        token = parsed["hermesops_session"].value
-        return f"hermesops_session={token}", token
+        token = parsed["orchestra_session"].value
+        return f"orchestra_session={token}", token
 
     def login(self, *, key: str = "browser-login-0001", password: str = PASSWORD):
         status, headers, payload = self.json_request(
@@ -110,7 +110,7 @@ class ControllerBrowserAuthTest(unittest.TestCase):
         self.assertEqual(payload["data"]["actor_id"], "operator")
         serialized = json.dumps(payload, sort_keys=True)
         self.assertNotIn(PASSWORD, serialized)
-        self.assertNotIn("hermesops_session", serialized)
+        self.assertNotIn("orchestra_session", serialized)
         raw_cookie = headers["set-cookie"]
         for attribute in ("HttpOnly", "Secure", "SameSite=Strict", "Path=/"):
             self.assertIn(attribute, raw_cookie)
@@ -267,7 +267,7 @@ class LegacyBootstrapCompatibilityTest(unittest.TestCase):
             self.assertNotEqual(stale, TOKEN)
             with self.assertRaises(ControllerError) as captured:
                 fixture.server.service.browser_auth.authenticate_cookie(
-                    f"hermesops_session={stale}",
+                    f"orchestra_session={stale}",
                     TOKEN,
                 )
             self.assertEqual(captured.exception.status, 401)

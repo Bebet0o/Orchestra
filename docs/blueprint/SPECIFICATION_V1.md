@@ -403,11 +403,11 @@ or stack traces.
 ## CLI
 
 ```bash
-scripts/hermesops-blueprint.py validate Blueprint
-scripts/hermesops-blueprint.py validate Blueprint --json
-scripts/hermesops-blueprint.py fingerprint Blueprint --json
-scripts/hermesops-blueprint.py canonicalize Blueprint
-scripts/hermesops-blueprint.py canonicalize Blueprint --output canonical.json
+scripts/orchestra-blueprint.py validate Blueprint
+scripts/orchestra-blueprint.py validate Blueprint --json
+scripts/orchestra-blueprint.py fingerprint Blueprint --json
+scripts/orchestra-blueprint.py canonicalize Blueprint
+scripts/orchestra-blueprint.py canonicalize Blueprint --output canonical.json
 ```
 
 Input paths must be regular files and cannot be symlinks.

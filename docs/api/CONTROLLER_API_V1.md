@@ -1,4 +1,4 @@
-# HermesOps Controller API v1
+# Orchestra Controller API v1
 
 Status: **Design contract**
 Base path: `/api/v1`
@@ -43,7 +43,7 @@ Initial beta deployment uses an authenticated server-side session.
 Read requests require:
 
 ```text
-Cookie: hermesops_session=...
+Cookie: orchestra_session=...
 ```
 
 Mutating requests additionally require:
@@ -101,7 +101,7 @@ Errors use `application/problem+json`.
 
 ```json
 {
-  "type": "https://hermesops.dev/problems/resource-conflict",
+  "type": "https://orchestra.dev/problems/resource-conflict",
   "title": "Resource conflict",
   "status": 409,
   "code": "resource_conflict",
@@ -195,7 +195,7 @@ Example:
 
 ```json
 {
-  "type": "https://hermesops.dev/problems/confirmation-required",
+  "type": "https://orchestra.dev/problems/confirmation-required",
   "title": "Confirmation required",
   "status": 409,
   "code": "confirmation_required",
@@ -326,7 +326,7 @@ GET  /objectives/{objective_id}
 POST /objectives/{objective_id}/commands/{command}
 ```
 
-The top-level collection is canonical and preserves the current HermesOps
+The top-level collection is canonical and preserves the current Orchestra
 ability to submit one objective across multiple projects. The nested project
 collection is a convenience view and injects the path project as the only
 project when creating an objective.

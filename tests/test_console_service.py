@@ -23,8 +23,8 @@ def load_module(name: str, path: Path):
     return module
 
 
-build_module = load_module("hermesops_console_build", REPO / "scripts/hermesops-console-build.py")
-service_module = load_module("hermesops_console_service", REPO / "scripts/hermesops-console.py")
+build_module = load_module("orchestra_console_build", REPO / "scripts/orchestra-console-build.py")
+service_module = load_module("orchestra_console_service", REPO / "scripts/orchestra-console.py")
 
 
 class ConsoleBuildTest(unittest.TestCase):
@@ -115,17 +115,20 @@ class ConsoleHTTPTest(unittest.TestCase):
     def test_health_version_routes_assets_and_head(self) -> None:
         status, headers, body = self.request("/health")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body), {"service": "hermesops-console", "status": "ok"})
+        self.assertEqual(
+            json.loads(body),
+            {"service": "orchestra-console", "status": "ok"},
+        )
         self.assert_security_headers(headers)
 
         status, _, body = self.request("/version")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["version"], "0.1.0-alpha")
+        self.assertEqual(json.loads(body)["version"], "v1")
 
         for route in service_module.ROUTES:
             status, headers, body = self.request(route)
             self.assertEqual(status, 200, route)
-            self.assertIn(b"HermesOps Console", body)
+            self.assertIn(b"Orchestra Console", body)
             self.assertEqual(headers["content-type"], "text/html; charset=utf-8")
             self.assert_security_headers(headers)
 
@@ -197,7 +200,7 @@ class ConsoleHTTPTest(unittest.TestCase):
             results = list(executor.map(lambda path: self.request(path), paths))
         for status, headers, body in results:
             self.assertEqual(status, 200)
-            self.assertIn(b"HermesOps Console", body)
+            self.assertIn(b"Orchestra Console", body)
             self.assert_security_headers(headers)
 
 

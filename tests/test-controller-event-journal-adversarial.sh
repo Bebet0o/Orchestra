@@ -2,4 +2,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m unittest -v tests.test_controller_event_journal_adversarial
-printf 'HERMESOPS_CONTROLLER_EVENT_JOURNAL_ADVERSARIAL_PASS\n'
+printf 'ORCHESTRA_CONTROLLER_EVENT_JOURNAL_ADVERSARIAL_PASS\n'

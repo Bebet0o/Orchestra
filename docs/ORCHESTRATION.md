@@ -1,4 +1,4 @@
-# HermesOps orchestration DAG
+# Orchestra orchestration DAG
 
 Milestone 4A adds a durable multi-task scheduler above the transactional
 worker/reviewer/integrator pipeline.
@@ -29,15 +29,15 @@ test actions can run concurrently, bounded by both plan and global limits.
 
 ## Persistence and restart
 
-The systemd user service owns one exclusive lock. Plans, tasks, dependencies,
-attempts and daemon instances are durable in SQLite. On restart, interrupted
+The Compose-owned `orchestrator` service owns one exclusive lock. Plans, tasks,
+dependencies, attempts and daemon instances are durable in SQLite. On restart, interrupted
 non-pipeline attempts become `ABANDONED` and are retried within their attempt
 budget. Active transactional pipelines are never duplicated; the existing
 Recovery Manager remains authoritative for their safe reconciliation.
 
 ## AI planner
 
-`hermesops-planner.py` runs the `ops-orchestrator` profile without a project
+`orchestra-planner.py` runs the `ops-orchestrator` profile without a project
 workspace. It accepts a high-level objective and a fixed set of enabled
 projects, then emits a strictly validated JSON DAG. AI plans start as `DRAFT`
 unless explicitly activated.
@@ -45,29 +45,26 @@ unless explicitly activated.
 ## Operations
 
 ```bash
-systemctl --user status hermesops-orchestrator.service
-/opt/docker/hermesops/repo/scripts/hermesops-orchestrator.py daemon-status
-/opt/docker/hermesops/repo/scripts/hermesops-orchestrator.py list
-/opt/docker/hermesops/repo/scripts/hermesops-orchestrator.py status --plan PLAN_ID
+/opt/orchestra/repo/scripts/orchestra-compose.sh ps orchestrator
+/opt/orchestra/repo/scripts/orchestra-orchestrator.py daemon-status
+/opt/orchestra/repo/scripts/orchestra-orchestrator.py list
+/opt/orchestra/repo/scripts/orchestra-orchestrator.py status --plan PLAN_ID
 ```
 
 
-## User-systemd portability
+## Compose lifecycle
 
-The Orchestrator runs in the per-user systemd manager. Its unit uses only the
-hardening directives already validated by the Supervisor: `NoNewPrivileges`,
-`PrivateTmp`, `RestrictSUIDSGID`, and `LockPersonality`. Mount-namespace and
-kernel-protection directives that fail with `218/CAPABILITIES` in this runtime
-are deliberately excluded.
-
-A unit is considered ready only when systemd reports a running MainPID and
-`daemon-status` confirms the exclusive lock, healthy Supervisor, and matching
-SQLite instance in `RUNNING`.
+The Orchestrator runs in the canonical Compose application with a read-only
+root filesystem, dropped capabilities, `no-new-privileges`, and the selected
+operator's numeric identity. It receives only the dedicated private DIND
+socket required for sandbox/runtime operations. Readiness requires the
+exclusive lock, a healthy Supervisor, and the matching SQLite instance in
+`RUNNING`.
 
 ## Reviewer transport resilience
 
 Reviewer transport failures and reviewer decisions are separate states. A
-missing marker is not retryable by itself. HermesOps reads the failed reviewer
+missing marker is not retryable by itself. Orchestra reads the failed reviewer
 execution log and retries only recognized provider/stream failures, including
 the observed Codex `no SSE events` condition. Retries are bounded, audited and
 reuse the same immutable transaction result; the worker is not rerun.
@@ -82,7 +79,7 @@ and clones are removed using exact audited identifiers. A real `REJECT` or
 Worker and reviewer execution rows are reserved before their nested Docker
 sandboxes are created. The sandbox ID is finalized later, which previously
 left a race with the permanent orphan cleaner. Recovery now preserves any
-sandbox whose `hermes-task-id` belongs to a SQLite task in `RUNNING` under an
+sandbox whose `orchestra-task-id` belongs to a SQLite task in `RUNNING` under an
 active run. The normal sandbox ID remains the primary reference after it is
 persisted.
 
@@ -96,7 +93,7 @@ a terminal state.
 ## Public read boundary
 
 The Controller exposes a redacted plan graph, attempts and reviewer assignments
-for the HermesOps Console. Public reads never reuse the internal CLI status
+for the Orchestra Console. Public reads never reuse the internal CLI status
 payload because that payload contains task definitions, raw result objects and
 failure text. Cursor pagination is authenticated and all mutation authority
 remains outside these routes.

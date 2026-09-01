@@ -41,7 +41,7 @@ class RawClient:
             "Sec-WebSocket-Version: 13",
             f"Sec-WebSocket-Key: {key}",
             f"Origin: {ORIGIN}",
-            f"Cookie: hermesops_session={TOKEN}",
+            f"Cookie: orchestra_session={TOKEN}",
         ]
         if last_sequence is not None:
             headers.append(f"Last-Event-Sequence: {last_sequence}")

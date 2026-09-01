@@ -5,9 +5,9 @@ Status: **Accepted design contract for Milestone 2A**
 ## Objective
 
 This document defines the internal component model of the future
-`hermesops-controller` service.
+`orchestra-controller` service.
 
-The model maps the existing HermesOps scripts into a coherent Controller
+The model maps the existing Orchestra scripts into a coherent Controller
 without requiring an immediate rewrite. The first implementation may wrap
 existing logic, but core state transitions must progressively move into shared
 Python modules rather than being implemented through shell subprocess chains.
@@ -60,23 +60,23 @@ The target beta may run as one Controller process plus the existing independent
 supervisor and notifier services.
 
 ```text
-hermesops-controller
+orchestra-controller
 ├── HTTP API
 ├── event stream
 ├── command/query services
 ├── orchestration scheduler
 └── adapter coordination
 
-hermesops-supervisor
+orchestra-supervisor
 └── health and stale-run detection through internal Controller commands
 
-hermesops-notifier
+orchestra-notifier
 └── durable outbox delivery
 
-hermesops-agent
+orchestra-hermes-agent
 └── upstream AI execution
 
-hermesops-sandbox-engine
+orchestra-sandbox-engine
 └── isolated container execution
 ```
 
@@ -293,8 +293,8 @@ Responsibilities:
 Existing logic in:
 
 ```text
-scripts/hermesops-transaction.py
-scripts/hermesops-integrator.py
+scripts/orchestra-transaction.py
+scripts/orchestra-integrator.py
 ```
 
 is the starting implementation source, not a permanent process boundary.
@@ -460,21 +460,21 @@ persist plaintext in idempotency records
 
 | Existing entry point | Future Controller component |
 | --- | --- |
-| `hermesops-db.py` | persistence and migrations |
-| `hermesops-registry.py` | project service |
-| `hermesops-objectives.py` | objective service |
-| `hermesops-planner.py` | planning service |
-| `hermesops-orchestrator.py` | scheduler and run coordination |
-| `hermesops-worker.py` | task/run service and sandbox adapter |
-| `hermesops-reviewer.py` | review service |
-| `hermesops-recovery.py` | recovery service |
-| `hermesops-transaction.py` | transaction service |
-| `hermesops-integrator.py` | integration service |
-| `hermesops-supervisor.py` | system health adapter and internal commands |
-| `hermesops-notifier.py` | notification outbox consumer |
-| `hermesops-roles.py` | role policy repository |
-| `hermesops-control.py` | temporary operator adapter |
-| `hermesopsctl` | temporary CLI client of Controller API |
+| `orchestra-db.py` | persistence and migrations |
+| `orchestra-registry.py` | project service |
+| `orchestra-objectives.py` | objective service |
+| `orchestra-planner.py` | planning service |
+| `orchestra-orchestrator.py` | scheduler and run coordination |
+| `orchestra-worker.py` | task/run service and sandbox adapter |
+| `orchestra-reviewer.py` | review service |
+| `orchestra-recovery.py` | recovery service |
+| `orchestra-transaction.py` | transaction service |
+| `orchestra-integrator.py` | integration service |
+| `orchestra-supervisor.py` | system health adapter and internal commands |
+| `orchestra-notifier.py` | notification outbox consumer |
+| `orchestra-roles.py` | role policy repository |
+| `orchestra-control.py` | temporary operator adapter |
+| `orchestractl` | temporary CLI client of Controller API |
 
 ## Implementation sequence
 

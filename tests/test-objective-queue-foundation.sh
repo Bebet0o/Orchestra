@@ -15,14 +15,14 @@ objective_stage() {
     echo "Objective foundation stage: $1"
 }
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 
 objective_stage "required files"
 for file in \
-    "${REPO}/scripts/hermesops-objectives.py" \
-    "${REPO}/scripts/hermesops-orchestrator.py" \
+    "${REPO}/scripts/orchestra-objectives.py" \
+    "${REPO}/scripts/orchestra-orchestrator.py" \
     "${REPO}/migrations/010_objective_queue.sql" \
     "${REPO}/config/orchestrator.toml" \
     "${REPO}/docs/OBJECTIVES.md" \
@@ -36,31 +36,31 @@ done
 
 objective_stage "python compilation"
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-objectives.py" \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-objectives.py" \
+    "${REPO}/scripts/orchestra-orchestrator.py"
 
 objective_stage "component self-tests"
-"${REPO}/scripts/hermesops-objectives.py" self-test
-"${REPO}/scripts/hermesops-orchestrator.py" self-test
+"${REPO}/scripts/orchestra-objectives.py" self-test
+"${REPO}/scripts/orchestra-orchestrator.py" self-test
 
 objective_stage "source contracts"
 grep -Fq 'def synchronize_objective_states' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'def reserve_ai_objective' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'def reconcile_interrupted_planner_executions' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'Preserve global priority' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq "objective.status = 'RUNNING'" \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'global_parallel_objectives = 2' \
     "${REPO}/config/orchestrator.toml"
 grep -Fq 'planning_retry_backoff_seconds = 30' \
     "${REPO}/config/orchestrator.toml"
 
 objective_stage "database schema"
-# HERMESOPS_OBJECTIVE_QUEUE_MINIMUM_MIGRATION_V1
+# ORCHESTRA_OBJECTIVE_QUEUE_MINIMUM_MIGRATION_V1
 OBJECTIVE_QUEUE_SCHEMA_VERSION="$(
     sqlite3 "$DB" 'PRAGMA user_version;'
 )"
@@ -79,11 +79,11 @@ do
 done
 
 objective_stage "orchestrator service"
-systemctl --user is-enabled --quiet hermesops-orchestrator.service
-systemctl --user is-active --quiet hermesops-orchestrator.service
+"${REPO}/scripts/orchestra-compose.sh" ps --status running --services |
+    grep -Fxq orchestrator
 
 objective_stage "daemon status"
-DAEMON_STATUS="$("${REPO}/scripts/hermesops-orchestrator.py" daemon-status)"
+DAEMON_STATUS="$("${REPO}/scripts/orchestra-orchestrator.py" daemon-status)"
 python3 - "$DAEMON_STATUS" <<'PY'
 import json
 import sys
@@ -288,7 +288,7 @@ active = connection.execute(
 ).fetchone()[0]
 assert active == 0, active
 
-# HERMESOPS_OBJECTIVE_PROJECT_SCOPE_SCHEMA_V1
+# ORCHESTRA_OBJECTIVE_PROJECT_SCOPE_SCHEMA_V1
 project_ids = {
     row["project_id"]
     for row in connection.execute(
@@ -446,7 +446,7 @@ fi
 
 [[ "$(sqlite3 "$DB" 'SELECT COUNT(*) FROM project_locks;')" == "0" ]]
 
-# HERMESOPS_REAL_PROJECT_REGISTRY_COMPATIBILITY_V1
+# ORCHESTRA_REAL_PROJECT_REGISTRY_COMPATIBILITY_V1
 [[ "$(
     sqlite3 "$DB" \
         "SELECT COUNT(*)
@@ -468,7 +468,7 @@ fi
            );"
 )" == "0" ]]
 
-# HERMESOPS_OBJECTIVE_FOUNDATION_PRODUCTION_STATE_V1
+# ORCHESTRA_OBJECTIVE_FOUNDATION_PRODUCTION_STATE_V1
 objective_stage "repository integrity"
 git -C "$REPO" diff --check
 
@@ -477,4 +477,4 @@ if git -C "$REPO" ls-files -u | grep -q .; then
     exit 1
 fi
 
-echo "HermesOps persistent autonomous objective queue foundation: PASS"
+echo "Orchestra persistent autonomous objective queue foundation: PASS"

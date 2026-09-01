@@ -22,7 +22,7 @@ def load_module(name: str, path: Path):
     return module
 
 
-service_module = load_module("hermesops_console_client_service", REPO / "scripts/hermesops-console.py")
+service_module = load_module("orchestra_console_client_service", REPO / "scripts/orchestra-console.py")
 
 
 class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
@@ -117,7 +117,7 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(
                 200,
                 {"data": {"authenticated": True, "actor_id": "operator"}},
-                cookie="hermesops_session=" + "a" * 64 + "; HttpOnly; Secure; SameSite=Strict; Path=/",
+                cookie="orchestra_session=" + "a" * 64 + "; HttpOnly; Secure; SameSite=Strict; Path=/",
             )
         elif self.path == "/api/v1/auth/csrf":
             self._send_json(200, {"data": {"token": "csrf1.example"}})
@@ -125,7 +125,7 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(
                 200,
                 {"data": {"authenticated": False}},
-                cookie="hermesops_session=; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Path=/",
+                cookie="orchestra_session=; Max-Age=0; HttpOnly; Secure; SameSite=Strict; Path=/",
             )
         elif self.path == "/api/v1/projects" or self.path.startswith("/api/v1/projects/alpha/commands/"):
             self._send_json(202, {"data": {"operation_id": "operation-" + "a" * 32, "state": "succeeded"}})
@@ -235,11 +235,11 @@ class ConsoleControllerProxyTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(json.loads(payload)["data"]["authenticated"])
         headers = self.headers_map(raw_headers)
-        self.assertIn("hermesops_session=", headers["set-cookie"][0])
+        self.assertIn("orchestra_session=", headers["set-cookie"][0])
         self.assertNotIn("access-control-allow-origin", headers)
         self.assertNotIn("access-control-allow-credentials", headers)
         self.assertIn("connect-src 'self'", headers["content-security-policy"][0])
-        self.assertEqual(headers["x-hermesops-controller-request-id"], ["controller-request-0001"])
+        self.assertEqual(headers["x-orchestra-controller-request-id"], ["controller-request-0001"])
         self.assertTrue(headers["x-request-id"][0].startswith("req_"))
 
         record = self.controller.records[-1]
@@ -293,12 +293,12 @@ class ConsoleControllerProxyTest(unittest.TestCase):
             },
         )
         self.assertEqual(status, 403)
-        self.assertEqual(json.loads(payload)["type"], "urn:hermesops:console:origin_forbidden")
+        self.assertEqual(json.loads(payload)["type"], "urn:orchestra:console:origin_forbidden")
         self.assertEqual(len(self.controller.records), before)
 
         status, _, payload = self.request("GET", "/api/v1/tasks")
         self.assertEqual(status, 404)
-        self.assertEqual(json.loads(payload)["type"], "urn:hermesops:console:controller_route_not_exposed")
+        self.assertEqual(json.loads(payload)["type"], "urn:orchestra:console:controller_route_not_exposed")
         self.assertEqual(len(self.controller.records), before)
 
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
@@ -313,7 +313,7 @@ class ConsoleControllerProxyTest(unittest.TestCase):
             response = connection.getresponse()
             payload = response.read(1000)
             self.assertEqual(response.status, 413)
-            self.assertEqual(json.loads(payload)["type"], "urn:hermesops:console:request_too_large")
+            self.assertEqual(json.loads(payload)["type"], "urn:orchestra:console:request_too_large")
         finally:
             connection.close()
         self.assertEqual(len(self.controller.records), before)
@@ -357,7 +357,7 @@ class ConsoleControllerProxyTest(unittest.TestCase):
             payload = response.read(1000)
             connection.close()
             self.assertEqual(response.status, 503)
-            self.assertEqual(json.loads(payload)["type"], "urn:hermesops:console:controller_unavailable")
+            self.assertEqual(json.loads(payload)["type"], "urn:orchestra:console:controller_unavailable")
             self.assertNotIn(str(REPO).encode(), payload)
         finally:
             server.shutdown()

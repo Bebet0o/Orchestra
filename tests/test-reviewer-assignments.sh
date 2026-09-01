@@ -11,4 +11,4 @@ grep -Fq 'review.assignment_claimed' docs/api/EVENTS_V1.md
 grep -Fq 'review.assignment_completed' docs/api/EVENTS_V1.md
 grep -Fq 'review.assignment_failed' docs/api/EVENTS_V1.md
 
-echo HERMESOPS_REVIEWER_ASSIGNMENT_PASS
+echo ORCHESTRA_REVIEWER_ASSIGNMENT_PASS

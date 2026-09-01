@@ -7,174 +7,77 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 cd "$REPO"
 
-UNIT="systemd/user/hermesops-controller-api.service"
-INSTALLER="install.sh"
-UNINSTALLER="uninstall.sh"
-VALIDATE="validate.sh"
-
 for file in \
+    compose/agent.yaml \
+    images/orchestra-control-plane.Dockerfile \
     controller_api/service_support.py \
-    scripts/hermesops-controller-session.py \
-    scripts/hermesops-controller-probe.py \
-    tests/test_controller_service.py \
-    tests/test-controller-service-lifecycle.sh \
-    tests/test-controller-service-persistence.sh \
-    "$UNIT"
+    scripts/orchestra-controller-session.py \
+    scripts/orchestra-controller-probe.py \
+    scripts/orchestra-controller-api.py \
+    tests/test_controller_service.py
 do
     [[ -f "$file" ]]
 done
 
-python3 -m compileall -q \
-    controller_api/service_support.py \
-    scripts/hermesops-controller-session.py \
-    scripts/hermesops-controller-probe.py \
-    tests/test_controller_service.py
+python3 tests/test_controller_service.py >/dev/null
 
-python3 tests/test_controller_service.py
-
-bash -n \
-    tests/test-controller-service-lifecycle.sh \
-    tests/test-controller-service-persistence.sh \
-    install.sh uninstall.sh validate.sh
-
-for marker in \
-    'ExecStartPre=/usr/bin/python3 /opt/docker/hermesops/repo/scripts/hermesops-controller-session.py check' \
-    'ExecStartPre=/usr/bin/python3 /opt/docker/hermesops/repo/scripts/hermesops-controller-operator.py ensure' \
-    'ExecStart=/usr/bin/python3 /opt/docker/hermesops/repo/scripts/hermesops-controller-api.py serve --host 127.0.0.1 --port 8765 --log-level INFO' \
-    'ExecStartPost=/usr/bin/python3 /opt/docker/hermesops/repo/scripts/hermesops-controller-probe.py --base-url http://127.0.0.1:8765 --wait-seconds 20' \
-    'Restart=on-failure' \
-    'NoNewPrivileges=true' \
-    'RestrictSUIDSGID=true' \
-    'RestrictRealtime=true' \
-    'RestrictNamespaces=true' \
-    'LockPersonality=true' \
-    'MemoryDenyWriteExecute=true' \
-    'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' \
-    'WantedBy=default.target'
-do
-    grep -Fxq "$marker" "$UNIT"
-done
-
-if grep -Eq '^After=.*default\.target([[:space:]]|$)' "$UNIT"; then
-    echo "default.target ordering cycle in Controller unit" >&2
-    exit 1
-fi
-
-
-for forbidden in \
-    'CapabilityBoundingSet=' \
-    'AmbientCapabilities=' \
-    'PrivateDevices=' \
-    'ProtectKernelTunables=' \
-    'ProtectKernelModules=' \
-    'ProtectKernelLogs=' \
-    'ProtectControlGroups=' \
-    'ProtectSystem=' \
-    'ProtectHome=' \
-    'PrivateTmp=' \
-    'PrivateUsers='
-do
-    if grep -Eq "^[[:space:]]*${forbidden}" "$UNIT"; then
-        echo "Non-portable user-service hardening remains: ${forbidden}" >&2
-        exit 1
-    fi
-done
-
-if command -v systemd-analyze >/dev/null 2>&1; then
-    systemd-analyze --user verify "$UNIT"
-fi
-
-for marker in \
-    '"${REPO}/scripts/hermesops-controller-session.py" ensure' \
-    '"${REPO}/scripts/hermesops-controller-operator.py" ensure' \
-    'hermesops-controller-api.service' \
-    'user_run systemctl --user restart hermesops-controller-api.service' \
-    '"${REPO}/scripts/hermesops-controller-probe.py"'
-do
-    grep -Fq "$marker" "$INSTALLER"
-done
-
-python3 - "$UNINSTALLER" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-uninstaller = Path(sys.argv[1]).read_text(encoding="utf-8")
-expected = (
-    "hermesops-console.service",
-    "hermesops-controller-api.service",
-    "hermesops-notifier.service",
-    "hermesops-orchestrator.service",
-    "hermesops-supervisor.service",
-)
-loops = re.findall(r"^for unit in ([^;]+); do$", uninstaller, flags=re.MULTILINE)
-if len(loops) != 2:
-    raise SystemExit(f"Expected exactly two service uninstall loops, found {len(loops)}")
-for index, loop in enumerate(loops, start=1):
-    actual = tuple(loop.split())
-    if actual != expected:
-        raise SystemExit(
-            f"Service uninstall loop {index} mismatch: expected={expected!r} actual={actual!r}"
-        )
-print("HermesOps service uninstall unit set: PASS")
-PY
-
-if grep -Fq 'rm -f "${ROOT}/secrets/controller-session"' "$UNINSTALLER"; then
-    echo "Conservative uninstall must preserve Controller session." >&2
-    exit 1
-fi
-
-grep -Fq     '"${TARGET_HOME}/.config/systemd/user/default.target.wants/${unit}"'     "$UNINSTALLER"
-
-for marker in \
-    'tests/test-controller-service-contract.sh' \
-    'tests/test-controller-service-persistence.sh' \
-    'hermesops-controller-api.service' \
-    'scripts/hermesops-controller-probe.py'
-do
-    grep -Fq "$marker" "$VALIDATE"
-done
-
-python3 - "$UNIT" "$INSTALLER" "$UNINSTALLER" <<'PY'
+python3 - "$REPO" <<'PY'
 from pathlib import Path
 import sys
+import yaml
 
-unit = Path(sys.argv[1]).read_text(encoding="utf-8")
-installer = Path(sys.argv[2]).read_text(encoding="utf-8")
-uninstaller = Path(sys.argv[3]).read_text(encoding="utf-8")
+root = Path(sys.argv[1])
+compose = yaml.safe_load((root / "compose/agent.yaml").read_text(encoding="utf-8"))
+controller = compose["services"]["controller"]
+expected = [
+    "python3",
+    "/opt/orchestra/repo/scripts/orchestra-controller-api.py",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8765",
+    "--log-level",
+    "INFO",
+]
+if controller["command"] != expected:
+    raise SystemExit(f"Controller Compose command mismatch: {controller['command']!r}")
+if controller.get("network_mode") != "host":
+    raise SystemExit("Controller does not preserve loopback host networking")
+if controller.get("restart") != "unless-stopped":
+    raise SystemExit("Controller restart policy mismatch")
+if controller.get("read_only") is not True:
+    raise SystemExit("Controller root filesystem is not read-only")
+if "no-new-privileges:true" not in controller.get("security_opt", []):
+    raise SystemExit("Controller no-new-privileges policy missing")
+if not controller.get("healthcheck"):
+    raise SystemExit("Controller healthcheck missing")
 
-if "--host 0.0.0.0" in unit or "--host ::" in unit:
-    raise SystemExit("Controller service is not loopback-only")
-
-session = installer.index("hermesops-controller-session.py\" ensure")
-unit_copy = installer.index('for unit in "${REPO}"/systemd/user/*.service')
-restart = installer.index(
-    "systemctl --user restart hermesops-controller-api.service"
-)
-probe = installer.index("hermesops-controller-probe.py", restart)
-if not session < unit_copy < restart < probe:
-    raise SystemExit("Invalid Controller install lifecycle order")
-
-stop = uninstaller.index("hermesops-controller-api.service")
-compose = uninstaller.index("hermes-agent-compose.sh")
-if not stop < compose:
-    raise SystemExit("Controller must stop before containers are removed")
-
-for required in (
-    "CONTROLLER_UNIT_TOUCHED=1",
-    "restore_controller_unit",
-    "CONTROLLER_UNIT_WAS_ENABLED",
-    "CONTROLLER_UNIT_WAS_ACTIVE",
+for retired in (
+    root / "systemd/user/hermesops-controller-api.service",
+    root / "systemd/user/orchestra-controller-api.service",
 ):
-    if required not in installer:
-        raise SystemExit(
-            f"Controller installer rollback marker missing: {required}"
-        )
+    if retired.exists():
+        raise SystemExit(f"Retired application unit remains: {retired}")
 
-if "default.target.wants/${unit}" not in uninstaller:
-    raise SystemExit("Uninstaller does not remove stale activation links")
+for name in ("install.sh", "uninstall.sh", "validate.sh"):
+    source = (root / name).read_text(encoding="utf-8")
+    if "systemctl --user" in source:
+        raise SystemExit(f"Application user-systemd usage remains in {name}")
 
-print("HermesOps Controller service installation contract: PASS")
+installer = (root / "install.sh").read_text(encoding="utf-8")
+if '"${REPO}/scripts/orchestra-compose.sh" up -d' not in installer:
+    raise SystemExit("Installer does not start the Compose-owned application")
+if '"${REPO}/scripts/orchestra-controller-probe.py"' not in installer:
+    raise SystemExit("Installer Controller readiness probe missing")
+
+uninstaller = (root / "uninstall.sh").read_text(encoding="utf-8")
+if '"${REPO}/scripts/orchestra-compose.sh" down' not in uninstaller:
+    raise SystemExit("Uninstaller does not stop the Compose-owned application")
+if 'rm -f "${ROOT}/secrets/controller-session"' in uninstaller:
+    raise SystemExit("Conservative uninstall deletes the Controller session")
+
+print("Orchestra Controller Compose service contract: PASS")
 PY
 
-echo "HERMESOPS_CONTROLLER_SERVICE_CONTRACT_PASS"
+echo "ORCHESTRA_CONTROLLER_SERVICE_CONTRACT_PASS"

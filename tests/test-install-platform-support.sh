@@ -52,6 +52,14 @@ then
     echo "Wrong upstream Docker package version accepted" >&2
     exit 1
 fi
+if printf '%s\n' \
+    '5:29.6.1-1~ubuntu.24.04~noble' \
+    '5:29.6.1-2~ubuntu.24.04~noble' |
+   orchestra_select_locked_apt_version 29.6.1 >/dev/null
+then
+    echo "Ambiguous Docker package revisions accepted" >&2
+    exit 1
+fi
 
 grep -Fq 'linux/${DOCKER_REPOSITORY_FAMILY}/gpg' "${REPO}/install.sh"
 grep -Fq 'linux/${DOCKER_REPOSITORY_FAMILY}' "${REPO}/install.sh"

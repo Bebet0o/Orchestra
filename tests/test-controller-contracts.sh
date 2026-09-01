@@ -102,7 +102,7 @@ for field in ("project_ids","not_before","max_parallel_tasks","planning_max_atte
 # Event types are forward compatible while known names remain discoverable.
 type_schema = events["properties"]["type"]
 require("enum" not in type_schema, "Closed event enum contradicts forward compatibility")
-known = type_schema.get("x-hermesops-known-event-types", [])
+known = type_schema.get("x-orchestra-known-event-types", [])
 for name in ("run.state_changed","review.verdict_recorded","sandbox.activated"):
     require(name in known, f"Known event missing: {name}")
 require(type_schema.get("pattern"), "Event type pattern missing")
@@ -132,4 +132,4 @@ print("Blueprint unsupported secret eligibility rejected: PASS")
 print("Controller persistence delta documented: PASS")
 PYTEST
 
-echo "HERMESOPS_CONTROLLER_CONTRACTS_REVIEW_RC3_PASS"
+echo "ORCHESTRA_CONTROLLER_CONTRACTS_REVIEW_RC3_PASS"

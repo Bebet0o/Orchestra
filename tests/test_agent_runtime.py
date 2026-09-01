@@ -42,26 +42,28 @@ from agent_runtime import (  # noqa: E402
     RuntimeSandboxContext,
     record_runtime_failure,
 )
-from legacy_worker_environment import LegacyLocalEnvironment  # noqa: E402
 from environment_resolution import ResolvedEnvironment  # noqa: E402
-from sandbox_backend import (  # noqa: E402
-    LegacyPreparedEnvironment,
-    PreparedEnvironment,
-)
+from sandbox_backend import PreparedEnvironment  # noqa: E402
 
 
-def legacy_preparation(hex_character: str) -> LegacyPreparedEnvironment:
-    return LegacyPreparedEnvironment(
-        LegacyLocalEnvironment(
+def oci_preparation(hex_character: str) -> PreparedEnvironment:
+    digest_character = "d" if hex_character == "e" else "e"
+    digest = "sha256:" + digest_character * 64
+    return PreparedEnvironment(
+        ResolvedEnvironment(
+            schema_version=1,
             environment_id="default-worker",
-            local_image_config_id="sha256:" + hex_character * 64,
-            local_image_tag="hermesops-worker-sandbox:0.2",
-        )
+            image_reference="registry.example.com/orchestra/worker@" + digest,
+            oci_digest=digest,
+            platform="linux/amd64",
+            provenance="runtime-test",
+        ),
+        "sha256:" + hex_character * 64,
     )
 
 RECOVERY_SPEC = importlib.util.spec_from_file_location(
-    "hermesops_recovery_runtime_tests",
-    SCRIPTS / "hermesops-recovery.py",
+    "orchestra_recovery_runtime_tests",
+    SCRIPTS / "orchestra-recovery.py",
 )
 if RECOVERY_SPEC is None or RECOVERY_SPEC.loader is None:
     raise RuntimeError("Cannot load recovery module for runtime tests")
@@ -146,13 +148,14 @@ class AgentRuntimeContractTest(unittest.TestCase):
     def test_sandbox_contract_is_generic_and_strict(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=Path("/tmp/workspace"),
-            prepared_environment=legacy_preparation("a"),
+            prepared_environment=oci_preparation("a"),
             cpu_limit=1,
             memory_mb=512,
             read_only=True,
             network_enabled=False,
             sandbox_handle="a" * 64,
             task_id="task-contract",
+            runtime_user="2001:3001",
         )
         field_names = {item.name for item in fields(sandbox)}
         self.assertEqual(
@@ -166,6 +169,7 @@ class AgentRuntimeContractTest(unittest.TestCase):
                 "network_enabled",
                 "sandbox_handle",
                 "task_id",
+                "runtime_user",
             },
         )
         self.assertFalse(any("hermes" in name for name in field_names))
@@ -179,25 +183,30 @@ class AgentRuntimeContractTest(unittest.TestCase):
                 network_enabled=False,
                 sandbox_handle="../container",
                 task_id="task-contract",
+                runtime_user="2001:3001",
             )
 
     def test_runtime_preparation_boundary_normalizes_valid_concrete_types(self) -> None:
-        legacy = legacy_preparation("a")
-        legacy_context = RuntimeSandboxContext(
+        oci_prepared = oci_preparation("a")
+        oci_context_from_helper = RuntimeSandboxContext(
             workspace=Path("/tmp/workspace"),
-            prepared_environment=legacy,
+            prepared_environment=oci_prepared,
             cpu_limit=1,
             memory_mb=512,
             read_only=False,
             network_enabled=False,
             sandbox_handle="a" * 64,
             task_id="task-contract",
+            runtime_user="2001:3001",
         )
         self.assertIsInstance(
-            legacy_context.prepared_environment,
+            oci_context_from_helper.prepared_environment,
             RuntimePreparedEnvironmentData,
         )
-        self.assertIsNone(legacy_context.prepared_environment.image_reference)
+        self.assertEqual(
+            oci_context_from_helper.prepared_environment.image_reference,
+            oci_prepared.image_reference,
+        )
 
         digest = "sha256:" + "b" * 64
         reference = "registry.example.com/team/worker@" + digest
@@ -219,6 +228,7 @@ class AgentRuntimeContractTest(unittest.TestCase):
             network_enabled=False,
             sandbox_handle="b" * 64,
             task_id="task-contract",
+            runtime_user="2001:3001",
         )
         self.assertEqual(
             oci_context.prepared_environment.image_reference,
@@ -262,6 +272,7 @@ class AgentRuntimeContractTest(unittest.TestCase):
                     network_enabled=False,
                     sandbox_handle="c" * 64,
                     task_id="task-contract",
+                    runtime_user="2001:3001",
                 )
 
     def test_fake_runtime_can_replace_the_adapter_deterministically(self) -> None:
@@ -695,8 +706,12 @@ class HermesRuntimeMappingTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         (self.root / "repo/compose").mkdir(parents=True)
         (self.root / "repo/scripts").mkdir(parents=True)
-        (self.root / "repo/scripts/hermesops-planner-entry.py").touch()
-        (self.root / "repo/scripts/hermes-worker-entry.py").touch()
+        (self.root / "repo/scripts/orchestra-planner-entry.py").touch()
+        (self.root / "repo/scripts/orchestra-worker-entry.py").touch()
+        (self.root / "repo/compose/images.lock.env").write_text(
+            (ROOT / "compose/images.lock.env").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
         (self.root / "state/hermes-home/profiles").mkdir(parents=True)
         self.runtime = HermesRuntime(self.root)
 
@@ -715,9 +730,9 @@ class HermesRuntimeMappingTest(unittest.TestCase):
 
         command = self.runtime.build_command(request)
 
-        self.assertIn("hermes-agent", command)
-        self.assertIn("hermesops-runtime-container=1", command)
-        self.assertIn("hermesops-runtime-request-id=test", command)
+        self.assertIn(self.runtime.hermes_agent_image, command)
+        self.assertIn("orchestra-runtime-container=1", command)
+        self.assertIn("orchestra-runtime-request-id=test", command)
         self.assertIn("HERMES_MAX_ITERATIONS=30", command)
         self.assertIn("ops-orchestrator", command)
         self.assertEqual(command[-2:], ["-z", "plan prompt"])
@@ -725,13 +740,14 @@ class HermesRuntimeMappingTest(unittest.TestCase):
     def test_worker_mapping_preserves_sandbox_and_runtime_profile(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "worker-clone",
-            prepared_environment=legacy_preparation("a"),
+            prepared_environment=oci_preparation("a"),
             cpu_limit=2,
             memory_mb=2048,
             read_only=False,
             network_enabled=False,
             sandbox_handle="a" * 64,
             task_id="task-worker",
+            runtime_user="2001:3001",
         )
         request = RuntimeRequest(
             role=RuntimeRole.WORKER,
@@ -751,33 +767,35 @@ class HermesRuntimeMappingTest(unittest.TestCase):
             f'TERMINAL_DOCKER_VOLUMES=["{sandbox.workspace}:/workspace:rw"]',
             command,
         )
-        self.assertIn("HERMESOPS_SANDBOX_HANDLE=" + "a" * 64, command)
-        self.assertIn("HERMESOPS_SANDBOX_TASK_ID=task-worker", command)
+        self.assertIn("ORCHESTRA_SANDBOX_HANDLE=" + "a" * 64, command)
+        self.assertIn("ORCHESTRA_SANDBOX_TASK_ID=task-worker", command)
         self.assertIn(
-            "HERMESOPS_SANDBOX_EXECUTABLE_IMAGE=sha256:" + "a" * 64,
+            "ORCHESTRA_SANDBOX_EXECUTABLE_IMAGE="
+            + sandbox.prepared_environment.image_reference,
             command,
         )
         self.assertIn(
-            "HERMESOPS_SANDBOX_LOCAL_IMAGE_CONFIG_ID=sha256:"
+            "ORCHESTRA_SANDBOX_LOCAL_IMAGE_CONFIG_ID=sha256:"
             + "a" * 64,
             command,
         )
         self.assertFalse(
-            any("HERMESOPS_SANDBOX_IMAGE_ID=" in value for value in command)
+            any("ORCHESTRA_SANDBOX_IMAGE_ID=" in value for value in command)
         )
-        self.assertIn("hermesops-runtime-container=1", command)
+        self.assertIn("orchestra-runtime-container=1", command)
         self.assertEqual(command[-4:], ["-p", "test", "-z", request.prompt])
 
     def test_reviewer_mapping_is_read_only_and_keeps_policy_outside(self) -> None:
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "review-clone",
-            prepared_environment=legacy_preparation("b"),
+            prepared_environment=oci_preparation("b"),
             cpu_limit=1,
             memory_mb=1024,
             read_only=True,
             network_enabled=False,
             sandbox_handle="b" * 64,
             task_id="task-reviewer",
+            runtime_user="2001:3001",
         )
         request = RuntimeRequest(
             role=RuntimeRole.REVIEWER,
@@ -819,8 +837,12 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         (self.root / "repo/compose").mkdir(parents=True)
         (self.root / "repo/scripts").mkdir(parents=True)
-        (self.root / "repo/scripts/hermesops-planner-entry.py").touch()
-        (self.root / "repo/scripts/hermes-worker-entry.py").touch()
+        (self.root / "repo/scripts/orchestra-planner-entry.py").touch()
+        (self.root / "repo/scripts/orchestra-worker-entry.py").touch()
+        (self.root / "repo/compose/images.lock.env").write_text(
+            (ROOT / "compose/images.lock.env").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
         (self.root / "state/hermes-home/profiles").mkdir(parents=True)
         self.runtime = HermesRuntime(self.root, poll_interval_seconds=0)
         self.request = RuntimeRequest(
@@ -1172,8 +1194,8 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
                         "Name": "/process-test",
                         "Config": {
                             "Labels": {
-                                "hermesops-runtime-container": "1",
-                                "hermesops-runtime-request-id": "process-test",
+                                "orchestra-runtime-container": "1",
+                                "orchestra-runtime-request-id": "process-test",
                             }
                         },
                     }
@@ -1216,8 +1238,8 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
                         "Name": "/process-test",
                         "Config": {
                             "Labels": {
-                                "hermesops-runtime-container": "1",
-                                "hermesops-runtime-request-id": "process-test",
+                                "orchestra-runtime-container": "1",
+                                "orchestra-runtime-request-id": "process-test",
                             }
                         },
                     }
@@ -1268,8 +1290,8 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
                         "Name": "/process-test",
                         "Config": {
                             "Labels": {
-                                "hermesops-runtime-container": "1",
-                                "hermesops-runtime-request-id": "process-test",
+                                "orchestra-runtime-container": "1",
+                                "orchestra-runtime-request-id": "process-test",
                             }
                         },
                     }
@@ -1299,8 +1321,8 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
         for labels in (
             {},
             {
-                "hermesops-runtime-container": "1",
-                "hermesops-runtime-request-id": "other-request",
+                "orchestra-runtime-container": "1",
+                "orchestra-runtime-request-id": "other-request",
             },
         ):
             with self.subTest(labels=labels):
@@ -1449,13 +1471,14 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
         (profile / "config.yaml").write_text("- not\n- a mapping\n", encoding="utf-8")
         sandbox = RuntimeSandboxContext(
             workspace=self.root / "clone",
-            prepared_environment=legacy_preparation("c"),
+            prepared_environment=oci_preparation("c"),
             cpu_limit=1,
             memory_mb=512,
             read_only=False,
             network_enabled=False,
             sandbox_handle="c" * 64,
             task_id="task-profile",
+            runtime_user="2001:3001",
         )
         request = RuntimeRequest(
             role=RuntimeRole.WORKER,
@@ -1471,7 +1494,7 @@ class HermesRuntimeExecutionTest(unittest.TestCase):
         self.assertEqual(caught.exception.kind, RuntimeErrorKind.INVALID_RESULT)
 
     def test_required_role_preflight_fails_before_execution(self) -> None:
-        (self.root / "repo/scripts/hermes-worker-entry.py").unlink()
+        (self.root / "repo/scripts/orchestra-worker-entry.py").unlink()
         with self.assertRaises(RuntimeError) as caught:
             HermesRuntime(self.root, required_role=RuntimeRole.WORKER)
         self.assertEqual(caught.exception.kind, RuntimeErrorKind.RUNTIME_UNAVAILABLE)
@@ -1481,8 +1504,8 @@ class PlannerRuntimeInjectionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         specification = importlib.util.spec_from_file_location(
-            "hermesops_planner_runtime_test",
-            SCRIPTS / "hermesops-planner.py",
+            "orchestra_planner_runtime_test",
+            SCRIPTS / "orchestra-planner.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load planner module")
@@ -1543,9 +1566,9 @@ class PlannerRuntimeInjectionTest(unittest.TestCase):
             "tasks": [{"project_id": "fixture", "key": "change"}],
         }
         output = (
-            "HERMESOPS_PLAN_JSON_BEGIN\n"
+            "ORCHESTRA_PLAN_JSON_BEGIN\n"
             + json.dumps(payload)
-            + "\nHERMESOPS_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
+            + "\nORCHESTRA_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
         )
         runtime = FalsyFakeRuntime([FakeRuntimeOutcome.success(output=output)])
 
@@ -1636,9 +1659,9 @@ class PlannerRuntimeInjectionTest(unittest.TestCase):
             "tasks": [{"project_id": "fixture", "key": "change"}],
         }
         output = (
-            "HERMESOPS_PLAN_JSON_BEGIN\n"
+            "ORCHESTRA_PLAN_JSON_BEGIN\n"
             + json.dumps(payload)
-            + "\nHERMESOPS_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
+            + "\nORCHESTRA_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
         )
         runtime = FakeRuntime([FakeRuntimeOutcome(output=output, exit_status=7)])
 
@@ -1654,8 +1677,8 @@ class PlannerRuntimeInjectionTest(unittest.TestCase):
             [
                 FakeRuntimeOutcome.success(
                     output=(
-                        "HERMESOPS_PLAN_JSON_BEGIN\n{invalid json\n"
-                        "HERMESOPS_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
+                        "ORCHESTRA_PLAN_JSON_BEGIN\n{invalid json\n"
+                        "ORCHESTRA_PLAN_JSON_END\nPLANNER_RUNTIME_OK\n"
                     )
                 )
             ]
@@ -1670,8 +1693,8 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         specification = importlib.util.spec_from_file_location(
-            "hermesops_worker_runtime_test",
-            SCRIPTS / "hermesops-worker.py",
+            "orchestra_worker_runtime_test",
+            SCRIPTS / "orchestra-worker.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load worker module")
@@ -1696,7 +1719,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         for path in (repository, worktree, clone):
             path.mkdir(parents=True)
         base_commit = "a" * 40
-        branch = "hermesops/run-test"
+        branch = "orchestra/run-test"
         transaction_ref = "refs/heads/" + branch
         run = {
             "run_id": "run-test",
@@ -1749,7 +1772,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             mock.patch.object(
                 self.worker,
                 "prepare_worker_environment",
-                return_value=legacy_preparation("d"),
+                return_value=oci_preparation("d"),
             ),
             mock.patch.object(self.worker, "connect", return_value=connection),
             mock.patch.object(self.worker, "load_role", return_value=role),
@@ -1845,14 +1868,14 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             ),
         ):
             handle, _audit, _preflight = self.worker.precreate_worker_sandbox(
-                container_name="hermesops-sandbox-test",
+                container_name="orchestra-sandbox-test",
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
                 clone=Path("/tmp/worker-clone"),
-                prepared_environment=legacy_preparation("f"),
+                prepared_environment=oci_preparation("f"),
                 cpu_limit=2,
                 memory_mb=2048,
-                branch_name="hermesops/test",
+                branch_name="orchestra/test",
                 base_commit="a" * 40,
             )
 
@@ -1861,8 +1884,8 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         )
         rendered = " ".join(run_arguments)
         self.assertEqual(handle, sandbox_id)
-        self.assertIn("hermesops-sandbox=1", rendered)
-        self.assertIn("hermesops-runtime-request-id=agent-runtime-", rendered)
+        self.assertIn("orchestra-sandbox=1", rendered)
+        self.assertIn("orchestra-runtime-request-id=agent-runtime-", rendered)
         for forbidden in ("hermes-agent", "hermes-task-id", "hermes-profile"):
             self.assertNotIn(forbidden, rendered)
         self.assertFalse(
@@ -1882,14 +1905,14 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         ) as docker:
             with self.assertRaises(self.worker.WorkerError):
                 self.worker.precreate_worker_sandbox(
-                    container_name="hermesops-sandbox-collision",
+                    container_name="orchestra-sandbox-collision",
                     task_id="task-" + "1" * 32,
                     runtime_request_id="agent-runtime-123456789abc",
                     clone=Path("/tmp/worker-clone"),
-                    prepared_environment=legacy_preparation("f"),
+                    prepared_environment=oci_preparation("f"),
                     cpu_limit=2,
                     memory_mb=2048,
-                    branch_name="hermesops/test",
+                    branch_name="orchestra/test",
                     base_commit="a" * 40,
                 )
 
@@ -1897,17 +1920,18 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         self.assertEqual(docker.call_args.args[:1], ("run",))
 
     def owned_sandbox_document(self) -> dict[str, object]:
+        preparation = oci_preparation("f")
         return {
             "Id": "e" * 64,
             "Image": "sha256:" + "f" * 64,
             "State": {"Status": "running"},
             "Config": {
-                "Image": "sha256:" + "f" * 64,
-                "User": "1000:1000",
+                "Image": preparation.image_reference,
+                "User": self.worker.RUNTIME_USER,
                 "Labels": {
-                    "hermesops-sandbox": "1",
-                    "hermesops-task-id": "task-" + "1" * 32,
-                    "hermesops-runtime-request-id": (
+                    "orchestra-sandbox": "1",
+                    "orchestra-task-id": "task-" + "1" * 32,
+                    "orchestra-runtime-request-id": (
                         "agent-runtime-123456789abc"
                     ),
                 }
@@ -1940,7 +1964,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             self.worker.cleanup_created_sandboxes(
                 baseline_ids=set(),
                 clone=Path("/tmp/worker-clone"),
-                prepared_environment=legacy_preparation("f"),
+                prepared_environment=oci_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
@@ -1951,10 +1975,10 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
     def test_worker_sweep_rejects_wrong_binding_or_policy(self) -> None:
         mutations = (
             lambda data: data["Config"]["Labels"].__setitem__(
-                "hermesops-task-id", "task-" + "2" * 32
+                "orchestra-task-id", "task-" + "2" * 32
             ),
             lambda data: data["Config"]["Labels"].__setitem__(
-                "hermesops-runtime-request-id", "agent-runtime-abcdef123456"
+                "orchestra-runtime-request-id", "agent-runtime-abcdef123456"
             ),
             lambda data: data.__setitem__("Image", "sha256:" + "0" * 64),
             lambda data: data["Mounts"][0].__setitem__(
@@ -1972,7 +1996,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
                         task_id="task-" + "1" * 32,
                         runtime_request_id="agent-runtime-123456789abc",
                         clone=Path("/tmp/worker-clone"),
-                        prepared_environment=legacy_preparation("f"),
+                        prepared_environment=oci_preparation("f"),
                         read_only=False,
                     )
                 )
@@ -2000,7 +2024,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             self.worker.cleanup_created_sandboxes(
                 baseline_ids=set(),
                 clone=Path("/tmp/worker-clone"),
-                prepared_environment=legacy_preparation("f"),
+                prepared_environment=oci_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
@@ -2022,7 +2046,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             self.worker.cleanup_created_sandboxes(
                 baseline_ids={"e" * 64},
                 clone=Path("/tmp/worker-clone"),
-                prepared_environment=legacy_preparation("f"),
+                prepared_environment=oci_preparation("f"),
                 task_id="task-" + "1" * 32,
                 runtime_request_id="agent-runtime-123456789abc",
             )
@@ -2059,7 +2083,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
         run_git(repository, "add", "fixture.txt")
         run_git(repository, "commit", "-m", "base")
         base_commit = run_git(repository, "rev-parse", "HEAD")
-        branch = "hermesops/run-real"
+        branch = "orchestra/run-real"
         run_git(repository, "branch", branch)
         run_git(repository, "worktree", "add", str(worktree), branch)
         subprocess.run(
@@ -2113,7 +2137,7 @@ class WorkerRuntimeInjectionTest(unittest.TestCase):
             mock.patch.object(
                 self.worker,
                 "prepare_worker_environment",
-                return_value=legacy_preparation("f"),
+                return_value=oci_preparation("f"),
             ),
             mock.patch.object(self.worker, "connect", return_value=mock.MagicMock()),
             mock.patch.object(self.worker, "load_role", return_value=role),
@@ -2244,13 +2268,13 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
         installed_root = Path(cls.installed.name)
         (installed_root / "repo").symlink_to(ROOT, target_is_directory=True)
         specification = importlib.util.spec_from_file_location(
-            "hermesops_reviewer_runtime_test",
-            SCRIPTS / "hermesops-reviewer.py",
+            "orchestra_reviewer_runtime_test",
+            SCRIPTS / "orchestra-reviewer.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load reviewer module")
         cls.reviewer = importlib.util.module_from_spec(specification)
-        with mock.patch.dict(os.environ, {"HERMESOPS_ROOT": str(installed_root)}):
+        with mock.patch.dict(os.environ, {"ORCHESTRA_ROOT": str(installed_root)}):
             specification.loader.exec_module(cls.reviewer)
 
     @classmethod
@@ -2266,9 +2290,9 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             "checks": ["read-only"],
         }
         return (
-            "HERMESOPS_REVIEW_JSON_BEGIN\n"
+            "ORCHESTRA_REVIEW_JSON_BEGIN\n"
             + json.dumps(payload)
-            + "\nHERMESOPS_REVIEW_JSON_END\nREVIEW_RUNTIME_OK\n"
+            + "\nORCHESTRA_REVIEW_JSON_END\nREVIEW_RUNTIME_OK\n"
         )
 
     def exercise(
@@ -2290,7 +2314,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             path.mkdir(parents=True)
         base_commit = "a" * 40
         result_commit = "b" * 40
-        branch = "hermesops/run-test"
+        branch = "orchestra/run-test"
         run = {
             "run_id": "run-test",
             "project_id": "fixture",
@@ -2346,7 +2370,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             mock.patch.object(
                 self.reviewer.WORKER,
                 "prepare_worker_environment",
-                return_value=legacy_preparation("e"),
+                return_value=oci_preparation("e"),
             ),
             mock.patch.object(self.reviewer, "connect", return_value=connection),
             mock.patch.object(self.reviewer, "load_role", return_value=role),
@@ -2451,14 +2475,14 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             ),
         ):
             handle, _audit, _preflight = self.reviewer.precreate_reviewer_sandbox(
-                container_name="hermesops-sandbox-test",
+                container_name="orchestra-sandbox-test",
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                prepared_environment=legacy_preparation("1"),
+                prepared_environment=oci_preparation("1"),
                 cpu_limit=1,
                 memory_mb=1024,
-                branch_name="hermesops/test",
+                branch_name="orchestra/test",
                 result_commit="b" * 40,
             )
 
@@ -2467,8 +2491,8 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
         )
         rendered = " ".join(run_arguments)
         self.assertEqual(handle, sandbox_id)
-        self.assertIn("hermesops-sandbox=1", rendered)
-        self.assertIn("hermesops-runtime-request-id=agent-runtime-", rendered)
+        self.assertIn("orchestra-sandbox=1", rendered)
+        self.assertIn("orchestra-runtime-request-id=agent-runtime-", rendered)
         for forbidden in ("hermes-agent", "hermes-task-id", "hermes-profile"):
             self.assertNotIn(forbidden, rendered)
         self.assertFalse(
@@ -2488,31 +2512,32 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
         ) as docker:
             with self.assertRaises(self.reviewer.ReviewerError):
                 self.reviewer.precreate_reviewer_sandbox(
-                    container_name="hermesops-sandbox-collision",
+                    container_name="orchestra-sandbox-collision",
                     task_id="task-" + "2" * 32,
                     runtime_request_id="agent-runtime-abcdef123456",
                     clone=Path("/tmp/reviewer-clone"),
-                    prepared_environment=legacy_preparation("1"),
+                    prepared_environment=oci_preparation("1"),
                     cpu_limit=1,
                     memory_mb=1024,
-                    branch_name="hermesops/test",
+                    branch_name="orchestra/test",
                     result_commit="b" * 40,
                 )
         self.assertEqual(len(docker.call_args_list), 1)
         self.assertEqual(docker.call_args.args[:1], ("run",))
 
     def reviewer_cleanup_document(self) -> dict[str, object]:
+        preparation = oci_preparation("1")
         return {
             "Id": "f" * 64,
             "Image": "sha256:" + "1" * 64,
             "State": {"Status": "running"},
             "Config": {
-                "Image": "sha256:" + "1" * 64,
-                "User": "1000:1000",
+                "Image": preparation.image_reference,
+                "User": self.reviewer.RUNTIME_USER,
                 "Labels": {
-                    "hermesops-sandbox": "1",
-                    "hermesops-task-id": "task-" + "2" * 32,
-                    "hermesops-runtime-request-id": (
+                    "orchestra-sandbox": "1",
+                    "orchestra-task-id": "task-" + "2" * 32,
+                    "orchestra-runtime-request-id": (
                         "agent-runtime-abcdef123456"
                     ),
                 }
@@ -2552,7 +2577,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                prepared_environment=legacy_preparation("1"),
+                prepared_environment=oci_preparation("1"),
                 cpu_limit=1,
                 memory_mb=1024,
             )
@@ -2574,13 +2599,13 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             data["Image"] = "sha256:" + "2" * 64
 
         def task(data: dict[str, object]) -> None:
-            data["Config"]["Labels"]["hermesops-task-id"] = "wrong"
+            data["Config"]["Labels"]["orchestra-task-id"] = "wrong"
 
         def request(data: dict[str, object]) -> None:
-            data["Config"]["Labels"]["hermesops-runtime-request-id"] = "wrong"
+            data["Config"]["Labels"]["orchestra-runtime-request-id"] = "wrong"
 
         def owner(data: dict[str, object]) -> None:
-            data["Config"]["Labels"]["hermesops-sandbox"] = "0"
+            data["Config"]["Labels"]["orchestra-sandbox"] = "0"
 
         def full_id(data: dict[str, object]) -> None:
             data["Id"] = "e" * 64
@@ -2641,7 +2666,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                prepared_environment=legacy_preparation("1"),
+                prepared_environment=oci_preparation("1"),
             )
         self.assertTrue(removed)
         docker.assert_called_once_with("rm", "-f", "f" * 64, check=False)
@@ -2662,7 +2687,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                 task_id="task-" + "2" * 32,
                 runtime_request_id="agent-runtime-abcdef123456",
                 clone=Path("/tmp/reviewer-clone"),
-                prepared_environment=legacy_preparation("1"),
+                prepared_environment=oci_preparation("1"),
             )
         self.assertFalse(removed)
         docker.assert_not_called()
@@ -2675,7 +2700,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             (lambda data: data.__setitem__(
                 "Image", "sha256:" + "2" * 64
             ), "f" * 64),
-            (lambda _data: None, "hermesops-sandbox-name"),
+            (lambda _data: None, "orchestra-sandbox-name"),
         ):
             with self.subTest(candidate=candidate, mutation=mutation):
                 document = self.reviewer_cleanup_document()
@@ -2693,7 +2718,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
                         task_id="task-" + "2" * 32,
                         runtime_request_id="agent-runtime-abcdef123456",
                         clone=Path("/tmp/reviewer-clone"),
-                        prepared_environment=legacy_preparation("1"),
+                        prepared_environment=oci_preparation("1"),
                     )
                 self.assertFalse(removed)
                 docker.assert_not_called()
@@ -2808,7 +2833,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
         run_git(repository, "add", "fixture.txt")
         run_git(repository, "commit", "-m", "result")
         result_commit = run_git(repository, "rev-parse", "HEAD")
-        branch = "hermesops/review-real"
+        branch = "orchestra/review-real"
         run_git(repository, "branch", branch)
         run_git(repository, "worktree", "add", str(worktree), branch)
         subprocess.run(
@@ -2865,7 +2890,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
             mock.patch.object(
                 self.reviewer.WORKER,
                 "prepare_worker_environment",
-                return_value=legacy_preparation("1"),
+                return_value=oci_preparation("1"),
             ),
             mock.patch.object(self.reviewer, "connect", return_value=mock.MagicMock()),
             mock.patch.object(self.reviewer, "load_role", return_value=role),
@@ -2926,7 +2951,7 @@ class ReviewerRuntimeInjectionTest(unittest.TestCase):
 class PrivateSandboxAdoptionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        source = (SCRIPTS / "hermes-worker-entry.py").read_text(
+        source = (SCRIPTS / "orchestra-worker-entry.py").read_text(
             encoding="utf-8"
         )
         tree = ast.parse(source)
@@ -2941,7 +2966,7 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
             "Path": Path,
         }
         module = ast.fix_missing_locations(ast.Module(body=[validator]))
-        exec(compile(module, "hermes-worker-entry.py", "exec"), namespace)
+        exec(compile(module, "orchestra-worker-entry.py", "exec"), namespace)
         cls.validate = staticmethod(namespace[validator.name])
 
     def expected(self) -> dict[str, object]:
@@ -2956,6 +2981,7 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
             "expected_network_enabled": False,
             "expected_cpu_limit": 2,
             "expected_memory_mb": 2048,
+            "expected_user": "2001:3001",
         }
 
     def container(self) -> dict[str, object]:
@@ -2967,13 +2993,13 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
             "Config": {
                 "Image": expected["expected_executable_image"],
                 "Labels": {
-                    "hermesops-sandbox": "1",
-                    "hermesops-task-id": expected["expected_task_id"],
-                    "hermesops-runtime-request-id": expected[
+                    "orchestra-sandbox": "1",
+                    "orchestra-task-id": expected["expected_task_id"],
+                    "orchestra-runtime-request-id": expected[
                         "expected_request_id"
                     ],
                 },
-                "User": "1000:1000",
+                "User": expected["expected_user"],
             },
             "HostConfig": {
                 "NetworkMode": "none",
@@ -3010,13 +3036,13 @@ class PrivateSandboxAdoptionTest(unittest.TestCase):
         mutations = {
             "id": lambda data: data.__setitem__("Id", "c" * 64),
             "owner": lambda data: data["Config"]["Labels"].pop(
-                "hermesops-sandbox"
+                "orchestra-sandbox"
             ),
             "task": lambda data: data["Config"]["Labels"].__setitem__(
-                "hermesops-task-id", "task-" + "2" * 32
+                "orchestra-task-id", "task-" + "2" * 32
             ),
             "request": lambda data: data["Config"]["Labels"].__setitem__(
-                "hermesops-runtime-request-id",
+                "orchestra-runtime-request-id",
                 "agent-runtime-abcdef123456",
             ),
             "state": lambda data: data["State"].__setitem__(
@@ -3084,12 +3110,12 @@ class RecoveryOwnershipTest(unittest.TestCase):
 
     def generic_sandbox(self) -> dict[str, object]:
         return {
-            "Name": "/hermesops-sandbox-123456789abc",
+            "Name": "/orchestra-sandbox-123456789abc",
             "Config": {
                 "Labels": {
-                    "hermesops-sandbox": "1",
-                    "hermesops-task-id": self.task_id,
-                    "hermesops-runtime-request-id": self.request_id,
+                    "orchestra-sandbox": "1",
+                    "orchestra-task-id": self.task_id,
+                    "orchestra-runtime-request-id": self.request_id,
                 }
             },
         }
@@ -3107,29 +3133,16 @@ class RecoveryOwnershipTest(unittest.TestCase):
             nested_container_ownership(unowned, known_bindings=binding)
         )
         spoofed = copy.deepcopy(generic)
-        spoofed["Config"]["Labels"]["hermesops-task-id"] = (
+        spoofed["Config"]["Labels"]["orchestra-task-id"] = (
             "task-" + "2" * 32
         )
         self.assertIsNone(
             nested_container_ownership(spoofed, known_bindings=binding)
         )
-        legacy_profile = "runtime-worker-abcdef123456"
-        legacy = {
-            "Name": "/legacy-runtime-object",
-            "Config": {
-                "Labels": {
-                    "hermes-agent": "1",
-                    "hermes-task-id": self.task_id,
-                    "hermes-profile": legacy_profile,
-                }
-            },
-        }
-        self.assertEqual(
-            nested_container_ownership(
-                legacy,
-                known_bindings={(self.task_id, legacy_profile)},
-            ),
-            "LEGACY_HERMES",
+        old_labels = copy.deepcopy(generic)
+        old_labels["Config"]["Labels"] = {"hermes-agent": "1"}
+        self.assertIsNone(
+            nested_container_ownership(old_labels, known_bindings=binding)
         )
 
     def test_outer_cleanup_requires_labels_identity_and_durable_binding(self) -> None:
@@ -3137,8 +3150,8 @@ class RecoveryOwnershipTest(unittest.TestCase):
             "Name": "/" + self.request_id,
             "Config": {
                 "Labels": {
-                    "hermesops-runtime-container": "1",
-                    "hermesops-runtime-request-id": self.request_id,
+                    "orchestra-runtime-container": "1",
+                    "orchestra-runtime-request-id": self.request_id,
                 }
             },
         }
@@ -3168,7 +3181,7 @@ class RecoveryOwnershipTest(unittest.TestCase):
         )
         spoofed = copy.deepcopy(generic)
         spoofed["Config"]["Labels"][
-            "hermesops-runtime-request-id"
+            "orchestra-runtime-request-id"
         ] = "agent-runtime-abcdef123456"
         self.assertIsNone(
             host_container_ownership(
@@ -3177,45 +3190,29 @@ class RecoveryOwnershipTest(unittest.TestCase):
                 known_names={self.request_id},
             )
         )
-        legacy_name = "hermesops-reviewer-abcdef123456"
-        legacy = {
-            "Name": "/" + legacy_name,
-            "Config": {
-                "Labels": {
-                    "com.docker.compose.service": "hermes-agent",
-                    "com.docker.compose.oneoff": "True",
-                }
-            },
+        old_oneoff = {
+            "Name": "/retired-oneoff",
+            "Config": {"Labels": {"com.docker.compose.oneoff": "True"}},
         }
-        self.assertEqual(
-            host_container_ownership(
-                legacy,
-                expected_name=legacy_name,
-                known_names={legacy_name},
-            ),
-            "LEGACY_HERMES",
-        )
-        legacy["Config"]["Labels"]["com.docker.compose.oneoff"] = "False"
         self.assertIsNone(
             host_container_ownership(
-                legacy,
-                expected_name=legacy_name,
-                known_names={legacy_name},
+                old_oneoff,
+                expected_name="retired-oneoff",
+                known_names={"retired-oneoff"},
             )
         )
 
-    def test_recovery_discovery_is_label_based_for_both_generations(self) -> None:
-        source = (SCRIPTS / "hermesops-recovery.py").read_text(
+    def test_recovery_discovery_is_current_label_based_only(self) -> None:
+        source = (SCRIPTS / "orchestra-recovery.py").read_text(
             encoding="utf-8"
         )
         self.assertNotIn('"name=^/hermesops-"', source)
         for ownership_filter in (
-            "label=hermesops-runtime-container=1",
-            "label=com.docker.compose.service=hermes-agent",
-            "label=hermesops-sandbox=1",
-            "label=hermes-agent=1",
+            "label=orchestra-runtime-container=1",
+            "label=orchestra-sandbox=1",
         ):
             self.assertIn(ownership_filter, source)
+        self.assertNotIn("LEGACY_HERMES", source)
 
     def test_orphan_cleanup_selects_owned_stale_and_protects_active(self) -> None:
         connection = sqlite3.connect(":memory:")
@@ -3271,11 +3268,11 @@ class RecoveryOwnershipTest(unittest.TestCase):
 
         def command(arguments: list[str], **_kwargs: object) -> object:
             rendered = " ".join(arguments)
-            if "docker exec" in rendered and "hermesops-sandbox=1" in rendered:
+            if "docker ps -a" in rendered and "orchestra-sandbox=1" in rendered:
                 return subprocess.CompletedProcess(
                     arguments,
                     0,
-                    f"{sandbox_id} hermesops-sandbox-123456789abc\n"
+                    f"{sandbox_id} orchestra-sandbox-123456789abc\n"
                     f"{unowned_sandbox} hermesops-unowned\n",
                     "",
                 )
@@ -3296,8 +3293,8 @@ class RecoveryOwnershipTest(unittest.TestCase):
                     "Name": "/" + name,
                     "Config": {
                         "Labels": {
-                            "hermesops-runtime-container": "1",
-                            "hermesops-runtime-request-id": name,
+                            "orchestra-runtime-container": "1",
+                            "orchestra-runtime-request-id": name,
                         }
                     },
                 }
@@ -3359,7 +3356,7 @@ class RecoveryOwnershipTest(unittest.TestCase):
             action.get("name") for action in stale["actions"]
         }
         self.assertIn(self.request_id, stale_names)
-        self.assertIn("hermesops-sandbox-123456789abc", stale_names)
+        self.assertIn("orchestra-sandbox-123456789abc", stale_names)
         self.assertNotIn(unowned_outer, stale_names)
         self.assertNotIn("hermesops-unowned", stale_names)
         self.assertFalse(
@@ -3373,9 +3370,9 @@ class RecoveryOwnershipTest(unittest.TestCase):
 class RuntimeBoundarySourceTest(unittest.TestCase):
     def test_primary_call_sites_use_runtime_injection_without_direct_bypass(self) -> None:
         expected = {
-            "hermesops-planner.py": "def command_generate",
-            "hermesops-worker.py": "def command_launch",
-            "hermesops-reviewer.py": "def command_launch",
+            "orchestra-planner.py": "def command_generate",
+            "orchestra-worker.py": "def command_launch",
+            "orchestra-reviewer.py": "def command_launch",
         }
         for filename, function in expected.items():
             with self.subTest(filename=filename):
@@ -3389,7 +3386,7 @@ class RuntimeBoundarySourceTest(unittest.TestCase):
                 self.assertNotIn("HermesRuntime", source)
 
     def test_launchers_do_not_encode_hermes_sandbox_discovery(self) -> None:
-        for filename in ("hermesops-worker.py", "hermesops-reviewer.py"):
+        for filename in ("orchestra-worker.py", "orchestra-reviewer.py"):
             source = (SCRIPTS / filename).read_text(encoding="utf-8")
             with self.subTest(filename=filename):
                 for forbidden in (
@@ -3405,10 +3402,10 @@ class RuntimeBoundarySourceTest(unittest.TestCase):
                 ):
                     self.assertNotIn(forbidden, source)
 
-        private_entry = (SCRIPTS / "hermes-worker-entry.py").read_text(
+        private_entry = (SCRIPTS / "orchestra-worker-entry.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("HERMESOPS_SANDBOX_HANDLE", private_entry)
+        self.assertIn("ORCHESTRA_SANDBOX_HANDLE", private_entry)
         self.assertIn("_find_authorized_sandbox", private_entry)
 
     def test_adapter_does_not_own_lifecycle_git_or_review_policy(self) -> None:

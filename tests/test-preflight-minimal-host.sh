@@ -73,4 +73,4 @@ bash -n "$PREFLIGHT"
 bash -n "$INSTALLER"
 bash -n "$PLATFORM_SUPPORT"
 
-echo "HermesOps minimal-host preflight contract: PASS"
+echo "Orchestra minimal-host preflight contract: PASS"
