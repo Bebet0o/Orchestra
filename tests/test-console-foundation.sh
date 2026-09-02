@@ -20,9 +20,8 @@ grep -Fq 'fetch(' "${REPO}/console/src/controller-client.js"
 ! grep -RInE '(WebSocket\(|localStorage|sessionStorage|indexedDB|eval\(|new Function)' \
     "${REPO}/console/src" "${REPO}/console/dist/assets"
 
-grep -Fq '  console:' "${REPO}/compose/agent.yaml"
-grep -Fq 'container_name: orchestra-console' "${REPO}/compose/agent.yaml"
-grep -Fq '/opt/orchestra/repo/scripts/orchestra-console.py' \
-    "${REPO}/compose/agent.yaml"
+grep -Fq '  orchestra:' "${REPO}/compose/orchestra.yaml"
+grep -Fq 'processes["console"] = spawn' "${REPO}/scripts/orchestra-appliance.py"
+grep -Fq '"--public-bind"' "${REPO}/scripts/orchestra-appliance.py"
 
 echo "ORCHESTRA_CONSOLE_WEB_FOUNDATION_PASS"

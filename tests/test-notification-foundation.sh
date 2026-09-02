@@ -11,7 +11,7 @@ DB="${ROOT}/state/controller/orchestra.db"
 [[ -x "${REPO}/scripts/configure-orchestra-telegram.sh" ]]
 [[ -f "${REPO}/migrations/011_notification_outbox.sql" ]]
 [[ -f "${REPO}/config/notifier.toml" ]]
-[[ -f "${REPO}/compose/agent.yaml" ]]
+[[ -f "${REPO}/compose/orchestra.yaml" ]]
 [[ -f "${REPO}/docs/NOTIFICATIONS.md" ]]
 
 [[ "$(sqlite3 "$DB" 'PRAGMA user_version;')" == "11" ]]
@@ -104,8 +104,7 @@ if [[ "$NOTIFICATION_FOUNDATION_READY" != "1" ]]; then
     exit 1
 fi
 
-grep -Fq '  notifier:' "${REPO}/compose/agent.yaml"
-grep -Fq 'container_name: orchestra-notifier' "${REPO}/compose/agent.yaml"
-grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
+grep -Fq 'processes["notifier"] = spawn' "${REPO}/scripts/orchestra-appliance.py"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/orchestra.yaml"
 
 echo "Orchestra durable operator notification foundation: PASS"

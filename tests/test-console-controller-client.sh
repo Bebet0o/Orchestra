@@ -30,8 +30,8 @@ grep -Fq "connect-src 'self'" "${REPO}/scripts/orchestra-console.py"
 grep -Fq "form-action 'self'" "${REPO}/scripts/orchestra-console.py"
 grep -Fq 'CONTROLLER_ROUTES' "${REPO}/scripts/orchestra-console.py"
 
-grep -Fq '  console:' "${REPO}/compose/agent.yaml"
-grep -Fq 'container_name: orchestra-console' "${REPO}/compose/agent.yaml"
-grep -Fq 'condition: service_healthy' "${REPO}/compose/agent.yaml"
+grep -Fq '  orchestra:' "${REPO}/compose/orchestra.yaml"
+grep -Fq 'condition: service_healthy' "${REPO}/compose/orchestra.yaml"
+grep -Fq 'processes["console"] = spawn' "${REPO}/scripts/orchestra-appliance.py"
 
 echo "ORCHESTRA_CONSOLE_CONTROLLER_CLIENT_PASS"
