@@ -2,7 +2,18 @@ FROM docker@sha256:66d292e5c26bd33a6f6f61cacb880de2186339a524ecba1ce098dbbaceed6
 
 FROM python@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS application
 
+ARG OCI_SOURCE="https://github.com/bebet0o/Orchestra"
+ARG OCI_REVISION
+ARG OCI_VERSION
+
+LABEL org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.title="Orchestra"
+
 RUN set -eux; \
+    test -n "${OCI_REVISION}"; \
+    test -n "${OCI_VERSION}"; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates git sqlite3; \

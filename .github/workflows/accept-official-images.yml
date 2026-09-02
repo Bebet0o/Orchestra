@@ -1,0 +1,130 @@
+name: Accept Orchestra application/runtime publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Full repository-owned branch ref
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact lowercase 40-hex candidate branch head
+        required: true
+        type: string
+      application_digest:
+        description: Exact lowercase application sha256 digest
+        required: true
+        type: string
+      runtime_digest:
+        description: Exact lowercase runtime sha256 digest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orchestra-official-acceptance-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'bebet0o/Orchestra' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout trusted publication foundation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Validate acceptance request
+        id: request
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          REQUESTED_APPLICATION_DIGEST: ${{ inputs.application_digest }}
+          REQUESTED_RUNTIME_DIGEST: ${{ inputs.runtime_digest }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          validate-acceptance
+
+      - name: Fetch and reauthorize exact candidate branch head
+        id: fetched
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          git -C trusted fetch --no-tags --no-recurse-submodules --depth=1 --force origin \
+            "$REQUESTED_CANDIDATE_REF:refs/remotes/orchestra-official-acceptance/candidate"
+          FETCHED_CANDIDATE_SHA="$(git -C trusted rev-parse --verify \
+            'refs/remotes/orchestra-official-acceptance/candidate^{commit}')"
+          export FETCHED_CANDIDATE_SHA
+          python3 trusted/.github/scripts/official_image_publication.py verify-fetched
+
+      - name: Checkout detached candidate source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.fetched.outputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Verify detached candidate source
+        id: source
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          verify-checkout --checkout-path candidate
+
+      - name: Revalidate candidate Dockerfile policy
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          validate-dockerfiles --checkout-path candidate
+
+      - name: Fresh anonymous exact-digest image-set validation
+        id: anonymous
+        env:
+          APPLICATION_DIGEST: ${{ steps.request.outputs.application_digest }}
+          RUNTIME_DIGEST: ${{ steps.request.outputs.runtime_digest }}
+          CANDIDATE_SHA: ${{ steps.source.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/anonymous_official_image_pull.py
+          --application-digest "$APPLICATION_DIGEST"
+          --runtime-digest "$RUNTIME_DIGEST"
+          --expected-revision "$CANDIDATE_SHA"
+
+      - name: Create final accepted image-set manifest
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          APPLICATION_REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
+          RUNTIME_REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
+          APPLICATION_DIGEST: ${{ steps.request.outputs.application_digest }}
+          RUNTIME_DIGEST: ${{ steps.request.outputs.runtime_digest }}
+          ANONYMOUS_DIGEST_PULL: ${{ steps.anonymous.outputs.anonymous_digest_pull }}
+          ANONYMOUS_PULL_FRESH_DAEMON: ${{ steps.anonymous.outputs.anonymous_pull_fresh_daemon }}
+          WORKFLOW_RUN: ${{ github.run_id }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          record-accepted
+
+      - name: Upload final accepted image-set manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orchestra-official-publication-accepted-${{ steps.source.outputs.candidate_sha }}
+          path: trusted/orchestra-release-manifest-accepted.json
+          if-no-files-found: error
+          retention-days: 14

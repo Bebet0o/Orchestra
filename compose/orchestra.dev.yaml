@@ -4,9 +4,15 @@ services:
     build:
       context: ..
       dockerfile: images/orchestra.Dockerfile
+      args:
+        OCI_REVISION: ${ORCHESTRA_DEV_REVISION:-development}
+        OCI_VERSION: development
 
   orchestra-runtime:
     image: orchestra-runtime:dev
     build:
       context: ..
       dockerfile: images/orchestra-runtime.Dockerfile
+      args:
+        OCI_REVISION: ${ORCHESTRA_DEV_REVISION:-development}
+        OCI_VERSION: development
