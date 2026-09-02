@@ -1,10 +1,9 @@
-# Profils Orchestra
+# Orchestra Profiles
 
-Ces fichiers sont les contrats versionnés des identités Orchestra.
+These files are the version-controlled contracts for Orchestra identities.
 
-Les données d'exécution, sessions, mémoires et identifiants OAuth restent dans
-`state/hermes-home/profiles/` et ne sont jamais suivis par Git.
+Runtime data, sessions, memories, and OAuth credentials remain under
+`state/hermes-home/profiles/` and are never tracked by Git.
 
-Les contrats décrivent les responsabilités du modèle. Les frontières de
-sécurité réelles sont imposées par le Controller, les worktrees et les
-montages sandbox.
+The contracts describe model responsibilities. The Controller, worktrees, and
+sandbox mounts enforce the actual security boundaries.
