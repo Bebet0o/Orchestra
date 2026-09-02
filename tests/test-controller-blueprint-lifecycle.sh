@@ -16,8 +16,8 @@ import tempfile
 from pathlib import Path
 
 root = Path.cwd()
-migration = root / "migrations/023_blueprint_migration.sql"
-source = migration.read_text(encoding="utf-8")
+historical_migration = root / "migrations/023_blueprint_migration.sql"
+source = historical_migration.read_text(encoding="utf-8")
 for phrase in (
     "CREATE TABLE controller_blueprint_operations",
     "CREATE TABLE controller_blueprint_idempotency",
@@ -37,16 +37,27 @@ for forbidden in (
     if forbidden in source.lower():
         raise SystemExit(f"2T migration exceeds scope: {forbidden}")
 
+migration = root / "migrations/024_blueprint_apiversion.sql"
+source = migration.read_text(encoding="utf-8")
+for phrase in (
+    "api_version IN ('hermesops.dev/v1', 'orchestra.dev/v1')",
+    "sandbox_profile_revision_api_version_insert_guard",
+    "new Blueprint revisions require orchestra.dev/v1",
+    "PRAGMA user_version = 24",
+):
+    if phrase not in source:
+        raise SystemExit(f"Blueprint API namespace migration contract missing: {phrase}")
+
 with tempfile.TemporaryDirectory() as directory:
     database = Path(directory) / "fresh.db"
     with sqlite3.connect(database) as connection:
         connection.execute("PRAGMA foreign_keys=ON")
         for item in sorted((root / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
             connection.executescript(item.read_text(encoding="utf-8"))
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 23:
-            raise SystemExit("fresh migration did not reach schema 23")
-        if connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] != 23:
-            raise SystemExit("fresh migration ledger did not reach 23")
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 24:
+            raise SystemExit("fresh migration did not reach schema 24")
+        if connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] != 24:
+            raise SystemExit("fresh migration ledger did not reach 24")
         if connection.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise SystemExit("fresh migration quick_check failed")
         required = {
@@ -70,7 +81,7 @@ with tempfile.TemporaryDirectory() as directory:
         else:
             raise SystemExit("Blueprint lifecycle migration rerun unexpectedly succeeded")
 
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 23:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 24:
             raise SystemExit("migration rerun changed schema version")
         if connection.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise SystemExit("migration rerun damaged database")

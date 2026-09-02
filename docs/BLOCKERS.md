@@ -2,7 +2,7 @@
 
 ## Approbations WebUI par Runs API
 
-État : non utilisées dans HermesOps.
+État : non utilisées dans Orchestra.
 
 Le mode WebUI Gateway fonctionne, mais la transmission des approbations par
 la Runs API présente encore un défaut amont possible : certaines demandes
@@ -13,17 +13,17 @@ Conséquences :
 
 - `HERMES_WEBUI_GATEWAY_USE_RUNS_API` n'est pas activé ;
 - la WebUI n'est pas encore une surface d'approbation fiable ;
-- aucune automatisation HermesOps ne doit dépendre d'un clic WebUI ;
+- aucune automatisation Orchestra ne doit dépendre d'un clic WebUI ;
 - le Controller disposera de sa propre machine d'état d'approbation ;
 - Telegram et l'API Controller seront évalués comme surfaces de décision.
 
 Ce blocage doit être retesté avant la phase quasi autonome.
 
-## Kanban Hermes natif et Controller HermesOps
+## Kanban Hermes natif et Controller Orchestra
 
 État : volontairement non reliés.
 
-Les profils HermesOps ne reçoivent pas encore le toolset Kanban natif. Utiliser
+Les profils Orchestra ne reçoivent pas encore le toolset Kanban natif. Utiliser
 simultanément le board natif et la base Controller créerait deux sources de
 vérité.
 

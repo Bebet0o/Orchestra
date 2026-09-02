@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 SECRET_FILE="${ROOT}/secrets/agent.env"
 
 API_KEY="$(
@@ -15,12 +15,12 @@ API_KEY="$(
 }
 
 RUNNING="$(
-    docker inspect hermesops-agent \
+    docker inspect orchestra-hermes-agent \
         --format '{{.State.Running}}'
 )"
 
 HEALTH="$(
-    docker inspect hermesops-agent \
+    docker inspect orchestra-hermes-agent \
         --format '{{.State.Health.Status}}'
 )"
 
@@ -42,7 +42,7 @@ curl \
     http://127.0.0.1:8642/v1/models |
     jq -e '.object == "list"' >/dev/null
 
-BINDING="$(docker port hermesops-agent 8642/tcp)"
+BINDING="$(docker port orchestra-hermes-agent 8642/tcp)"
 [[ "$BINDING" == "127.0.0.1:8642" ]]
 
 echo "Hermes Agent foundation: PASS"

@@ -1,42 +1,39 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
-UNIT="${HOME}/.config/systemd/user/hermesops-supervisor.service"
-
-[[ -x "${REPO}/scripts/hermesops-supervisor.py" ]]
-[[ -x "${REPO}/scripts/hermesops-recovery.py" ]]
+DB="${ROOT}/state/controller/orchestra.db"
+[[ -x "${REPO}/scripts/orchestra-supervisor.py" ]]
+[[ -x "${REPO}/scripts/orchestra-recovery.py" ]]
 [[ -f "${REPO}/migrations/008_supervisor_watchdog.sql" ]]
 [[ -f "${REPO}/config/supervisor.toml" ]]
-[[ -f "${REPO}/systemd/user/hermesops-supervisor.service" ]]
+[[ -f "${REPO}/compose/agent.yaml" ]]
 [[ -f "${REPO}/docs/SUPERVISOR.md" ]]
-[[ -f "$UNIT" ]]
 
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-supervisor.py"
+    "${REPO}/scripts/orchestra-supervisor.py"
 
-"${REPO}/scripts/hermesops-supervisor.py" self-test
+"${REPO}/scripts/orchestra-supervisor.py" self-test
 
 grep -Fq 'def acquire_lock' \
-    "${REPO}/scripts/hermesops-supervisor.py"
+    "${REPO}/scripts/orchestra-supervisor.py"
 grep -Fq 'fcntl.LOCK_EX | fcntl.LOCK_NB' \
-    "${REPO}/scripts/hermesops-supervisor.py"
+    "${REPO}/scripts/orchestra-supervisor.py"
 grep -Fq 'def wait_for_core_health' \
-    "${REPO}/scripts/hermesops-supervisor.py"
-grep -Fq 'hermesops-sandbox-engine' \
-    "${REPO}/scripts/hermesops-supervisor.py"
-grep -Fq 'hermesops-agent' \
-    "${REPO}/scripts/hermesops-supervisor.py"
+    "${REPO}/scripts/orchestra-supervisor.py"
+grep -Fq 'orchestra-sandbox-engine' \
+    "${REPO}/scripts/orchestra-supervisor.py"
+grep -Fq 'orchestra-hermes-agent' \
+    "${REPO}/scripts/orchestra-supervisor.py"
 grep -Fq '"startup"' \
-    "${REPO}/scripts/hermesops-supervisor.py"
+    "${REPO}/scripts/orchestra-supervisor.py"
 grep -Fq '"periodic"' \
-    "${REPO}/scripts/hermesops-supervisor.py"
-grep -Fq 'Restart=always' \
-    "${REPO}/systemd/user/hermesops-supervisor.service"
-grep -Fq 'NoNewPrivileges=true' \
-    "${REPO}/systemd/user/hermesops-supervisor.service"
+    "${REPO}/scripts/orchestra-supervisor.py"
+grep -Fq '  supervisor:' "${REPO}/compose/agent.yaml"
+grep -Fq 'container_name: orchestra-supervisor' "${REPO}/compose/agent.yaml"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
+grep -Fq '/run/orchestra-docker' "${REPO}/compose/agent.yaml"
 
 LATEST_MIGRATION_FILE="$(
     find "${REPO}/migrations" \
@@ -70,14 +67,13 @@ grep -q . && {
 }
 [[ "$(sqlite3 "$DB" 'PRAGMA quick_check;')" == "ok" ]]
 
-[[ "$(loginctl show-user "$(id -un)" -p Linger --value)" == "yes" ]]
-systemctl --user is-enabled --quiet hermesops-supervisor.service
-systemctl --user is-active --quiet hermesops-supervisor.service
+"${REPO}/scripts/orchestra-compose.sh" ps --status running --services |
+    grep -Fxq supervisor
 
 supervisor_status_ready() {
     local payload
     payload="$(
-        "${REPO}/scripts/hermesops-supervisor.py" status 2>/dev/null
+        "${REPO}/scripts/orchestra-supervisor.py" status 2>/dev/null
     )" || return 1
 
     python3 - "$payload" >/dev/null 2>&1 <<'PY'
@@ -112,13 +108,13 @@ do
 done
 
 if [[ "$SUPERVISOR_READY" != "1" ]]; then
-    "${REPO}/scripts/hermesops-supervisor.py" status >&2 || true
+    "${REPO}/scripts/orchestra-supervisor.py" status >&2 || true
     echo "Supervisor non stable après attente du sweep terminal." >&2
     exit 1
 fi
 
 STATUS_JSON="$(
-    "${REPO}/scripts/hermesops-supervisor.py" status
+    "${REPO}/scripts/orchestra-supervisor.py" status
 )"
 python3 - "$STATUS_JSON" <<'PY'
 import json
@@ -158,4 +154,4 @@ PY
          WHERE status='PENDING';"
 )" == "0" ]]
 
-echo "HermesOps automatic supervisor foundation: PASS"
+echo "Orchestra automatic supervisor foundation: PASS"

@@ -4,9 +4,9 @@ Status: **Accepted design contract for Milestone 2A**
 
 ## Summary
 
-HermesOps Console is an unprivileged operator client.
+Orchestra Console is an unprivileged operator client.
 
-HermesOps Controller is the authoritative control-plane service.
+Orchestra Controller is the authoritative control-plane service.
 
 The Console never connects directly to SQLite, Hermes Agent, the host Docker
 daemon, or the sandbox Docker daemon. Every read and command crosses the
@@ -20,12 +20,12 @@ audit, and confirmation policy are applied.
 │ Operator workstation                                              │
 │                                                                   │
 │  Browser                                                          │
-│  └── HermesOps Console                                            │
+│  └── Orchestra Console                                            │
 └───────────────────────┬───────────────────────────────────────────┘
                         │ HTTPS / WebSocket
                         │ authenticated, same-origin
 ┌───────────────────────▼───────────────────────────────────────────┐
-│ HermesOps control plane                                           │
+│ Orchestra control plane                                           │
 │                                                                   │
 │  Controller API                                                   │
 │  Command service                                                  │
@@ -49,7 +49,7 @@ audit, and confirmation policy are applied.
 
 ## Component responsibilities
 
-### HermesOps Console
+### Orchestra Console
 
 The Console may:
 
@@ -65,7 +65,7 @@ The Console may:
 The Console must not:
 
 - open SQLite files;
-- read or write files under `/opt/docker/hermesops`;
+- read or write files under `/opt/orchestra`;
 - call Hermes Agent directly;
 - call Docker or the sandbox engine directly;
 - construct shell commands for execution on the server;
@@ -74,7 +74,7 @@ The Console must not:
 - infer successful state transitions from optimistic UI state;
 - mark a command complete before authoritative Controller state is received.
 
-### HermesOps Controller
+### Orchestra Controller
 
 The Controller must:
 

@@ -1,4 +1,4 @@
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 kind: SandboxProfile
 metadata:
   name: python-project

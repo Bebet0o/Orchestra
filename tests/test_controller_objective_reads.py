@@ -21,10 +21,9 @@ class Fixture:
     def __init__(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / "root"
-        self.db = self.root / "state/controller/hermesops.db"
+        self.db = self.root / "state/controller/orchestra.db"
         self.session = self.root / "secrets/controller-session"
         (self.root / "repo/config/projects.d").mkdir(parents=True)
-        (self.root / "repo/VERSION").write_text("0.2.0-dev\n", encoding="utf-8")
         self.session.parent.mkdir(parents=True)
         self.session.write_text(TOKEN + "\n", encoding="ascii")
         os.chmod(self.session, 0o600)
@@ -306,7 +305,7 @@ class Fixture:
 
     def request(self, path: str, *, authenticated: bool = True):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
-        headers = {"Cookie": f"hermesops_session={TOKEN}"} if authenticated else {}
+        headers = {"Cookie": f"orchestra_session={TOKEN}"} if authenticated else {}
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()
         raw = response.read()

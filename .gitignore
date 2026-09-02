@@ -33,7 +33,7 @@ __pycache__/
 *.swp
 *~
 
-# HermesOps private material
+# Orchestra private material
 auth.json
 **/auth.json
 secrets/

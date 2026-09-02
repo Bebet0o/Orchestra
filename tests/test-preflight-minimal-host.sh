@@ -5,6 +5,9 @@ export LC_ALL=C
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFLIGHT="${REPO}/preflight.sh"
 INSTALLER="${REPO}/install.sh"
+PLATFORM_SUPPORT="${REPO}/scripts/platform-support.sh"
+
+[[ -f "$PLATFORM_SUPPORT" ]]
 
 grep -Fq \
     'export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
@@ -68,5 +71,6 @@ trap - EXIT
 
 bash -n "$PREFLIGHT"
 bash -n "$INSTALLER"
+bash -n "$PLATFORM_SUPPORT"
 
-echo "HermesOps minimal-host preflight contract: PASS"
+echo "Orchestra minimal-host preflight contract: PASS"

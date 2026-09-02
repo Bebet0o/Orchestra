@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 FIXTURE_REPO="${ROOT}/workspaces/.fixtures/transaction-fixture"
 
-[[ -x "${REPO}/scripts/hermesops-integrator.py" ]]
-[[ -x "${REPO}/scripts/hermesops-transaction.py" ]]
+[[ -x "${REPO}/scripts/orchestra-integrator.py" ]]
+[[ -x "${REPO}/scripts/orchestra-transaction.py" ]]
 [[ -f "${REPO}/migrations/006_reviewed_integration.sql" ]]
 [[ -f "${REPO}/docs/INTEGRATION.md" ]]
 
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-integrator.py" \
-    "${REPO}/scripts/hermesops-transaction.py"
+    "${REPO}/scripts/orchestra-integrator.py" \
+    "${REPO}/scripts/orchestra-transaction.py"
 
-"${REPO}/scripts/hermesops-integrator.py" self-test
+"${REPO}/scripts/orchestra-integrator.py" self-test
 
 grep -Fq 'def validate_review' \
-    "${REPO}/scripts/hermesops-integrator.py"
+    "${REPO}/scripts/orchestra-integrator.py"
 grep -Fq 'Review is stale' \
-    "${REPO}/scripts/hermesops-integrator.py"
+    "${REPO}/scripts/orchestra-integrator.py"
 grep -Fq 'merge",' \
-    "${REPO}/scripts/hermesops-integrator.py"
+    "${REPO}/scripts/orchestra-integrator.py"
 grep -Fq '"--ff-only"' \
-    "${REPO}/scripts/hermesops-integrator.py"
+    "${REPO}/scripts/orchestra-integrator.py"
 grep -Fq 'snapshot_verified=True' \
-    "${REPO}/scripts/hermesops-integrator.py"
+    "${REPO}/scripts/orchestra-integrator.py"
 grep -Fq 'WAITING_HUMAN' \
-    "${REPO}/scripts/hermesops-transaction.py"
+    "${REPO}/scripts/orchestra-transaction.py"
 grep -Fq "UPDATE approvals" \
-    "${REPO}/scripts/hermesops-transaction.py"
+    "${REPO}/scripts/orchestra-transaction.py"
 
 LATEST_MIGRATION_FILE="$(
     find "${REPO}/migrations" \
@@ -128,4 +128,4 @@ LATEST_COMPLETED_BASE="$(
          WHERE status='PENDING';"
 )" == "0" ]]
 
-echo "HermesOps reviewed integration foundation: PASS"
+echo "Orchestra reviewed integration foundation: PASS"

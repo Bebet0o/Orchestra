@@ -1,12 +1,12 @@
-# Architecture HermesOps
+# Architecture Orchestra
 
 ## Plan de contrôle
 
 - Hermes WebUI : interface utilisateur uniquement.
 - Hermes Agent : Gateway et API interne.
-- HermesOps Controller : machine d'état et attribution des tâches.
+- Orchestra Controller : machine d'état et attribution des tâches.
 - Recovery Manager : reprise, rollback ou blocage humain.
-- Watchdog systemd : surveillance extérieure aux conteneurs Hermes.
+- Supervisor Compose : surveillance et reprise déterministes du plan de contrôle.
 
 ## Plan d'exécution
 
@@ -25,14 +25,14 @@
   persistance, Git, review ou Recovery dans le runtime.
 - Adoption et cleanup des conteneurs fail-closed : labels d'ownership,
   identité cohérente et binding durable sont requis ; un nom ressemblant à
-  HermesOps n'est jamais une preuve de propriété.
+  Orchestra n'est jamais une preuve de propriété.
 - Worktrees Git isolés.
 - Une transaction d'écriture active par projet.
 
 ## Stockage
 
 - `state/hermes-home` : état partagé exigé par Hermes.
-- `state/controller` : état transactionnel HermesOps.
+- `state/controller` : état transactionnel Orchestra.
 - `workspaces` : dépôts et worktrees des projets.
 - `project-data` : données non Git propres aux projets.
 - `backups` : bundles, patches et snapshots.

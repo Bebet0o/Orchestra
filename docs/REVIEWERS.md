@@ -1,6 +1,6 @@
 # Independent reviewers
 
-HermesOps reviewers are separate from workers and operate only after a run
+Orchestra reviewers are separate from workers and operate only after a run
 enters `REVIEWING`.
 
 The Controller creates an audited DIND sandbox before Hermes starts. The

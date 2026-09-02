@@ -1,58 +1,55 @@
 # Orchestra worker OCI distribution
 
-Slice 3A adds the publication and materialization architecture without
-publishing or activating an image. The production worker and reviewer continue
-to use the explicit legacy same-daemon preparation until the S3-B transaction.
-
-The only runtime authority for a published image is the complete reference
-`ghcr.io/bebet0o/orchestra-worker@sha256:<64 lowercase hex>`. Candidate tags are
-discovery aids and must never be written to the environment lock or used for
-sandbox execution.
-
-The manual publication workflow builds and tests `linux/amd64`, pushes the
-candidate, captures the registry-produced digest, and uploads a JSON publication
-record. That generated record is evidence for S3-B; it is not source-controlled.
-
-The workflow must be dispatched from its trusted `main` copy with both a full
-repository branch ref and its exact lowercase 40-hex head commit. It checks out
-the trusted publisher under `trusted/`, fetches the repository-owned branch into
-a fixed local ref, requires exact branch-head equality, and checks the candidate
-out detached under `candidate/`. The trusted helper then requires the requested,
-fetched, checked-out, and OCI-revision identities to agree before it can create a
-publication record. The candidate checkout never supplies authorization helpers
-or the image checker.
-
-For S3-B, bootstrap only this audited trusted publication foundation onto main,
-preserve the candidate commit in repository history, push its branch, and invoke
-the main workflow with inputs such as:
+The production worker and reviewer share one immutable environment authority:
 
 ```text
-candidate_ref=refs/heads/milestone/3a-distribution-foundation
-candidate_sha=<exact candidate branch-head commit>
+ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49
 ```
 
-Before activation, an operator must first prove public distribution from a
-genuinely empty, ephemeral DIND daemon. The trusted harness uses the same
-digest-pinned DIND image as the installed sandbox engine, mounts no Docker
-credentials or persistent image store, verifies the worker is initially absent,
-and destroys the daemon afterward:
+`config/environments/default-worker.toml` records that reference, its exact
+digest, `linux/amd64`, and accepted publication provenance. A mutable tag and a
+Docker daemon-local image configuration ID are never runtime authority.
 
-```sh
-python3 .github/scripts/anonymous_worker_pull.py \
-  --image 'ghcr.io/bebet0o/orchestra-worker@sha256:<real-digest>'
+## Runtime materialization
+
+Production worker and reviewer preparation follows:
+
+```text
+EnvironmentSpec
+  -> DefaultEnvironmentResolver
+  -> ResolvedEnvironment
+  -> NestedDaemonSandboxBackend.materialize()
+  -> PreparedEnvironment
 ```
 
-Then run the image contract against that exact published reference:
+The backend pulls the complete `repository@sha256:digest` reference into
+Orchestra's dedicated private DIND daemon. Inspection must contain that exact
+RepoDigest. The resulting local configuration ID is retained only as evidence
+for that daemon and cannot replace the OCI digest.
 
-```sh
-python3 scripts/check-worker-oci-image.py \
-  --image 'ghcr.io/bebet0o/orchestra-worker@sha256:<real-digest>' \
-  --expected-revision '<source-commit>' \
-  --anonymous-pull
-```
+The private daemon socket is `/run/orchestra-docker/docker.sock` inside the
+control-plane services that require it. No worker, reviewer, Controller,
+Console, Notifier, or other control-plane container mounts the host Docker
+socket. Worker and reviewer containers never receive any Docker socket.
 
-The contract command also uses a fresh temporary `DOCKER_CONFIG`, but that is
-not a substitute for the clean-daemon proof above. S3-B must record
-`GHCR_PACKAGE_PUBLIC=YES`, `ANONYMOUS_DIGEST_PULL=PASS`, and
-`ANONYMOUS_PULL_FRESH_DAEMON=YES` before changing the default-worker lock to
-`published`.
+## Trusted publication lifecycle
+
+The manually dispatched trusted workflows remain:
+
+- `.github/workflows/publish-worker.yml` builds and pushes an authorized exact
+  candidate and emits a provisional digest-bound record;
+- `.github/workflows/accept-worker-publication.yml` reauthorizes the candidate,
+  performs a fresh anonymous exact-digest pull in an isolated DIND daemon,
+  validates RepoDigest/source/revision/version/platform binding, and only then
+  emits an accepted record.
+
+Those workflows run only by explicit operator dispatch from their trusted
+`main` copies. Installation and ordinary Compose lifecycle operations never
+dispatch them, build the worker, push an image, or mutate GHCR visibility.
+
+## Retired distribution paths
+
+The current product has no worker archive import, offline image bundle, local
+worker tag authority, local-image-ID distribution lock, legacy environment
+adapter, or fallback to an unpublished image. Git history preserves those old
+implementations; they are not shipped as dormant compatibility code.

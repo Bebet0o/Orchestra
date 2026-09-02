@@ -85,11 +85,11 @@ class RuntimePreparedEnvironment(Protocol):
         ...
 
     @property
-    def oci_digest(self) -> str | None:
+    def oci_digest(self) -> str:
         ...
 
     @property
-    def image_reference(self) -> str | None:
+    def image_reference(self) -> str:
         ...
 
 
@@ -99,25 +99,14 @@ class RuntimePreparedEnvironmentData:
 
     executable_image_selector: str
     local_image_config_id: str
-    oci_digest: str | None
-    image_reference: str | None
+    oci_digest: str
+    image_reference: str
 
     def __post_init__(self) -> None:
         if not is_canonical_oci_digest(self.local_image_config_id):
             raise ValueError(
                 "Runtime local image config ID must be canonical sha256"
             )
-
-        if self.image_reference is None:
-            if self.oci_digest is not None:
-                raise ValueError(
-                    "Legacy runtime preparation must not contain an OCI digest"
-                )
-            if self.executable_image_selector != self.local_image_config_id:
-                raise ValueError(
-                    "Legacy runtime selector must equal its local config ID"
-                )
-            return
 
         parsed = parse_immutable_oci_reference(self.image_reference)
         if self.oci_digest != parsed.digest:
@@ -167,6 +156,7 @@ class RuntimeSandboxContext:
     network_enabled: bool
     sandbox_handle: str
     task_id: str
+    runtime_user: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.workspace, Path) or not self.workspace.is_absolute():
@@ -193,6 +183,11 @@ class RuntimeSandboxContext:
             "Runtime sandbox handle",
         )
         _validate_identifier(self.task_id, "Runtime sandbox task identity")
+        if re.fullmatch(
+            r"(?:0|[1-9][0-9]*):(?:0|[1-9][0-9]*)",
+            self.runtime_user,
+        ) is None:
+            raise ValueError("Runtime sandbox user identity is invalid")
 
 
 @dataclass(frozen=True)

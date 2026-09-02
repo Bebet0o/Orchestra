@@ -11,7 +11,7 @@ root = Path(sys.argv[1])
 for item in (
     root / "controller_api/review_commands.py",
     root / "controller_api/review_command_probe.py",
-    root / "scripts/hermesops-controller-review-command-probe.py",
+    root / "scripts/orchestra-controller-review-command-probe.py",
     root / "controller_api/server.py",
     root / "controller_api/core.py",
 ):
@@ -30,4 +30,4 @@ for required in (
         raise SystemExit(f"Missing review command contract marker: {required}")
 print("Controller bounded human review command contract: PASS")
 PY
-printf '%s\n' HERMESOPS_CONTROLLER_REVIEW_COMMANDS_PASS
+printf '%s\n' ORCHESTRA_CONTROLLER_REVIEW_COMMANDS_PASS

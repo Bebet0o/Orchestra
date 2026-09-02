@@ -14,7 +14,7 @@ from controller_api.blueprint import API_VERSION, SOURCE_FORMAT, validate_path, 
 
 
 VALID = """
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 kind: SandboxProfile
 metadata:
   name: python-project
@@ -122,7 +122,7 @@ class BlueprintV1Test(unittest.TestCase):
 
     def test_v0_and_unknown_fields_are_rejected(self) -> None:
         old = textwrap.dedent(VALID).replace(
-            "hermesops.dev/v1", "hermesops.dev/v0alpha1"
+            "orchestra.dev/v1", "orchestra.dev/v0alpha1"
         )
         report = validate_source(old)
         self.assertFalse(report.valid)
@@ -134,13 +134,21 @@ class BlueprintV1Test(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertIn("unknown_field", codes(report))
 
+    def test_historical_hermesops_api_version_is_rejected_as_public_input(self) -> None:
+        historical = textwrap.dedent(VALID).replace(
+            "orchestra.dev/v1", "hermesops.dev/v1"
+        )
+        report = validate_source(historical)
+        self.assertFalse(report.valid)
+        self.assertIn("unsupported_api_version", codes(report))
+
     def test_duplicate_keys_aliases_and_multiple_documents_are_rejected(self) -> None:
         duplicate = textwrap.dedent(VALID).replace(
             "  name: python-project\n",
             "  name: python-project\n  name: duplicate\n",
         )
         self.assertIn("yaml_parse_failed", codes(validate_source(duplicate)))
-        alias = "apiVersion: &v hermesops.dev/v1\nkind: *v\nmetadata: {}\nspec: {}\n"
+        alias = "apiVersion: &v orchestra.dev/v1\nkind: *v\nmetadata: {}\nspec: {}\n"
         self.assertIn("yaml_parse_failed", codes(validate_source(alias)))
         multiple = textwrap.dedent(VALID) + "\n---\n{}\n"
         self.assertIn("multiple_yaml_documents", codes(validate_source(multiple)))
@@ -271,9 +279,9 @@ class BlueprintV1Test(unittest.TestCase):
 
     def test_cli_validate_fingerprint_and_canonicalize(self) -> None:
         repository = Path(__file__).resolve().parents[1]
-        cli = repository / "scripts/hermesops-blueprint.py"
+        cli = repository / "scripts/orchestra-blueprint.py"
         self.assertTrue(cli.is_file())
-        self.assertFalse((repository / "scripts/hermesops-hermesfile.py").exists())
+        self.assertFalse((repository / "scripts/orchestra-hermesfile.py").exists())
         example = repository / "config/examples/Blueprint"
         help_result = subprocess.run(
             [sys.executable, str(cli), "--help"],
@@ -316,6 +324,33 @@ class BlueprintV1Test(unittest.TestCase):
         self.assertEqual(canonical.returncode, 0, canonical.stderr.decode())
         parsed = json.loads(canonical.stdout.decode())
         self.assertEqual(parsed["apiVersion"], API_VERSION)
+
+    def test_cli_rejects_historical_hermesops_api_version(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        cli = repository / "scripts/orchestra-blueprint.py"
+        with tempfile.TemporaryDirectory() as directory:
+            historical = Path(directory) / "Blueprint"
+            historical.write_text(
+                textwrap.dedent(VALID).replace(
+                    "orchestra.dev/v1", "hermesops.dev/v1"
+                ),
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(cli), "validate", str(historical), "--json"],
+                cwd=repository,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["valid"])
+        self.assertIn(
+            "unsupported_api_version",
+            {item["code"] for item in payload["diagnostics"]},
+        )
 
 
 def hashlib_sha256(payload: bytes) -> str:

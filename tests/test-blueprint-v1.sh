@@ -21,7 +21,7 @@ schema = json.loads(
 )
 if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
     raise SystemExit("Blueprint v1 must use JSON Schema 2020-12")
-if schema["properties"]["apiVersion"].get("const") != "hermesops.dev/v1":
+if schema["properties"]["apiVersion"].get("const") != "orchestra.dev/v1":
     raise SystemExit("Blueprint v1 apiVersion contract drift")
 if schema["properties"]["kind"].get("const") != "SandboxProfile":
     raise SystemExit("Blueprint v1 kind contract drift")
@@ -63,7 +63,7 @@ if (root / "docs/hermesfile/SPECIFICATION_V1.md").exists():
 for phrase in (
     "Orchestra Blueprint v1 Specification",
     "../../specs/blueprint-v1.schema.json",
-    "scripts/hermesops-blueprint.py",
+    "scripts/orchestra-blueprint.py",
     "The conventional source name is",
     "not a project configuration",
     "does not contain secret values",
@@ -110,19 +110,19 @@ for version_schema in version_schemas:
 print("Blueprint v1 schema/code/capability contract: PASS")
 PY
 
-python3 scripts/hermesops-blueprint.py \
+python3 scripts/orchestra-blueprint.py \
     validate config/examples/Blueprint
 
-python3 scripts/hermesops-blueprint.py \
+python3 scripts/orchestra-blueprint.py \
     fingerprint config/examples/Blueprint --json \
     | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
 assert payload["source_format"] == "blueprint-v1"
-assert payload["api_version"] == "hermesops.dev/v1"
+assert payload["api_version"] == "orchestra.dev/v1"
 assert len(payload["source_sha256"]) == 64
 assert len(payload["canonical_sha256"]) == 64
 print("Blueprint v1 CLI fingerprint: PASS")
 '
 
-echo HERMESOPS_BLUEPRINT_V1_PASS
+echo ORCHESTRA_BLUEPRINT_V1_PASS

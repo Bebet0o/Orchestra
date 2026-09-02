@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-AGENT="hermesops-agent"
+AGENT="orchestra-hermes-agent"
 
 [[ "$(
     docker inspect "$AGENT" \

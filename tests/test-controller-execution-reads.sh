@@ -11,15 +11,15 @@ export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 python3 -m compileall -q \
     controller_api/execution_reads.py \
     controller_api/execution_probe.py \
-    scripts/hermesops-controller-execution-probe.py \
+    scripts/orchestra-controller-execution-probe.py \
     tests/test_controller_execution_reads.py
 
 python3 tests/test_controller_execution_reads.py
-python3 scripts/hermesops-controller-execution-probe.py --help >/dev/null
+python3 scripts/orchestra-controller-execution-probe.py --help >/dev/null
 (
     cd /tmp
     env -u PYTHONPATH \
-        python3 "$REPO/scripts/hermesops-controller-execution-probe.py" \
+        python3 "$REPO/scripts/orchestra-controller-execution-probe.py" \
         --help >/dev/null
 )
 
@@ -78,8 +78,8 @@ for marker in (
     "joined_legacy_run_id",
     "worker_legacy_run_id",
     "hermesops-transaction-reference-v1",
-    "hermesops-task-cursor-v1",
-    "hermesops-run-cursor-v1",
+    "orchestra-task-cursor-v1",
+    "orchestra-run-cursor-v1",
     "legacy_payload_redacted",
     "SELECT MAX(event_id)",
     "ORDER BY a.attempt_number DESC",
@@ -140,7 +140,7 @@ for marker in (
 print("Controller execution readiness fixture: PASS")
 PY
 
-python3 - "$REPO/scripts/hermesops-controller-execution-probe.py" <<'PY'
+python3 - "$REPO/scripts/orchestra-controller-execution-probe.py" <<'PY'
 from pathlib import Path
 import sys
 
@@ -167,4 +167,4 @@ if server.count("cursor_secret=session_token") < 3:
 print("Controller execution cursor authentication binding: PASS")
 PY
 
-echo "HERMESOPS_CONTROLLER_EXECUTION_READS_PASS"
+echo "ORCHESTRA_CONTROLLER_EXECUTION_READS_PASS"

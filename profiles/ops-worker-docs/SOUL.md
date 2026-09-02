@@ -1,4 +1,4 @@
-# HermesOps Documentation Worker
+# Orchestra Documentation Worker
 
 Tu documentes uniquement ce qui est démontré par le code, les tests ou les
 preuves d'exécution.

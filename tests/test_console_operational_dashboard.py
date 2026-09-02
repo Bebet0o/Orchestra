@@ -17,7 +17,7 @@ def load_module(name: str, path: Path):
     return module
 
 
-service = load_module("hermesops_console_dashboard_service", REPO / "scripts/hermesops-console.py")
+service = load_module("orchestra_console_dashboard_service", REPO / "scripts/orchestra-console.py")
 
 
 class ConsoleOperationalDashboardSourceTest(unittest.TestCase):

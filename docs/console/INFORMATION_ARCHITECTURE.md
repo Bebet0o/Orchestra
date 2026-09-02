@@ -1,4 +1,4 @@
-# HermesOps Console Information Architecture
+# Orchestra Console Information Architecture
 
 Status: **Design contract**
 Target: `v0.2.0-beta`
@@ -6,11 +6,11 @@ Current implementation: **Not started**
 
 ## Product intent
 
-HermesOps Console is the dedicated WebUI for operating HermesOps after the
+Orchestra Console is the dedicated WebUI for operating Orchestra after the
 initial terminal installation.
 
 The Console must make daily project operations possible without requiring the
-operator to understand internal SQLite tables, systemd units, Docker commands,
+operator to understand internal SQLite tables, Compose services, Docker commands,
 or Hermes Agent session details.
 
 Terminal use remains appropriate for:
@@ -60,7 +60,7 @@ Settings
 
 The shell includes:
 
-- HermesOps logo and current environment;
+- Orchestra logo and current environment;
 - global project selector;
 - system health indicator;
 - active-run count;
@@ -170,7 +170,7 @@ Steps:
 2. repository source;
 3. workspace and data policy;
 4. default branch and Git protection;
-5. HermesOps policy;
+5. Orchestra policy;
 6. default sandbox;
 7. optional existing project documentation import;
 8. validation preview;

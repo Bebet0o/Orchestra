@@ -1,4 +1,4 @@
-# Transactions Git HermesOps
+# Transactions Git Orchestra
 
 ## Source de vérité
 
@@ -27,8 +27,8 @@ Il crée ensuite :
 - un état porcelain v2 ;
 - un inventaire des références ;
 - un manifeste et leurs SHA-256 ;
-- une branche `hermesops/run/<run-id>` ;
-- un worktree sous `.hermesops-worktrees/`.
+- une branche `orchestra/run/<run-id>` ;
+- un worktree sous `.orchestra-worktrees/`.
 
 ## Soumission
 

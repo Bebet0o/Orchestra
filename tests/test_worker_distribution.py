@@ -85,12 +85,15 @@ class WorkerDockerfileContractTest(unittest.TestCase):
         self.assertEqual(rules, ["**", "!images/orchestra-worker.Dockerfile"])
         self.assertNotIn("default-worker.toml", DOCKERFILE.read_text())
 
-    def test_inherited_source_remains_as_an_explicit_transition(self) -> None:
-        self.assertTrue((ROOT / "images/worker-sandbox.Dockerfile").is_file())
-        self.assertIn(
-            "inherited image stays",
-            DOCKERFILE.read_text(encoding="utf-8"),
-        )
+    def test_retired_local_worker_distribution_is_absent(self) -> None:
+        for path in (
+            ROOT / "images/worker-sandbox.Dockerfile",
+            ROOT / "config/worker-sandbox.lock.toml",
+            ROOT / "scripts/export-worker-image.sh",
+            ROOT / "scripts/legacy_worker_environment.py",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(path.exists())
 
 
 class PublicationWorkflowContractTest(unittest.TestCase):
@@ -446,8 +449,8 @@ class ActivationGateTest(unittest.TestCase):
     def test_production_worker_and_reviewer_share_oci_materialization(
         self,
     ) -> None:
-        worker = (ROOT / "scripts/hermesops-worker.py").read_text(encoding="utf-8")
-        reviewer = (ROOT / "scripts/hermesops-reviewer.py").read_text(
+        worker = (ROOT / "scripts/orchestra-worker.py").read_text(encoding="utf-8")
+        reviewer = (ROOT / "scripts/orchestra-reviewer.py").read_text(
             encoding="utf-8"
         )
         self.assertIn("DefaultEnvironmentResolver().resolve(", worker)
@@ -468,8 +471,8 @@ class ActivationGateTest(unittest.TestCase):
     def test_runtime_never_consumes_latest_or_candidate_discovery_tags(self) -> None:
         paths = (
             ROOT / "scripts/sandbox_backend.py",
-            ROOT / "scripts/hermesops-worker.py",
-            ROOT / "scripts/hermesops-reviewer.py",
+            ROOT / "scripts/orchestra-worker.py",
+            ROOT / "scripts/orchestra-reviewer.py",
             ROOT / "scripts/agent_runtime/hermes.py",
             LOCK,
         )

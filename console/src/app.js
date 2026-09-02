@@ -207,7 +207,7 @@ function displayFunctionalPanel() {
 
 function render(pathname, focusMain = false) {
   const route = routeFor(pathname);
-  document.title = `${route.title} · HermesOps Console`;
+  document.title = `${route.title} · Orchestra Console`;
   document.getElementById("page-title").textContent = route.title;
   document.getElementById("route-title").textContent = route.title;
   document.getElementById("route-message").textContent = route.message;

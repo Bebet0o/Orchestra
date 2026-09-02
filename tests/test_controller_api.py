@@ -26,7 +26,7 @@ class APIFixture:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "root"
         self.database = (
-            self.root / "state" / "controller" / "hermesops.db"
+            self.root / "state" / "controller" / "orchestra.db"
         )
         self.session_file = (
             self.root / "secrets" / "controller-session"
@@ -39,10 +39,6 @@ class APIFixture:
             / "alpha.toml"
         )
         (self.root / "repo").mkdir(parents=True)
-        (self.root / "repo" / "VERSION").write_text(
-            "0.1.0-alpha\n",
-            encoding="utf-8",
-        )
         self.project_config.parent.mkdir(parents=True)
         self.project_config.write_text(
             """
@@ -201,7 +197,7 @@ default_branch = "main"
                     payload_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
-                -- HermesOps milestone 2I: durable Controller event journal.
+                -- Orchestra milestone 2I: durable Controller event journal.
                 -- The legacy events and objective_events tables remain untouched.
 
                 CREATE TABLE controller_event_journal (
@@ -495,6 +491,12 @@ default_branch = "main"
                     / "migrations/023_blueprint_migration.sql"
                 ).read_text(encoding="utf-8")
             )
+            migration_connection.executescript(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "migrations/024_blueprint_apiversion.sql"
+                ).read_text(encoding="utf-8")
+            )
             migration_connection.commit()
 
         self.settings = Settings.from_root(
@@ -533,7 +535,7 @@ default_branch = "main"
         )
         headers: dict[str, str] = {}
         if authenticated:
-            headers["Cookie"] = f"hermesops_session={TOKEN}"
+            headers["Cookie"] = f"orchestra_session={TOKEN}"
         if request_id:
             headers["X-Request-ID"] = request_id
         if headers_override:
@@ -593,7 +595,7 @@ class ControllerAPITest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["x-request-id"], "request-12345678")
         self.assertEqual(payload["status"], "ok")
-        self.assertEqual(payload["version"], "0.1.0-alpha")
+        self.assertEqual(payload["version"], "v1")
 
     def test_ready_checks_database_and_auth_configuration(self) -> None:
         status, _, payload = self.fixture.request("GET", "/ready")
@@ -737,8 +739,8 @@ class ControllerAPITest(unittest.TestCase):
             "/api/v1/projects",
             headers_override={
                 "Cookie": (
-                    f"hermesops_session={TOKEN}; "
-                    f"hermesops_session={TOKEN}"
+                    f"orchestra_session={TOKEN}; "
+                    f"orchestra_session={TOKEN}"
                 )
             },
         )
@@ -751,7 +753,7 @@ class ControllerAPITest(unittest.TestCase):
             "GET",
             "/api/v1/projects",
             headers_override={
-                "Cookie": f"hermesops_session={encoded}"
+                "Cookie": f"orchestra_session={encoded}"
             },
         )
         self.assertEqual(status, 401)
@@ -765,7 +767,7 @@ class ControllerAPITest(unittest.TestCase):
             "GET",
             "/api/v1/projects",
             headers_override={
-                "Cookie": f"hermesops_session={TOKEN}"
+                "Cookie": f"orchestra_session={TOKEN}"
             },
         )
         self.assertEqual(status, 503)

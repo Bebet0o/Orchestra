@@ -15,6 +15,8 @@ from typing import Any, Callable
 
 import yaml
 
+from oci_reference import parse_immutable_oci_reference
+
 from .contract import (
     AgentRuntime,
     RuntimeEvent,
@@ -41,12 +43,19 @@ class HermesRuntime(AgentRuntime):
     ) -> None:
         self.root = root.resolve()
         self.repo = self.root / "repo"
-        self.compose_file = self.repo / "compose/agent.yaml"
         self.lock_file = self.repo / "compose/images.lock.env"
         self.hermes_home = self.root / "state/hermes-home"
         self.profile_root = self.hermes_home / "profiles"
-        self.planner_entry = self.repo / "scripts/hermesops-planner-entry.py"
-        self.worker_entry = self.repo / "scripts/hermes-worker-entry.py"
+        self.planner_entry = self.repo / "scripts/orchestra-planner-entry.py"
+        self.worker_entry = self.repo / "scripts/orchestra-worker-entry.py"
+        self.private_socket = self.root / "runtime/sandbox-engine-socket/docker.sock"
+        self.docker_environment = {
+            **os.environ,
+            "DOCKER_HOST": "unix:///run/orchestra-docker/docker.sock",
+            "DOCKER_CONTEXT": "default",
+            "DOCKER_CONFIG": "/nonexistent/orchestra-empty-docker-config",
+        }
+        self.hermes_agent_image = self._locked_hermes_agent_image()
         self.poll_interval_seconds = poll_interval_seconds
         if event_clock is not None and not callable(event_clock):
             raise TypeError("Runtime event clock must be callable")
@@ -55,6 +64,22 @@ class HermesRuntime(AgentRuntime):
         )
         if required_role is not None:
             self.validate_role(required_role)
+
+    def _locked_hermes_agent_image(self) -> str:
+        try:
+            values = dict(
+                line.split("=", 1)
+                for line in self.lock_file.read_text(encoding="utf-8").splitlines()
+                if line and not line.startswith("#") and "=" in line
+            )
+            image = values["HERMES_AGENT_IMAGE"]
+            parse_immutable_oci_reference(image)
+        except (KeyError, OSError, UnicodeError, ValueError) as error:
+            raise RuntimeError(
+                RuntimeErrorKind.RUNTIME_UNAVAILABLE,
+                "Hermes Agent immutable image authority is unavailable",
+            ) from error
+        return image
 
     def validate_role(self, role: RuntimeRole) -> None:
         if not isinstance(role, RuntimeRole):
@@ -87,19 +112,12 @@ class HermesRuntime(AgentRuntime):
     def _planner_command(self, request: RuntimeRequest) -> list[str]:
         return [
             "docker",
-            "compose",
-            "--env-file",
-            str(self.lock_file),
-            "-f",
-            str(self.compose_file),
             "run",
             "--rm",
-            "--no-deps",
-            "-T",
             "--label",
-            "hermesops-runtime-container=1",
+            "orchestra-runtime-container=1",
             "--label",
-            f"hermesops-runtime-request-id={request.request_id}",
+            f"orchestra-runtime-request-id={request.request_id}",
             "--name",
             self._execution_name(request),
             "--user",
@@ -113,11 +131,13 @@ class HermesRuntime(AgentRuntime):
             "--env",
             "HERMES_MAX_ITERATIONS=30",
             "--volume",
-            f"{self.planner_entry}:/opt/hermesops/hermesops-planner-entry.py:ro",
+            f"{self.hermes_home}:/home/hermes/.hermes",
+            "--volume",
+            f"{self.planner_entry}:/opt/orchestra/orchestra-planner-entry.py:ro",
             "--entrypoint",
             "python3",
-            "hermes-agent",
-            "/opt/hermesops/hermesops-planner-entry.py",
+            self.hermes_agent_image,
+            "/opt/orchestra/orchestra-planner-entry.py",
             "-p",
             self._profile_name(request),
             "-z",
@@ -173,53 +193,53 @@ class HermesRuntime(AgentRuntime):
             "TERMINAL_LIFETIME_SECONDS": "900",
             "HERMES_ENABLE_PROJECT_PLUGINS": "false",
             "HERMES_MAX_ITERATIONS": str(maximum_iterations),
-            "HERMESOPS_SANDBOX_HANDLE": sandbox.sandbox_handle,
-            "HERMESOPS_SANDBOX_TASK_ID": sandbox.task_id,
-            "HERMESOPS_SANDBOX_REQUEST_ID": request.request_id,
-            "HERMESOPS_SANDBOX_WORKSPACE": str(sandbox.workspace),
-            "HERMESOPS_SANDBOX_EXECUTABLE_IMAGE": (
+            "ORCHESTRA_SANDBOX_HANDLE": sandbox.sandbox_handle,
+            "ORCHESTRA_SANDBOX_TASK_ID": sandbox.task_id,
+            "ORCHESTRA_SANDBOX_REQUEST_ID": request.request_id,
+            "ORCHESTRA_SANDBOX_WORKSPACE": str(sandbox.workspace),
+            "ORCHESTRA_SANDBOX_EXECUTABLE_IMAGE": (
                 sandbox.prepared_environment.executable_image_selector
             ),
-            "HERMESOPS_SANDBOX_LOCAL_IMAGE_CONFIG_ID": (
+            "ORCHESTRA_SANDBOX_LOCAL_IMAGE_CONFIG_ID": (
                 sandbox.prepared_environment.local_image_config_id
             ),
-            "HERMESOPS_SANDBOX_READ_ONLY": str(sandbox.read_only).lower(),
-            "HERMESOPS_SANDBOX_CPU_LIMIT": str(sandbox.cpu_limit),
-            "HERMESOPS_SANDBOX_MEMORY_MB": str(sandbox.memory_mb),
-            "HERMESOPS_SANDBOX_PROFILE": self._profile_name(request),
+            "ORCHESTRA_SANDBOX_READ_ONLY": str(sandbox.read_only).lower(),
+            "ORCHESTRA_SANDBOX_CPU_LIMIT": str(sandbox.cpu_limit),
+            "ORCHESTRA_SANDBOX_MEMORY_MB": str(sandbox.memory_mb),
+            "ORCHESTRA_SANDBOX_PROFILE": self._profile_name(request),
+            "ORCHESTRA_SANDBOX_USER": sandbox.runtime_user,
         }
         command = [
             "docker",
-            "compose",
-            "--env-file",
-            str(self.lock_file),
-            "-f",
-            str(self.compose_file),
             "run",
             "--rm",
-            "--no-deps",
-            "-T",
             "--label",
-            "hermesops-runtime-container=1",
+            "orchestra-runtime-container=1",
             "--label",
-            f"hermesops-runtime-request-id={request.request_id}",
+            f"orchestra-runtime-request-id={request.request_id}",
             "--name",
             self._execution_name(request),
             "--user",
-            f"{os.getuid()}:{os.getgid()}",
+            sandbox.runtime_user,
             "--workdir",
             str(sandbox.workspace),
+            "--volume",
+            f"{self.hermes_home}:/home/hermes/.hermes",
+            "--volume",
+            f"{self.private_socket}:/run/orchestra-docker/docker.sock",
+            "--volume",
+            f"{sandbox.workspace}:{sandbox.workspace}:{mount_mode}",
         ]
         for key, value in environment.items():
             command.extend(["--env", f"{key}={value}"])
         command.extend(
             [
                 "--volume",
-                f"{self.worker_entry}:/opt/hermesops/hermes-worker-entry.py:ro",
+                f"{self.worker_entry}:/opt/orchestra/orchestra-worker-entry.py:ro",
                 "--entrypoint",
                 "python3",
-                "hermes-agent",
-                "/opt/hermesops/hermes-worker-entry.py",
+                self.hermes_agent_image,
+                "/opt/orchestra/orchestra-worker-entry.py",
                 "-p",
                 self._profile_name(request),
                 "-z",
@@ -326,7 +346,7 @@ class HermesRuntime(AgentRuntime):
             metadata["name"] = self._profile_name(request)
             qualifier = "read-only reviewer" if sandbox.read_only else "worker"
             metadata["description"] = (
-                f"Ephemeral HermesOps {qualifier} for {request.request_id}"
+                f"Ephemeral Orchestra {qualifier} for {request.request_id}"
             )
             metadata["description_auto"] = False
             metadata_path = target / "profile.yaml"
@@ -409,14 +429,14 @@ class HermesRuntime(AgentRuntime):
         if errors:
             raise errors[0]
 
-    @staticmethod
-    def _inspect_outer_container(reference: str) -> dict[str, Any] | None:
+    def _inspect_outer_container(self, reference: str) -> dict[str, Any] | None:
         inspected = subprocess.run(
             ["docker", "container", "inspect", reference],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             check=False,
+            env=self.docker_environment,
         )
         if inspected.returncode != 0:
             if "No such" in inspected.stderr:
@@ -467,8 +487,8 @@ class HermesRuntime(AgentRuntime):
                 character not in "0123456789abcdef"
                 for character in container_id
             )
-            or labels.get("hermesops-runtime-container") != "1"
-            or labels.get("hermesops-runtime-request-id")
+            or labels.get("orchestra-runtime-container") != "1"
+            or labels.get("orchestra-runtime-request-id")
             != execution_name
         ):
             raise RuntimeError(
@@ -525,6 +545,7 @@ class HermesRuntime(AgentRuntime):
             stderr=subprocess.PIPE,
             text=True,
             check=False,
+            env=self.docker_environment,
         )
         if result.returncode != 0 and "No such container" not in result.stderr:
             raise RuntimeError(
@@ -551,6 +572,7 @@ class HermesRuntime(AgentRuntime):
             stderr=subprocess.PIPE,
             text=True,
             check=False,
+            env=self.docker_environment,
         )
         if (
             result.returncode != 0
@@ -664,6 +686,7 @@ class HermesRuntime(AgentRuntime):
                         stderr=subprocess.STDOUT,
                         text=True,
                         start_new_session=True,
+                        env=self.docker_environment,
                     )
                     execution_container_id = self._capture_outer_container_id(
                         execution_name,

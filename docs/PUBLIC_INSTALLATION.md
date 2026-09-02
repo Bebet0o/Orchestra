@@ -1,108 +1,119 @@
-# Installation publique Debian 12
+# Installation publique
 
-## Contrat de la première alpha
+## Contrat de plateforme
 
-HermesOps `0.1.0-alpha` est volontairement limité à :
+Le chemin public actuel prend en charge :
 
-- Debian 12 Bookworm ;
-- architecture amd64 ;
-- utilisateur de service avec UID/GID `1000:1000` ;
-- racine fixe `/opt/docker/hermesops` ;
-- Docker Engine testé en `29.6.1` ;
-- Docker Compose testé en `5.3.0`.
+- Debian 12 ou version ultérieure sur amd64 ;
+- Ubuntu 22.04 ou version ultérieure sur amd64 ;
+- un utilisateur opérateur local avec une identité UID/GID numérique valide ;
+- la racine fixe `/opt/orchestra` ;
+- Docker Engine et Docker CLI amont `29.6.1` ;
+- le plugin Docker Compose amont `5.3.0`.
 
-L'installateur sait ajouter le dépôt APT officiel Docker et installer les
-versions verrouillées lorsqu'aucun Docker n'est présent. Il refuse de supprimer
-automatiquement des paquets Docker concurrents.
+L'éligibilité du système et la disponibilité des paquets sont deux contrôles
+distincts. L'installateur choisit le dépôt APT Docker correspondant au système
+validé (`linux/debian` ou `linux/ubuntu`), puis résout exactement une révision
+de paquet pour chaque version amont verrouillée. Une version absente ou une
+résolution ambiguë bloque l'installation. Une révision Debian n'est jamais
+installée sur Ubuntu.
 
-## Installation recommandée
+## Préflight et installation
 
 ```bash
-git clone git@github.com:Bebet0o/HermesOps.git
-cd HermesOps
+git clone https://github.com/Bebet0o/Orchestra.git
+cd Orchestra
 
 ./preflight.sh
-./install.sh
+./install.sh --user "$USER"
 ```
 
-Lors de la première exécution, l'utilisateur peut être ajouté au groupe
-`docker`. Dans ce cas, le statut devient `RELOGIN_REQUIRED` : fermez entièrement
-la session SSH, reconnectez-vous, puis relancez exactement la même commande.
-L'installation est idempotente et reprend sans écraser l'état existant.
+`preflight.sh` est en lecture seule. L'installateur dérive l'UID et le GID
+effectifs de l'utilisateur choisi ; aucune identité `1000:1000` n'est imposée.
+Si l'utilisateur doit être ajouté au groupe `docker`, l'installation s'arrête
+avec `RELOGIN_REQUIRED`. Fermez alors la session, reconnectez-vous, puis
+relancez la même commande.
 
-Un fichier d'authentification OpenAI Codex existant peut être fourni sans
-l'afficher :
+Un fichier d'authentification OpenAI Codex existant peut être fourni sans être
+affiché :
 
 ```bash
-./install.sh --auth-file "$HOME/auth.json"
+./install.sh --user "$USER" --auth-file "$HOME/auth.json"
 ```
 
-## Installation hors ligne ou test avant release
+Une installation divergente exige `--upgrade` et crée auparavant un bundle Git
+ainsi qu'une sauvegarde SQLite cohérente. `--skip-start` installe et migre les
+données sans démarrer la pile.
 
-Avant que l'asset de release soit publié, fournissez l'archive worker exportée
-depuis l'installation validée :
+## Cycle de vie Compose
+
+Docker Compose possède tous les processus de longue durée :
+
+- Controller API ;
+- Console ;
+- Supervisor ;
+- Orchestrator ;
+- Notifier ;
+- moteur sandbox privé ;
+- intégration Hermes Agent et Hermes WebUI.
+
+Il n'existe aucune unité applicative user-systemd, aucune exigence de linger,
+de bus DBus utilisateur ou de `systemctl --user`. Les services HTTP restent
+liés à la boucle locale : Controller `127.0.0.1:8765`, Hermes Agent
+`127.0.0.1:8642`, Hermes WebUI `127.0.0.1:8787` et Console
+`127.0.0.1:8788`.
 
 ```bash
-./install.sh \
-  --offline \
-  --auth-file "$HOME/auth.json" \
-  --worker-image-archive \
-  "$HOME/hermesops-worker-sandbox-0.2.tar.gz"
+ORCHESTRA_ROOT=/opt/orchestra \
+ORCHESTRA_UID="$(id -u)" ORCHESTRA_GID="$(id -g)" \
+  /opt/orchestra/repo/scripts/orchestra-compose.sh ps
+
+curl --fail http://127.0.0.1:8765/health
+curl --fail http://127.0.0.1:8788/health
 ```
 
-L'image worker est chargée dans le moteur Docker isolé. Son ID exact doit
-correspondre à `config/worker-sandbox.lock.toml`, sinon l'installation échoue
-fermée.
+## Autorité Docker et worker
 
+Les opérations dynamiques utilisent exclusivement le daemon DIND privé via
+`/run/orchestra-docker/docker.sock`. Le socket Docker de l'hôte n'est monté
+dans aucun conteneur du plan de contrôle.
+
+Le worker par défaut est l'image OCI immuable publiée :
+
+```text
+ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49
+```
+
+L'installation effectue un pull exact dans le daemon privé et vérifie le
+RepoDigest exact. Il n'existe plus de contrat d'archive worker, de mode hors
+ligne partiel, de tag local autoritaire, ni de fallback basé sur l'ID local
+d'une image Docker.
+
+## Installation historique
+
+Une racine historique `/opt/docker/hermesops` ou une ancienne unité
+applicative est détectée uniquement pour empêcher une installation parallèle.
+La détection se produit avant toute mutation et bloque avec une demande de
+procédure de migration explicite. L'installateur ne démarre, n'arrête, ne
+migre et ne supprime jamais silencieusement cet état historique.
 
 ## Registre initial
 
-Une installation publique neuve ne crée aucun projet métier et n'enregistre
-aucune fixture. Après migration, la table `projects` doit contenir zéro ligne.
-
-Les fixtures de fondation sont conservées sous `tests/fixtures/projects/`.
-Elles ne sont installées qu'après une action explicite :
+Une installation neuve ne crée aucun projet métier. Les fixtures conservées
+sous `tests/fixtures/projects/` ne sont installées que sur demande explicite :
 
 ```bash
-HERMESOPS_ENABLE_TEST_FIXTURES=1   /opt/docker/hermesops/repo/scripts/init-test-fixtures.sh
+ORCHESTRA_ENABLE_TEST_FIXTURES=1 \
+  /opt/orchestra/repo/scripts/init-test-fixtures.sh
 ```
-
-Cette commande est réservée aux tests du moteur et ne fait pas partie du
-bootstrap normal.
-
-## Reprise et sauvegardes
-
-Avant une mise à niveau divergente, l'installateur crée :
-
-- un `git bundle` complet du contrôleur ;
-- une sauvegarde cohérente de la base SQLite lorsqu'elle existe.
-
-Il préserve les secrets, `auth.json`, les workspaces, les données projet, les
-backups et les fichiers locaux `config/projects.d/*.toml`.
 
 ## Désinstallation non destructive
 
 ```bash
-./uninstall.sh
+./uninstall.sh --user "$USER"
 ```
 
-Cette commande désactive les services, retire les copies des unités systemd
-utilisateur et arrête les conteneurs sans supprimer les volumes, secrets,
-bases, projets ou sauvegardes.
-
-## HermesOps Console foundation (2P)
-
-The dedicated HermesOps Console is served by the user service
-`hermesops-console.service` on `127.0.0.1:8788`. The legacy Hermes WebUI remains
-on `127.0.0.1:8787` during the beta construction milestones.
-
-Check the service with:
-
-```bash
-systemctl --user status hermesops-console.service
-curl --fail http://127.0.0.1:8788/health
-```
-
-The service is loopback-only. Remote browser access still requires an
-operator-managed SSH tunnel or TLS reverse proxy. Milestone 2P exposes no
-Controller API proxy and performs no browser authentication or mutation.
+La commande arrête la pile Compose et conserve par défaut l'état, les secrets,
+les workspaces, les données projet et les sauvegardes. La suppression du dépôt
+requiert explicitement `--remove-repo --confirm REMOVE_REPO` et crée d'abord
+un bundle Git lorsque le dépôt installé en contient un.

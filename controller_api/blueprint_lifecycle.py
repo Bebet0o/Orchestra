@@ -85,8 +85,8 @@ class BlueprintLifecycleStore:
                 if self.REQUIRED_TABLES - tables:
                     return False, "Blueprint lifecycle tables are missing"
                 version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-                if version < 23:
-                    return False, "Blueprint lifecycle migration is missing"
+                if version < 24:
+                    return False, "Blueprint API namespace migration is missing"
                 connection.execute(
                     "SELECT operation_id FROM controller_blueprint_operations LIMIT 1"
                 ).fetchone()

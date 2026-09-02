@@ -10,17 +10,17 @@ export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 
 python3 -m compileall -q \
     controller_api \
-    scripts/hermesops-controller-api.py \
-    scripts/hermesops-controller-objective-probe.py \
-    scripts/hermesops-controller-objective-command-probe.py \
-    scripts/hermesops-controller-review-command-probe.py \
+    scripts/orchestra-controller-api.py \
+    scripts/orchestra-controller-objective-probe.py \
+    scripts/orchestra-controller-objective-command-probe.py \
+    scripts/orchestra-controller-review-command-probe.py \
     tests/test_controller_api.py
 
 python3 tests/test_controller_api.py
 
-python3 scripts/hermesops-controller-api.py --help >/dev/null
-python3 scripts/hermesops-controller-api.py serve --help >/dev/null
-python3 scripts/hermesops-controller-api.py check --help >/dev/null
+python3 scripts/orchestra-controller-api.py --help >/dev/null
+python3 scripts/orchestra-controller-api.py serve --help >/dev/null
+python3 scripts/orchestra-controller-api.py check --help >/dev/null
 
 python3 - "$REPO/specs/controller-api-v1.openapi.json" <<'PY'
 import json
@@ -57,7 +57,7 @@ PY
 
 if grep -R -n -E \
     '(^|[^A-Za-z])(Flask|FastAPI|Django|aiohttp|uvicorn)([^A-Za-z]|$)' \
-    controller_api scripts/hermesops-controller-api.py
+    controller_api scripts/orchestra-controller-api.py
 then
     echo "Unexpected third-party web framework dependency." >&2
     exit 1
@@ -102,4 +102,4 @@ print("Controller API adversarial hardening contract: PASS")
 PY
 
 echo "Controller API bounded mutation foundation: PASS"
-echo "HERMESOPS_CONTROLLER_API_SKELETON_PASS"
+echo "ORCHESTRA_CONTROLLER_API_SKELETON_PASS"

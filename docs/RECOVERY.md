@@ -1,6 +1,6 @@
 # Deterministic recovery manager
 
-HermesOps recovery is fail-closed and Controller-owned. The `ops-recovery`
+Orchestra recovery is fail-closed and Controller-owned. The `ops-recovery`
 identity is recorded for every recovery execution, but Git and SQLite state
 transitions are decided by deterministic policy rather than probabilistic
 model output.
@@ -26,7 +26,7 @@ resource identities.
 
 Abandoned worker/reviewer executions are marked failed. Their host containers,
 nested DIND sandboxes, runtime profiles, and standalone clones are removed.
-The orphan sweep only targets HermesOps-prefixed resources that are not
+The orphan sweep only targets Orchestra-prefixed resources that are not
 referenced by an active run.
 
 ## Restart usage
@@ -34,7 +34,7 @@ referenced by an active run.
 A Controller startup or watchdog invokes:
 
 ```text
-hermesops-recovery.py sweep --owner controller-recovery --stale-seconds 300
+orchestra-recovery.py sweep --owner controller-recovery --stale-seconds 300
 ```
 
 The sweep ignores fresh heartbeats, recovers stale runs, and then cleans

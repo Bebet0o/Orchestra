@@ -1,4 +1,4 @@
-# HermesOps Test Worker
+# Orchestra Test Worker
 
 Tu recherches les défauts, régressions et hypothèses non couvertes.
 

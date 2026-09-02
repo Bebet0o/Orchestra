@@ -7,15 +7,15 @@
     VERIFY_LAYOUT="${REPO}/scripts/verify-layout.sh"
 
     grep -Fq \
-        'auth.json absent; validation des profils IA reportée.' \
+        'auth.json absent; les objectifs IA ne fonctionneront pas encore.' \
         "$INSTALLER"
 
     grep -Fq \
-        'if [[ -f "${ROOT}/state/hermes-home/auth.json" ]]; then' \
+        'if [[ -f "${ORCHESTRA_ROOT}/state/hermes-home/auth.json" ]]; then' \
         "$INSTALLER"
 
     grep -Fq \
-        '"${REPO}/scripts/hermesops-roles.py" verify-profiles' \
+        '"${REPO}/scripts/orchestra-roles.py" verify-profiles' \
         "$INSTALLER"
 
     python3 - "$INSTALLER" <<'PY'
@@ -25,29 +25,33 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 
 sync = text.index(
-    '"${REPO}/scripts/hermesops-roles.py" sync'
+    '"${REPO}/scripts/orchestra-roles.py" sync'
 )
-condition = text.index(
-    'if [[ -f "${ROOT}/state/hermes-home/auth.json" ]]; then',
+registry = text.index(
+    '"${REPO}/scripts/orchestra-registry.py" validate',
     sync,
 )
+compose = text.index(
+    '"${REPO}/scripts/orchestra-compose.sh" up -d',
+    registry,
+)
+condition = text.index(
+    'if [[ -f "${ORCHESTRA_ROOT}/state/hermes-home/auth.json" ]]; then',
+    compose,
+)
 verify = text.index(
-    '"${REPO}/scripts/hermesops-roles.py" verify-profiles',
+    '"${REPO}/scripts/orchestra-roles.py" verify-profiles',
     condition,
 )
 deferred = text.index(
-    'auth.json absent; validation des profils IA reportée.',
+    'auth.json absent; les objectifs IA ne fonctionneront pas encore.',
     verify,
 )
-registry = text.index(
-    '"${REPO}/scripts/hermesops-registry.py" validate',
-    deferred,
-)
 
-if not sync < condition < verify < deferred < registry:
+if not sync < registry < compose < condition < verify < deferred:
     raise SystemExit("Invalid no-auth role validation order")
 
-print("HermesOps no-auth installer order: PASS")
+print("Orchestra no-auth installer order: PASS")
 PY
 
     TMP="$(mktemp -d)"
@@ -71,20 +75,19 @@ PY
 
     chmod 0700 "${ROOT}/secrets"
 
-    printf '%s\n' '0.1.0-alpha' >"${ROOT}/repo/VERSION"
     printf '%s\n' 'services: {}' >"${ROOT}/repo/compose/agent.yaml"
     printf '%s\n' 'schema_version = 1' >"${ROOT}/repo/config/controller.toml"
 
     [[ ! -e "${ROOT}/repo/.git" ]]
 
     OUTPUT="$(
-        HERMESOPS_ROOT="$ROOT" \
+        ORCHESTRA_ROOT="$ROOT" \
             "$VERIFY_LAYOUT"
     )"
 
     grep -Fq \
-        'HermesOps layout: PASS (source archive 0.1.0-alpha)' \
+        'Orchestra layout: PASS (source archive)' \
         <<<"$OUTPUT"
 
-    echo "HermesOps source-archive runtime layout: PASS"
-    echo "HermesOps no-auth installation contract: PASS"
+    echo "Orchestra source-archive runtime layout: PASS"
+    echo "Orchestra no-auth installation contract: PASS"

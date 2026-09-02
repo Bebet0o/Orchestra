@@ -1,4 +1,4 @@
-"""Runtime-neutral agent execution boundary for HermesOps."""
+"""Runtime-neutral agent execution boundary for Orchestra."""
 
 from pathlib import Path
 

@@ -1,48 +1,48 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="/opt/docker/hermesops"
+ROOT="/opt/orchestra"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 
-[[ -x "${REPO}/scripts/hermesops-reviewer.py" ]]
-[[ -x "${REPO}/scripts/hermesops-worker.py" ]]
-[[ -x "${REPO}/scripts/hermes-worker-entry.py" ]]
+[[ -x "${REPO}/scripts/orchestra-reviewer.py" ]]
+[[ -x "${REPO}/scripts/orchestra-worker.py" ]]
+[[ -x "${REPO}/scripts/orchestra-worker-entry.py" ]]
 [[ -f "${REPO}/migrations/005_reviewer_executions.sql" ]]
 [[ -f "${REPO}/docs/REVIEWERS.md" ]]
 
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'def precreate_reviewer_sandbox' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'read_only=True' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'mount_mode = "ro" if sandbox.read_only else "rw"' \
     "${REPO}/scripts/agent_runtime/hermes.py"
 
 grep -Fq 'if workspace_mount.get("RW"):' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq '"--network=none"' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'repository_unchanged' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'def validate_controller_schema' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'UPDATE runs SET heartbeat_at = ? WHERE run_id = ?' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 grep -Fq 'UPDATE project_locks' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 if grep -Fq 'updated_at' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+    "${REPO}/scripts/orchestra-reviewer.py"
 then
     echo "Reviewer contains unsupported runs.updated_at reference." >&2
     exit 1
@@ -62,8 +62,8 @@ do
     }
 done
 
-grep -Fq 'HERMESOPS_REVIEW_JSON_BEGIN' \
-    "${REPO}/scripts/hermesops-reviewer.py"
+grep -Fq 'ORCHESTRA_REVIEW_JSON_BEGIN' \
+    "${REPO}/scripts/orchestra-reviewer.py"
 
 [[ "$(
     sqlite3 "$DB" \
@@ -176,4 +176,4 @@ BAD_EXECUTIONS="$(
 
 [[ "$BAD_EXECUTIONS" == "0" ]]
 
-echo "HermesOps independent reviewer foundation: PASS"
+echo "Orchestra independent reviewer foundation: PASS"

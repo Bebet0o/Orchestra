@@ -81,20 +81,40 @@ class BlueprintMigrationTest(unittest.TestCase):
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    def historical_blueprint_metadata(self, source: str) -> dict[str, object]:
+        current_source = source.replace("hermesops.dev/v1", "orchestra.dev/v1")
+        report = validate_source(current_source)
+        self.assertTrue(report.valid, report.as_dict())
+        self.assertIsNotNone(report.result)
+        result = report.result
+        assert result is not None
+        canonical = json.loads(result.canonical_bytes)
+        canonical["apiVersion"] = "hermesops.dev/v1"
+        canonical_json = json.dumps(
+            canonical,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return {
+            "api_version": "hermesops.dev/v1",
+            "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "canonical_json": canonical_json,
+            "canonical_sha256": hashlib.sha256(
+                canonical_json.encode("utf-8")
+            ).hexdigest(),
+            "canonical_size": len(canonical_json.encode("utf-8")),
+        }
+
     def seed_real_v22(self) -> dict[str, object]:
         self.apply_through(22)
-        first_source = (ROOT / "config/examples/Blueprint").read_text(encoding="utf-8")
+        first_source = (ROOT / "config/examples/Blueprint").read_text(
+            encoding="utf-8"
+        ).replace("orchestra.dev/v1", "hermesops.dev/v1")
         second_source = first_source.replace("    cpu: 4\n", "    cpu: 2\n")
         self.assertNotEqual(first_source, second_source)
-        first_report = validate_source(first_source)
-        second_report = validate_source(second_source)
-        self.assertTrue(first_report.valid)
-        self.assertTrue(second_report.valid)
-        self.assertIsNotNone(first_report.result)
-        self.assertIsNotNone(second_report.result)
-        first_result = first_report.result
-        second_result = second_report.result
-        assert first_result is not None and second_result is not None
+        first_result = self.historical_blueprint_metadata(first_source)
+        second_result = self.historical_blueprint_metadata(second_source)
         request_hash = self.request_hash(first_source)
         key_hash = self.key_hash()
         response = {
@@ -124,12 +144,12 @@ class BlueprintMigrationTest(unittest.TestCase):
                 (
                     REVISION_ID,
                     SANDBOX_ID,
-                    first_result.api_version,
+                    first_result["api_version"],
                     first_source,
-                    first_result.source_sha256,
-                    first_result.canonical_bytes.decode("utf-8"),
-                    first_result.canonical_sha256,
-                    len(first_result.canonical_bytes),
+                    first_result["source_sha256"],
+                    first_result["canonical_json"],
+                    first_result["canonical_sha256"],
+                    first_result["canonical_size"],
                     CREATED_AT,
                 ),
             )
@@ -157,12 +177,12 @@ class BlueprintMigrationTest(unittest.TestCase):
                 (
                     SECOND_REVISION_ID,
                     SANDBOX_ID,
-                    second_result.api_version,
+                    second_result["api_version"],
                     second_source,
-                    second_result.source_sha256,
-                    second_result.canonical_bytes.decode("utf-8"),
-                    second_result.canonical_sha256,
-                    len(second_result.canonical_bytes),
+                    second_result["source_sha256"],
+                    second_result["canonical_json"],
+                    second_result["canonical_sha256"],
+                    second_result["canonical_size"],
                     UPDATED_AT,
                 ),
             )
@@ -279,19 +299,27 @@ class BlueprintMigrationTest(unittest.TestCase):
             connection.commit()
         return {
             "first_source": first_source,
-            "first_source_sha256": first_result.source_sha256,
-            "first_canonical": first_result.canonical_bytes.decode("utf-8"),
-            "first_canonical_sha256": first_result.canonical_sha256,
+            "first_source_sha256": first_result["source_sha256"],
+            "first_canonical": first_result["canonical_json"],
+            "first_canonical_sha256": first_result["canonical_sha256"],
             "second_source": second_source,
-            "second_source_sha256": second_result.source_sha256,
-            "second_canonical": second_result.canonical_bytes.decode("utf-8"),
-            "second_canonical_sha256": second_result.canonical_sha256,
+            "second_source_sha256": second_result["source_sha256"],
+            "second_canonical": second_result["canonical_json"],
+            "second_canonical_sha256": second_result["canonical_sha256"],
             "request_hash": request_hash,
             "key_hash": key_hash,
         }
 
     def apply_v23(self) -> None:
         migration = (ROOT / "migrations/023_blueprint_migration.sql").read_text(
+            encoding="utf-8"
+        )
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.executescript("BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;")
+
+    def apply_v24(self) -> None:
+        migration = (ROOT / "migrations/024_blueprint_apiversion.sql").read_text(
             encoding="utf-8"
         )
         with sqlite3.connect(self.database) as connection:
@@ -328,6 +356,182 @@ class BlueprintMigrationTest(unittest.TestCase):
                 23,
             )
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def test_fresh_database_reaches_schema_24_and_guards_new_writes(self) -> None:
+        self.apply_through(24)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT max(version) FROM schema_migrations"
+                ).fetchone()[0],
+                24,
+            )
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+        store = SandboxProfileStore(self.settings)
+        source = (ROOT / "config/examples/Blueprint").read_bytes()
+        imported = store.import_source(source)
+        self.assertTrue(imported.created)
+        with sqlite3.connect(self.database) as connection:
+            connection.row_factory = sqlite3.Row
+            current = connection.execute(
+                "SELECT * FROM sandbox_profile_revisions"
+            ).fetchone()
+            assert current is not None
+            self.assertEqual(current["api_version"], "orchestra.dev/v1")
+            self.assertEqual(current["source_format"], "blueprint-v1")
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "new Blueprint revisions require orchestra.dev/v1",
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO sandbox_profile_revisions (
+                        revision_id, sandbox_id, source_revision,
+                        source_format, api_version, source_text,
+                        source_sha256, canonical_json, canonical_sha256,
+                        canonical_size, diagnostics_json, created_at
+                    )
+                    SELECT ?, sandbox_id, 2, source_format,
+                        'hermesops.dev/v1', source_text, source_sha256,
+                        canonical_json, canonical_sha256, canonical_size,
+                        diagnostics_json, created_at
+                    FROM sandbox_profile_revisions
+                    WHERE revision_id=?
+                    """,
+                    (SECOND_REVISION_ID, current["revision_id"]),
+                )
+            connection.rollback()
+
+    def test_real_v23_upgrade_preserves_historical_revision_and_links(self) -> None:
+        expected = self.seed_real_v22()
+        self.apply_v23()
+        with sqlite3.connect(self.database) as connection:
+            connection.row_factory = sqlite3.Row
+            before_revisions = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM sandbox_profile_revisions ORDER BY source_revision"
+                )
+            ]
+            before_profiles = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM sandbox_profiles ORDER BY sandbox_id"
+                )
+            ]
+            before_project = dict(
+                connection.execute(
+                    "SELECT * FROM projects WHERE project_id='alpha'"
+                ).fetchone()
+            )
+            before_objective = dict(
+                connection.execute(
+                    "SELECT * FROM objective_queue "
+                    "WHERE objective_id='objective-migration'"
+                ).fetchone()
+            )
+        self.apply_v24()
+
+        with sqlite3.connect(self.database) as connection:
+            connection.row_factory = sqlite3.Row
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
+            self.assertEqual(
+                connection.execute(
+                    "SELECT max(version) FROM schema_migrations"
+                ).fetchone()[0],
+                24,
+            )
+            after_revisions = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM sandbox_profile_revisions ORDER BY source_revision"
+                )
+            ]
+            after_profiles = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM sandbox_profiles ORDER BY sandbox_id"
+                )
+            ]
+            self.assertEqual(after_revisions, before_revisions)
+            self.assertEqual(after_profiles, before_profiles)
+            self.assertEqual(after_revisions[0]["source_text"], expected["first_source"])
+            self.assertEqual(
+                after_revisions[0]["canonical_json"], expected["first_canonical"]
+            )
+            self.assertEqual(
+                after_revisions[0]["source_sha256"], expected["first_source_sha256"]
+            )
+            self.assertEqual(
+                after_revisions[0]["canonical_sha256"],
+                expected["first_canonical_sha256"],
+            )
+            self.assertTrue(
+                all(
+                    row["api_version"] == "hermesops.dev/v1"
+                    for row in after_revisions
+                )
+            )
+            self.assertEqual(
+                dict(
+                    connection.execute(
+                        "SELECT * FROM projects WHERE project_id='alpha'"
+                    ).fetchone()
+                ),
+                before_project,
+            )
+            self.assertEqual(
+                dict(
+                    connection.execute(
+                        "SELECT * FROM objective_queue "
+                        "WHERE objective_id='objective-migration'"
+                    ).fetchone()
+                ),
+                before_objective,
+            )
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+            schema_objects = {
+                (row[0], row[1])
+                for row in connection.execute(
+                    "SELECT type, name FROM sqlite_master "
+                    "WHERE type IN ('index', 'trigger') AND sql IS NOT NULL"
+                )
+            }
+            for expected_object in {
+                ("index", "idx_sandbox_profiles_state_name"),
+                ("index", "idx_sandbox_profile_revisions_profile"),
+                ("trigger", "sandbox_profile_revision_update_guard"),
+                ("trigger", "sandbox_profile_revision_delete_guard"),
+                (
+                    "trigger",
+                    "sandbox_profile_revision_api_version_insert_guard",
+                ),
+                ("trigger", "sandbox_profile_identity_guard"),
+                ("trigger", "sandbox_profile_resource_revision_guard"),
+                ("trigger", "sandbox_profile_source_revision_guard"),
+            }:
+                self.assertIn(expected_object, schema_objects)
+
+        store = BlueprintLifecycleStore(
+            self.settings, SandboxProfileStore(self.settings)
+        )
+        self.assertEqual(store.readiness(), (True, "ready"))
+        current = store.current(SANDBOX_ID)
+        self.assertEqual(
+            current["revision"]["source"], expected["second_source"]
+        )
+        self.assertEqual(
+            current["revision"]["api_version"], "hermesops.dev/v1"
+        )
+        reopened = BlueprintLifecycleStore(
+            self.settings, SandboxProfileStore(self.settings)
+        )
+        self.assertEqual(
+            reopened.current(SANDBOX_ID)["revision"]["source_sha256"],
+            expected["second_source_sha256"],
+        )
 
     def test_real_v22_upgrade_preserves_integrity_and_reopens(self) -> None:
         expected = self.seed_real_v22()
@@ -463,6 +667,7 @@ class BlueprintMigrationTest(unittest.TestCase):
                     (AUDIT_ID,),
                 )
 
+        self.apply_v24()
         store = BlueprintLifecycleStore(
             self.settings, SandboxProfileStore(self.settings)
         )
@@ -493,6 +698,7 @@ class BlueprintMigrationTest(unittest.TestCase):
     def test_migrated_project_supports_current_objective_execution_linkage(self) -> None:
         self.seed_real_v22()
         self.apply_v23()
+        self.apply_v24()
 
         database = ReadOnlyDatabase(self.settings)
         project = database.get_project("alpha")
@@ -567,6 +773,25 @@ class BlueprintMigrationTest(unittest.TestCase):
                 ).fetchone()[0],
                 expected["first_source_sha256"],
             )
+
+    def test_migration_24_rerun_fails_without_changing_database(self) -> None:
+        self.apply_through(24)
+        before = self.database.read_bytes()
+        migration = (ROOT / "migrations/024_blueprint_apiversion.sql").read_text(
+            encoding="utf-8"
+        )
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("PRAGMA foreign_keys=ON")
+            with self.assertRaises(sqlite3.Error):
+                connection.executescript(
+                    "BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;"
+                )
+            if connection.in_transaction:
+                connection.rollback()
+        self.assertEqual(self.database.read_bytes(), before)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
     def test_unexpected_idempotency_kind_fails_atomically(self) -> None:
         self.seed_real_v22()

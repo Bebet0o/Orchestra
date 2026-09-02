@@ -1,6 +1,0 @@
-schema_version = 1
-tag = "hermesops-worker-sandbox:0.2"
-image_id = "sha256:4bc8b8e521780ad786ee414643d1fc3bf6e094f4d0b8213c56599ea456bee48c"
-base_image = "python@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
-built_at = "2026-07-17T17:10:26+02:00"
-workspace_strategy = "standalone_clone"

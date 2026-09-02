@@ -1,5 +1,5 @@
-# OCI-native successor to worker-sandbox.Dockerfile.  The inherited image stays
-# in place until the published digest is activated in the S3-B transaction.
+# Published worker image source. Runtime authority is the accepted immutable
+# repository@sha256 digest recorded in the default environment specification.
 FROM python@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
 ARG OCI_SOURCE="https://github.com/bebet0o/Orchestra"

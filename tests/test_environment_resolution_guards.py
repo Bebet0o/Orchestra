@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-import subprocess
 import sys
-import tempfile
 import unittest
-from dataclasses import FrozenInstanceError, fields
+from dataclasses import fields
 from pathlib import Path
 from unittest import mock
 
@@ -28,10 +26,6 @@ from environment_resolution import (  # noqa: E402
     ResolvedEnvironment,
 )
 from agent_runtime import RuntimeSandboxContext  # noqa: E402
-from legacy_worker_environment import (  # noqa: E402
-    LegacyEnvironmentError,
-    LegacyWorkerEnvironmentAdapter,
-)
 from sandbox_backend import (  # noqa: E402
     PreparedEnvironment,
     SandboxPreparationError,
@@ -242,7 +236,7 @@ class EnvironmentArchitectureGuardTest(unittest.TestCase):
 
     def test_reviewer_uses_the_workers_single_shared_loading_policy(self) -> None:
         tree = ast.parse(
-            (SCRIPTS / "hermesops-reviewer.py").read_text(encoding="utf-8")
+            (SCRIPTS / "orchestra-reviewer.py").read_text(encoding="utf-8")
         )
         shared_calls = [
             node
@@ -262,136 +256,11 @@ class EnvironmentArchitectureGuardTest(unittest.TestCase):
         self.assertNotIn("LegacyWorkerEnvironmentAdapter", reviewer_names)
 
 
-class LegacyEnvironmentTransitionTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.lock_path = Path(self.temporary.name) / "worker-sandbox.lock.toml"
-        self.spec = EnvironmentSpec(
-            ENVIRONMENT_SCHEMA_VERSION,
-            DEFAULT_ENVIRONMENT_ID,
-        )
-
-    def write_lock(self, local_config_id: str = DIGEST) -> None:
-        self.lock_path.write_text(
-            "\n".join(
-                (
-                    "schema_version = 1",
-                    'tag = "hermesops-worker-sandbox:0.2"',
-                    f'image_id = "{local_config_id}"',
-                )
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
-    def adapter(self, availability: mock.Mock | None = None):
-        return LegacyWorkerEnvironmentAdapter(
-            self.lock_path,
-            mock.Mock() if availability is None else availability,
-        )
-
-    def test_adapter_exposes_explicit_local_evidence_and_checks_availability(self) -> None:
-        self.write_lock()
-        availability = mock.Mock(return_value=subprocess.CompletedProcess([], 0))
-
-        environment = LegacyWorkerEnvironmentAdapter(
-            self.lock_path,
-            availability,
-        ).load(self.spec)
-
-        self.assertEqual(environment.environment_id, DEFAULT_ENVIRONMENT_ID)
-        self.assertEqual(environment.local_image_config_id, DIGEST)
-        self.assertEqual(environment.provenance, "legacy-worker-sandbox-lock")
-        availability.assert_called_once_with(DIGEST)
-        with self.assertRaises(FrozenInstanceError):
-            environment.local_image_config_id = "changed"  # type: ignore[misc]
-
-    def test_adapter_rejects_noncanonical_local_config_identity(self) -> None:
-        availability = mock.Mock()
-        for local_config_id in (
-            "latest",
-            "sha256:short",
-            "sha256:" + "C" * 64,
-            "sha256:" + "g" * 64,
-            " " + DIGEST,
-            DIGEST + " ",
-        ):
-            with self.subTest(local_config_id=local_config_id):
-                self.write_lock(local_config_id)
-                with self.assertRaises(LegacyEnvironmentError):
-                    LegacyWorkerEnvironmentAdapter(
-                        self.lock_path,
-                        availability,
-                    ).load(self.spec)
-        availability.assert_not_called()
-
-    def test_repository_current_legacy_lock_is_canonical_and_accepted(self) -> None:
-        current_lock = ROOT / "config/worker-sandbox.lock.toml"
-        availability = mock.Mock()
-
-        environment = LegacyWorkerEnvironmentAdapter(
-            current_lock,
-            availability,
-        ).load(self.spec)
-
-        self.assertRegex(environment.local_image_config_id, r"^sha256:[0-9a-f]{64}$")
-        self.assertEqual(environment.local_image_tag, "hermesops-worker-sandbox:0.2")
-        availability.assert_called_once_with(environment.local_image_config_id)
-
-    def test_adapter_normalizes_missing_and_malformed_lock_errors(self) -> None:
-        with self.assertRaises(LegacyEnvironmentError) as missing:
-            self.adapter().load(self.spec)
-        self.assertIsInstance(missing.exception.__cause__, OSError)
-
-        self.lock_path.write_text("schema_version = [\n", encoding="utf-8")
-        with self.assertRaises(LegacyEnvironmentError) as malformed:
-            self.adapter().load(self.spec)
-        self.assertNotEqual(type(malformed.exception.__cause__), type(None))
-
-    def test_adapter_rejects_missing_required_lock_keys(self) -> None:
-        documents = (
-            'tag = "hermesops-worker-sandbox:0.2"\nimage_id = "' + DIGEST + '"\n',
-            'schema_version = 1\nimage_id = "' + DIGEST + '"\n',
-            'schema_version = 1\ntag = "hermesops-worker-sandbox:0.2"\n',
-        )
-        for document in documents:
-            with self.subTest(document=document):
-                self.lock_path.write_text(document, encoding="utf-8")
-                with self.assertRaises(LegacyEnvironmentError):
-                    self.adapter().load(self.spec)
-
-    def test_adapter_rejects_empty_or_malformed_local_tag(self) -> None:
-        invalid_tags = (
-            "",
-            " ",
-            "hermesops-worker-sandbox",
-            "hermesops worker:0.2",
-            "HermesOps-worker:0.2",
-            "hermesops-worker-sandbox: bad",
-        )
-        for tag in invalid_tags:
-            with self.subTest(tag=tag):
-                self.lock_path.write_text(
-                    "schema_version = 1\n"
-                    f'tag = "{tag}"\n'
-                    f'image_id = "{DIGEST}"\n',
-                    encoding="utf-8",
-                )
-                with self.assertRaises(LegacyEnvironmentError):
-                    self.adapter().load(self.spec)
-
-    def test_adapter_rejects_another_environment(self) -> None:
-        self.write_lock()
-        adapter = LegacyWorkerEnvironmentAdapter(self.lock_path, mock.Mock())
-
-        with self.assertRaises(LegacyEnvironmentError):
-            adapter.load(EnvironmentSpec(1, "another-worker"))
-
+class PublishedEnvironmentRuntimeTest(unittest.TestCase):
     def test_worker_preparation_materializes_resolved_oci_environment(self) -> None:
         specification = importlib.util.spec_from_file_location(
             "published_environment_worker_test",
-            SCRIPTS / "hermesops-worker.py",
+            SCRIPTS / "orchestra-worker.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load worker module")
@@ -432,7 +301,7 @@ class LegacyEnvironmentTransitionTest(unittest.TestCase):
     def test_worker_boundary_normalizes_resolution_and_materialization_failures(self) -> None:
         specification = importlib.util.spec_from_file_location(
             "published_environment_worker_error_test",
-            SCRIPTS / "hermesops-worker.py",
+            SCRIPTS / "orchestra-worker.py",
         )
         if specification is None or specification.loader is None:
             raise AssertionError("Unable to load worker module")
@@ -494,6 +363,7 @@ class LegacyEnvironmentTransitionTest(unittest.TestCase):
             network_enabled=False,
             sandbox_handle="a" * 64,
             task_id="task-s3b-runtime-context",
+            runtime_user="2001:3001",
         )
 
         self.assertEqual(

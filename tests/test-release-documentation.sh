@@ -7,15 +7,12 @@
     CHANGELOG="${REPO}/CHANGELOG.md"
     SECURITY="${REPO}/SECURITY.md"
     LICENSE_FILE="${REPO}/LICENSE"
-    VERSION_FILE="${REPO}/VERSION"
 
     [[ -f "$README" ]]
     [[ -f "$CHANGELOG" ]]
     [[ -f "$SECURITY" ]]
     [[ -f "$LICENSE_FILE" ]]
-    [[ -f "$VERSION_FILE" ]]
-
-    [[ "$(tr -d '\r\n' <"$VERSION_FILE")" == "0.1.0-alpha" ]]
+    [[ ! -e "${REPO}/VERSION" ]]
 
     required_readme_text=(
         'Orchestra is under active development'
@@ -27,11 +24,12 @@
         'ModelProvider'
         'repository@sha256:digest'
         'blueprint-v1'
-        'scripts/hermesops-blueprint.py'
+        'scripts/orchestra-blueprint.py'
         'docs/blueprint/SPECIFICATION_V1.md'
         'specs/blueprint-v1.schema.json'
         'config/examples/Blueprint'
         './install.sh --user "$USER"'
+        'Debian 12+ or Ubuntu 22.04+ on amd64'
         './validate.sh --static --quiet'
         'SECURITY.md'
         'CONTRIBUTING.md'
@@ -47,7 +45,7 @@
 
     forbidden_current_readme_text=(
         '/hermesfiles'
-        'scripts/hermesops-hermesfile.py'
+        'scripts/orchestra-hermesfile.py'
         'docs/hermesfile/SPECIFICATION_V1.md'
         'hermesfile-v1'
     )
@@ -61,8 +59,8 @@
     grep -Fq '### HermesOps 0.2.0 (historical release)' "$CHANGELOG"
     ! grep -Fq 'HermesOps 0.2.0 development (unreleased historical material)' \
         "$CHANGELOG"
-    grep -Fq 'working transitional deployment path' "$README"
-    grep -Fq 'and service layout is inherited from HermesOps' "$README"
+    grep -Fq 'Docker Compose' "$README"
+    grep -Fq '/opt/orchestra' "$README"
     grep -Fq 'GitHub private vulnerability reporting is not currently enabled' \
         "$SECURITY"
 

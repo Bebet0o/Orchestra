@@ -191,8 +191,8 @@ class SandboxProfileStore:
                 version = int(
                     connection.execute("PRAGMA user_version").fetchone()[0]
                 )
-                if version < 23:
-                    return False, "Blueprint migration is not installed"
+                if version < 24:
+                    return False, "Blueprint API namespace migration is not installed"
                 connection.execute(
                     """
                     SELECT sandbox_id, current_revision_id
@@ -461,7 +461,7 @@ class SandboxProfileStore:
     def _cursor_key(cursor_secret: str) -> bytes:
         return hmac.new(
             cursor_secret.encode("ascii"),
-            b"hermesops-sandbox-profile-cursor-v1",
+            b"orchestra-sandbox-profile-cursor-v1",
             hashlib.sha256,
         ).digest()
 

@@ -1,4 +1,4 @@
-# HermesOps Events v1
+# Orchestra Events v1
 
 Status: **Design contract**
 Transport: authenticated WebSocket
@@ -8,7 +8,7 @@ Transport contract: [`../../specs/controller-events-v1.asyncapi.json`](../../spe
 
 ## Purpose
 
-The event stream keeps HermesOps Console synchronized with durable Controller
+The event stream keeps Orchestra Console synchronized with durable Controller
 state without giving the browser direct access to SQLite or internal service
 logs.
 
@@ -521,7 +521,7 @@ Use snapshot refresh and restart from the new snapshot sequence.
 
 ## Implemented local transport
 
-HermesOps 2J implements this contract at `ws://127.0.0.1:8765/api/v1/events`
+Orchestra 2J implements this contract at `ws://127.0.0.1:8765/api/v1/events`
 using only the Python standard library. The handshake requires the Controller
 session cookie and the exact configured Console origin. Credentials and replay
 cursors are forbidden in the URL. `Last-Event-Sequence` may start an immediate

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-AGENT="hermesops-agent"
-ENGINE="hermesops-sandbox-engine"
-SOCKET="/run/hermes-docker/docker.sock"
+AGENT="orchestra-hermes-agent"
+ENGINE="orchestra-sandbox-engine"
+SOCKET="/run/orchestra-docker/docker.sock"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
+PRIVATE_DOCKER_HOST="unix://${ROOT}/runtime/sandbox-engine-socket/docker.sock"
 
 [[ "$(
     docker inspect "$AGENT" \
@@ -26,7 +28,7 @@ jq -e '
 docker exec "$AGENT" test -S "$SOCKET"
 
 docker exec --user hermes "$AGENT" sh -lc '
-    test "$DOCKER_HOST" = "unix:///run/hermes-docker/docker.sock"
+    test "$DOCKER_HOST" = "unix:///run/orchestra-docker/docker.sock"
     docker info >/dev/null
 '
 
@@ -59,12 +61,12 @@ assert "@sha256:" in terminal.get("docker_image", "")
 print("Sandbox config: PASS")
 PY
 
-HOST_CHILDREN="$(
-    docker ps -a \
-        --filter 'label=hermes-agent=1' \
+PRIVATE_RUNTIME_CONTAINERS="$(
+    docker --host "$PRIVATE_DOCKER_HOST" ps -a \
+        --filter 'label=orchestra-runtime-container=1' \
         --format '{{.Names}}'
 )"
 
-[[ -z "$HOST_CHILDREN" ]]
+[[ -z "$PRIVATE_RUNTIME_CONTAINERS" ]]
 
 echo "Hermes sandbox foundation: PASS"

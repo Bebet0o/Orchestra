@@ -220,7 +220,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
                 )
 
     def test_partial_initial_password_file_is_removed(self) -> None:
-        script = ROOT / "scripts" / "hermesops-controller-operator.py"
+        script = ROOT / "scripts" / "orchestra-controller-operator.py"
         spec = importlib.util.spec_from_file_location("operator_script", script)
         self.assertIsNotNone(spec)
         self.assertIsNotNone(spec.loader)

@@ -252,7 +252,7 @@ def _request(
     connection = http.client.HTTPConnection(host, port, timeout=timeout)
     headers = {"Accept": "application/json"}
     if token is not None:
-        headers["Cookie"] = f"hermesops_session={token}"
+        headers["Cookie"] = f"orchestra_session={token}"
     try:
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()

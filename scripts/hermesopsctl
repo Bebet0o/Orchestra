@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-exec /opt/docker/hermesops/repo/scripts/hermesops-control.py "$@"

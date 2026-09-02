@@ -1,6 +1,6 @@
 # Agent runtime boundary
 
-HermesOps separates control-plane decisions from execution of a bounded AI
+Orchestra separates control-plane decisions from execution of a bounded AI
 role. Planner, worker, and reviewer code create a runtime-neutral
 `RuntimeRequest` and invoke the `AgentRuntime` contract. The returned text is
 input to the existing domain validation; it is never treated
@@ -33,9 +33,9 @@ neutral request identifier, timeout, completion marker, optional sandbox
 facts, and one optional runtime-event sink. `RuntimeSandboxContext`
 contains only an absolute workspace, image identity, CPU and memory limits,
 read-only and network policy, the control-plane task identity, and an opaque
-sandbox handle. The task identity is a generic authorization binding, not a
-runtime discovery protocol. The context contains no Hermes, Compose, profile,
-container-name, or discovery-label field.
+sandbox handle, plus the explicit numeric runtime UID/GID. The task identity is
+a generic authorization binding, not a runtime discovery protocol. The context
+contains no Hermes, Compose, profile, container-name, or discovery-label field.
 
 `RuntimeEvent` is the runtime-fact side of the boundary. Its envelope is
 limited to a strict `RuntimeEventKind`, the request and role bindings, and an
@@ -81,12 +81,14 @@ AgentRuntime
 `- NativeRuntime -> ModelProvider
 ```
 
-`HermesRuntime` is the current transitional adapter. It maps the neutral
-request to the existing Hermes Agent Compose/CLI command and preserves the
-planner, worker, and reviewer limits, sandbox mounts, and ephemeral profiles.
-Hermes-specific command construction and process management belong here. For
-worker and reviewer requests it passes the opaque handle to the private Hermes
-entrypoint. At the point of adoption, that entrypoint re-inspects and verifies
+`HermesRuntime` is the current Hermes integration adapter. It maps the neutral
+request to an exact immutable Hermes Agent image and creates the bounded
+one-off container directly in Orchestra's private DIND daemon. It preserves
+planner, worker, and reviewer limits, sandbox mounts, numeric runtime identity,
+and ephemeral profiles without using the host Docker daemon or outer Compose
+one-offs. Hermes-specific command construction and process management belong
+here. For worker and reviewer requests it passes the opaque handle to the
+private Orchestra entrypoint. At adoption, that entrypoint re-inspects and verifies
 the exact full container ID, generic owner/task/request bindings, running
 state, image identity, `/workspace` source and access mode, effective network
 mode and attached networks, CPU/RAM/PID limits, non-privileged mode,
@@ -95,14 +97,12 @@ hard refusal; there is no alternate discovery fallback. Hermes discovery
 labels are neither created nor understood by worker or reviewer.
 
 Outer containers created by the adapter carry
-`hermesops-runtime-container=1` and a matching
-`hermesops-runtime-request-id`. Recovery discovery uses positive labels, then
-re-inspects identity and checks durable execution bindings. Nested cleanup has
-a documented two-entry ownership allowlist: `NEW_GENERIC` requires
-`hermesops-sandbox=1` plus coherent task/request labels and SQLite binding;
-`LEGACY_HERMES` requires the historical `hermes-agent=1` label plus coherent
-historical task/profile labels and SQLite binding. A Hermes-looking name alone
-is never ownership and is ignored.
+`orchestra-runtime-container=1` and a matching
+`orchestra-runtime-request-id`. Recovery discovery uses positive labels, then
+re-inspects identity and checks durable execution bindings. Nested cleanup
+requires `orchestra-sandbox=1`, coherent task/request labels, and the durable
+SQLite binding. Retired Hermes ownership labels are not accepted. A
+Hermes-looking name alone is never ownership and is ignored.
 
 Sandbox names are used only for creation. A collision fails closed; worker and
 reviewer never pre-delete the existing name. The worker's before/after Docker

@@ -1,4 +1,4 @@
-# HermesOps Machine-Readable Contracts
+# Orchestra Machine-Readable Contracts
 
 This directory contains design contracts for the long-term `v0.2.0-beta`
 architecture.

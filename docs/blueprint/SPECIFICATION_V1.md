@@ -2,7 +2,7 @@
 
 Status: **Executable source contract**
 
-API version: `hermesops.dev/v1`
+API version: `orchestra.dev/v1`
 
 Kind: `SandboxProfile`
 
@@ -54,7 +54,7 @@ The file name does not change the schema or grant permissions.
 ## Top-level structure
 
 ```yaml
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 kind: SandboxProfile
 metadata:
   name: default-python
@@ -96,7 +96,7 @@ YAML 1.1 words such as `on`, `off`, `yes` and `no` remain strings. Only
 Required exact value:
 
 ```yaml
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 ```
 
 `v0alpha1` remains a historical experimental design contract and is not
@@ -403,11 +403,11 @@ or stack traces.
 ## CLI
 
 ```bash
-scripts/hermesops-blueprint.py validate Blueprint
-scripts/hermesops-blueprint.py validate Blueprint --json
-scripts/hermesops-blueprint.py fingerprint Blueprint --json
-scripts/hermesops-blueprint.py canonicalize Blueprint
-scripts/hermesops-blueprint.py canonicalize Blueprint --output canonical.json
+scripts/orchestra-blueprint.py validate Blueprint
+scripts/orchestra-blueprint.py validate Blueprint --json
+scripts/orchestra-blueprint.py fingerprint Blueprint --json
+scripts/orchestra-blueprint.py canonicalize Blueprint
+scripts/orchestra-blueprint.py canonicalize Blueprint --output canonical.json
 ```
 
 Input paths must be regular files and cannot be symlinks.

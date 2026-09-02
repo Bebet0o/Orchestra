@@ -74,4 +74,4 @@ for route in required:
         raise SystemExit(f"Human API contract missing route: GET {route}")
 PY
 
-echo HERMESOPS_CONTROLLER_ORCHESTRATION_READS_PASS
+echo ORCHESTRA_CONTROLLER_ORCHESTRATION_READS_PASS

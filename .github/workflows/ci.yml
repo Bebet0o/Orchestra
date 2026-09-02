@@ -1,4 +1,4 @@
-name: HermesOps CI
+name: Orchestra CI
 
 on:
   push:
@@ -27,8 +27,3 @@ jobs:
 
       - name: Validate repository
         run: ./validate.sh --static
-
-      - name: Show version
-        run: |
-          printf 'HermesOps version: '
-          cat VERSION

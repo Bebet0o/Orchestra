@@ -11,7 +11,7 @@ root = Path(sys.argv[1])
 for item in (
     root / "controller_api/objective_commands.py",
     root / "controller_api/objective_command_probe.py",
-    root / "scripts/hermesops-controller-objective-command-probe.py",
+    root / "scripts/orchestra-controller-objective-command-probe.py",
     root / "controller_api/server.py",
     root / "controller_api/core.py",
 ):
@@ -40,4 +40,4 @@ for required in (
         raise SystemExit(f"Missing safe live-probe marker: {required}")
 print("Controller secure objective command contract: PASS")
 PY
-printf '%s\n' HERMESOPS_CONTROLLER_OBJECTIVE_COMMANDS_PASS
+printf '%s\n' ORCHESTRA_CONTROLLER_OBJECTIVE_COMMANDS_PASS

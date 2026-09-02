@@ -2,8 +2,9 @@
 set -Eeuo pipefail
 export LC_ALL=C
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
-REPO="${ROOT}/repo"
+ORCHESTRA_ROOT="/opt/orchestra"
+LEGACY_ROOT="/opt/docker/hermesops"
+REPO="${ORCHESTRA_ROOT}/repo"
 TARGET_USER=""
 REMOVE_REPO=0
 CONFIRM=""
@@ -25,9 +26,34 @@ if [[ -z "$TARGET_USER" ]]; then
     [[ "$EUID" == 0 ]] && TARGET_USER="${SUDO_USER:-}" || TARGET_USER="$(id -un)"
 fi
 [[ -n "$TARGET_USER" ]] || { echo "Préciser --user USER." >&2; exit 1; }
-
+id "$TARGET_USER" >/dev/null
 TARGET_UID="$(id -u "$TARGET_USER")"
+TARGET_GID="$(id -g "$TARGET_USER")"
+TARGET_GROUP="$(id -gn "$TARGET_USER")"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+
+# Never let current uninstall logic manage an old HermesOps installation.
+LEGACY_FOUND=()
+[[ ! -e "$LEGACY_ROOT" ]] || LEGACY_FOUND+=("$LEGACY_ROOT")
+for unit in \
+    hermesops-controller-api.service hermesops-console.service \
+    hermesops-notifier.service hermesops-orchestrator.service \
+    hermesops-supervisor.service
+do
+    candidate="${TARGET_HOME}/.config/systemd/user/${unit}"
+    [[ ! -e "$candidate" ]] || LEGACY_FOUND+=("$candidate")
+done
+if ((${#LEGACY_FOUND[@]})); then
+    echo "Installation HermesOps historique détectée; aucune mutation effectuée." >&2
+    printf '  %s\n' "${LEGACY_FOUND[@]}" >&2
+    echo "Utiliser une procédure de migration/suppression historique explicite." >&2
+    exit 1
+fi
+
+[[ "$ORCHESTRA_ROOT" == "/opt/orchestra" && ! -L "$ORCHESTRA_ROOT" ]] || {
+    echo "Racine Orchestra non canonique ou lien symbolique refusé." >&2
+    exit 1
+}
 
 sudo_run() { [[ "$EUID" == 0 ]] && "$@" || sudo "$@"; }
 user_run() {
@@ -35,26 +61,17 @@ user_run() {
         "$@"
     elif [[ "$EUID" == 0 ]]; then
         runuser -u "$TARGET_USER" -- env \
-            HOME="$TARGET_HOME" USER="$TARGET_USER" LOGNAME="$TARGET_USER" \
-            XDG_RUNTIME_DIR="/run/user/${TARGET_UID}" "$@"
+            HOME="$TARGET_HOME" USER="$TARGET_USER" LOGNAME="$TARGET_USER" "$@"
     else
-        sudo -u "$TARGET_USER" env HOME="$TARGET_HOME" USER="$TARGET_USER" \
-            LOGNAME="$TARGET_USER" XDG_RUNTIME_DIR="/run/user/${TARGET_UID}" "$@"
+        sudo -u "$TARGET_USER" env \
+            HOME="$TARGET_HOME" USER="$TARGET_USER" LOGNAME="$TARGET_USER" "$@"
     fi
 }
 
-for unit in hermesops-console.service hermesops-controller-api.service hermesops-notifier.service hermesops-orchestrator.service hermesops-supervisor.service; do
-    user_run systemctl --user disable --now "$unit" 2>/dev/null || true
-done
-for unit in hermesops-console.service hermesops-controller-api.service hermesops-notifier.service hermesops-orchestrator.service hermesops-supervisor.service; do
-    sudo_run rm -f \
-        "${TARGET_HOME}/.config/systemd/user/${unit}" \
-        "${TARGET_HOME}/.config/systemd/user/default.target.wants/${unit}"
-done
-user_run systemctl --user daemon-reload 2>/dev/null || true
-
-if [[ -x "${REPO}/scripts/hermes-agent-compose.sh" ]]; then
-    user_run env HERMESOPS_ROOT="$ROOT" "${REPO}/scripts/hermes-agent-compose.sh" down || true
+if [[ -x "${REPO}/scripts/orchestra-compose.sh" ]]; then
+    user_run env ORCHESTRA_ROOT="$ORCHESTRA_ROOT" \
+        ORCHESTRA_UID="$TARGET_UID" ORCHESTRA_GID="$TARGET_GID" \
+        "${REPO}/scripts/orchestra-compose.sh" down --remove-orphans
 fi
 
 if [[ "$REMOVE_REPO" == 1 ]]; then
@@ -63,14 +80,20 @@ if [[ "$REMOVE_REPO" == 1 ]]; then
         exit 1
     }
     STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-    BACKUP="${ROOT}/backups/uninstall-${STAMP}"
-    sudo_run install -d -m 0750 -o "$TARGET_USER" -g "$(id -gn "$TARGET_USER")" "$BACKUP"
+    BACKUP="${ORCHESTRA_ROOT}/backups/uninstall-${STAMP}"
+    sudo_run install -d -m 0750 -o "$TARGET_USER" -g "$TARGET_GROUP" "$BACKUP"
     if [[ -d "$REPO/.git" ]]; then
-        user_run git -C "$REPO" bundle create "${BACKUP}/hermesops-before-uninstall.bundle" --all
-        user_run git -C "$REPO" bundle verify "${BACKUP}/hermesops-before-uninstall.bundle"
+        user_run git -C "$REPO" bundle create \
+            "${BACKUP}/orchestra-before-uninstall.bundle" --all
+        user_run git -C "$REPO" bundle verify \
+            "${BACKUP}/orchestra-before-uninstall.bundle"
     fi
-    sudo_run rm -rf "$REPO"
+    [[ "$REPO" == "/opt/orchestra/repo" && ! -L "$REPO" ]] || {
+        echo "Cible de suppression du dépôt refusée." >&2
+        exit 1
+    }
+    sudo_run rm -rf /opt/orchestra/repo
 fi
 
-echo "HERMESOPS_UNINSTALL_PASS"
+echo "ORCHESTRA_UNINSTALL_PASS"
 echo "État, secrets, workspaces, données projet et backups conservés."

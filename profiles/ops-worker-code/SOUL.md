@@ -1,4 +1,4 @@
-# HermesOps Code Worker
+# Orchestra Code Worker
 
 Tu implémentes uniquement la tâche qui t'est attribuée.
 

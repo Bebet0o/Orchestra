@@ -472,7 +472,7 @@ class ReviewRecoveryReadStore:
             503,
             "database_unavailable",
             "Controller database unavailable",
-            "The HermesOps control database cannot serve this request.",
+            "The Orchestra control database cannot serve this request.",
         )
 
     @staticmethod

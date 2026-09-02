@@ -28,13 +28,12 @@ class BlueprintLifecycleFixture:
         (self.root / "repo/config/projects.d").mkdir(parents=True)
         (self.root / "state/controller").mkdir(parents=True)
         (self.root / "secrets").mkdir(parents=True)
-        (self.root / "repo/VERSION").write_text("0.1.0-alpha\n", encoding="utf-8")
         (self.root / "secrets/controller-session").write_text(TOKEN + "\n", encoding="utf-8")
         os.chmod(self.root / "secrets/controller-session", 0o600)
         shutil.copy2(ROOT / "config/examples/Blueprint", self.root / "repo/config/examples/Blueprint")
         shutil.copy2(ROOT / "config/policies/default.toml", self.root / "repo/config/policies/default.toml")
         shutil.copy2(ROOT / "config/controller.toml", self.root / "repo/config/controller.toml")
-        self.database = self.root / "state/controller/hermesops.db"
+        self.database = self.root / "state/controller/orchestra.db"
         with sqlite3.connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
@@ -80,7 +79,7 @@ class BlueprintLifecycleFixture:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        headers = {"Cookie": f"hermesops_session={TOKEN}"}
+        headers = {"Cookie": f"orchestra_session={TOKEN}"}
         encoded = None
         if body is not None:
             encoded = json.dumps(body, separators=(",", ":")).encode()
@@ -117,8 +116,8 @@ class BlueprintLifecycleTest(unittest.TestCase):
     def test_schema_readiness_and_immutable_audit(self) -> None:
         self.assertEqual(self.fixture.store.readiness(), (True, "ready"))
         with sqlite3.connect(self.fixture.database) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
-            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 23)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
+            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 24)
         _, payload = self.fixture.create()
         operation_id = payload["data"]["id"]
         with sqlite3.connect(self.fixture.database) as connection:
@@ -145,6 +144,49 @@ class BlueprintLifecycleTest(unittest.TestCase):
         serialized = json.dumps(rejected, sort_keys=True)
         self.assertNotIn("private-sentinel", serialized)
         self.assertNotIn(self.fixture.source, serialized)
+
+    def test_current_api_rejects_historical_hermesops_api_version(self) -> None:
+        historical = self.fixture.source.replace(
+            "orchestra.dev/v1", "hermesops.dev/v1"
+        )
+        report = self.fixture.store.preview_source(historical.encode("utf-8"))
+        self.assertFalse(report["valid"])
+        self.assertIn(
+            "unsupported_api_version",
+            {item["code"] for item in report["diagnostics"]},
+        )
+        with self.assertRaises(ControllerError) as context:
+            self.fixture.store.create(
+                session_token=TOKEN,
+                idempotency_key="historical-api-version-0001",
+                route="/api/v1/blueprints",
+                body={"source": historical},
+                meta_factory=self.fixture.meta,
+            )
+        self.assertEqual(context.exception.code, "blueprint_source_invalid")
+        status, _, csrf_payload = self.fixture.request(
+            "POST", "/api/v1/auth/csrf", body={}, key="historical-version-csrf"
+        )
+        self.assertEqual(status, 200)
+        csrf = csrf_payload["data"]["token"]
+        status, _, validation = self.fixture.request(
+            "POST",
+            "/api/v1/blueprints/validate",
+            body={"source": historical},
+            key="historical-version-validate",
+            csrf=csrf,
+        )
+        self.assertEqual(status, 200)
+        self.assertFalse(validation["data"]["valid"])
+        status, _, rejected = self.fixture.request(
+            "POST",
+            "/api/v1/blueprints",
+            body={"source": historical},
+            key="historical-version-create",
+            csrf=csrf,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(rejected["code"], "blueprint_source_invalid")
 
     def test_create_is_atomic_idempotent_audited_evented_and_source_safe(self) -> None:
         status, first = self.fixture.create()

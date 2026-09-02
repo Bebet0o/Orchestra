@@ -610,8 +610,8 @@ class BrowserAuthStore:
     @staticmethod
     def _credential_matches(row: sqlite3.Row | None, password: str) -> bool:
         if row is None:
-            salt = hashlib.sha256(b"hermesops-browser-auth-dummy").digest()[:16]
-            expected = hashlib.sha256(b"hermesops-browser-auth-dummy-digest").digest()
+            salt = hashlib.sha256(b"orchestra-browser-auth-dummy").digest()[:16]
+            expected = hashlib.sha256(b"orchestra-browser-auth-dummy-digest").digest()
             actual = derive_password(password, salt)
             return hmac.compare_digest(actual, expected)
         BrowserAuthStore._validate_credential_row(row)

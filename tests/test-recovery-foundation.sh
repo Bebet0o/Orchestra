@@ -1,37 +1,37 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 FIXTURE_REPO="${ROOT}/workspaces/.fixtures/transaction-fixture"
-ENGINE="hermesops-sandbox-engine"
+PRIVATE_DOCKER_HOST="unix://${ROOT}/runtime/sandbox-engine-socket/docker.sock"
 
-[[ -x "${REPO}/scripts/hermesops-recovery.py" ]]
+[[ -x "${REPO}/scripts/orchestra-recovery.py" ]]
 [[ -f "${REPO}/migrations/007_recovery_manager.sql" ]]
 [[ -f "${REPO}/docs/RECOVERY.md" ]]
 
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 
-"${REPO}/scripts/hermesops-recovery.py" self-test
+"${REPO}/scripts/orchestra-recovery.py" self-test
 
 grep -Fq 'def assess_run' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'def cleanup_run_resources' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'def cleanup_orphans' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'def prune_empty_clone_parents' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'prune_empty_clone_parents(path.parent, root)' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'RECOVERY_INTEGRATION_COMPLETED' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'snapshot-integrity-failed' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'default-branch-diverged' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 
 LATEST_MIGRATION_FILE="$(
     find "${REPO}/migrations" \
@@ -133,24 +133,16 @@ grep -q . && {
         status --porcelain=v1 --untracked-files=all
 )" ]]
 
-if docker ps -aq \
-    --filter 'name=^/hermesops-worker-recovery-' |
+if docker --host "$PRIVATE_DOCKER_HOST" ps -aq \
+    --filter 'label=orchestra-runtime-container=1' |
     grep -q .
 then
-    echo "Conteneur worker recovery résiduel." >&2
+    echo "Conteneur runtime Orchestra résiduel." >&2
     exit 1
 fi
 
-if docker ps -aq \
-    --filter 'name=^/hermesops-reviewer-recovery-' |
-    grep -q .
-then
-    echo "Conteneur reviewer recovery résiduel." >&2
-    exit 1
-fi
-
-if docker exec "$ENGINE" docker ps -aq \
-    --filter 'name=^/hermesops-sandbox-recovery-' |
+if docker --host "$PRIVATE_DOCKER_HOST" ps -aq \
+    --filter 'label=orchestra-sandbox=1' |
     grep -q .
 then
     echo "Sandbox recovery résiduelle." >&2
@@ -168,7 +160,7 @@ then
     exit 1
 fi
 
-if find "${ROOT}/workspaces/.hermesops-worker-clones" \
+if find "${ROOT}/workspaces/.orchestra-worker-clones" \
     -mindepth 1 -print -quit 2>/dev/null |
     grep -q .
 then
@@ -176,7 +168,7 @@ then
     exit 1
 fi
 
-if find "${ROOT}/workspaces/.hermesops-reviewer-clones" \
+if find "${ROOT}/workspaces/.orchestra-reviewer-clones" \
     -mindepth 1 -print -quit 2>/dev/null |
     grep -q .
 then
@@ -184,4 +176,4 @@ then
     exit 1
 fi
 
-echo "HermesOps deterministic recovery foundation: PASS"
+echo "Orchestra deterministic recovery foundation: PASS"

@@ -41,7 +41,7 @@ def _post(
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Content-Length": str(len(raw)),
-        "Cookie": f"hermesops_session={token}",
+        "Cookie": f"orchestra_session={token}",
         "Idempotency-Key": idempotency_key,
     }
     if csrf_token is not None:

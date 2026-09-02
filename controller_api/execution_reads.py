@@ -395,6 +395,9 @@ class ExecutionReadStore:
                 altchars=b"-_",
                 validate=True,
             )
+            canonical = base64.urlsafe_b64encode(signed).rstrip(b"=").decode("ascii")
+            if not hmac.compare_digest(value, canonical):
+                raise ValueError("cursor encoding is not canonical")
             digest_size = hashlib.sha256().digest_size
             if len(signed) <= digest_size:
                 raise ValueError("cursor payload is too short")
@@ -425,7 +428,7 @@ class ExecutionReadStore:
                 "i": cursor.task_id,
             },
             secret=secret,
-            namespace=b"hermesops-task-cursor-v1",
+            namespace=b"orchestra-task-cursor-v1",
         )
 
     @classmethod
@@ -439,7 +442,7 @@ class ExecutionReadStore:
         payload = cls._decode_signed_cursor(
             value,
             secret=secret,
-            namespace=b"hermesops-task-cursor-v1",
+            namespace=b"orchestra-task-cursor-v1",
         )
         if (
             payload.get("v") != 1
@@ -472,7 +475,7 @@ class ExecutionReadStore:
                 "i": cursor.run_id,
             },
             secret=secret,
-            namespace=b"hermesops-run-cursor-v1",
+            namespace=b"orchestra-run-cursor-v1",
         )
 
     @classmethod
@@ -486,7 +489,7 @@ class ExecutionReadStore:
         payload = cls._decode_signed_cursor(
             value,
             secret=secret,
-            namespace=b"hermesops-run-cursor-v1",
+            namespace=b"orchestra-run-cursor-v1",
         )
         if (
             payload.get("v") != 1

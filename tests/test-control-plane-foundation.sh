@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
+DB="${ROOT}/state/controller/orchestra.db"
 
-"${REPO}/scripts/hermesops-registry.py" validate
-"${REPO}/scripts/hermesops-db.py" migrate
-"${REPO}/scripts/hermesops-registry.py" sync
-"${REPO}/scripts/hermesops-db.py" integrity
+"${REPO}/scripts/orchestra-registry.py" validate
+"${REPO}/scripts/orchestra-db.py" migrate
+"${REPO}/scripts/orchestra-registry.py" sync
+"${REPO}/scripts/orchestra-db.py" integrity
 
 [[ -f "$DB" ]]
 [[ "$(stat -c '%a' "$DB")" == "640" ]]
@@ -107,4 +107,4 @@ for table in "${required_tables[@]}"; do
 done
 
 echo "Migration courante : ${DATABASE_VERSION}"
-echo "HermesOps control-plane foundation: PASS"
+echo "Orchestra control-plane foundation: PASS"

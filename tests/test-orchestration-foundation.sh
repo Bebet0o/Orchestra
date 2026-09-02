@@ -15,105 +15,78 @@ orchestration_stage() {
     echo "Orchestration foundation stage: $1"
 }
 
-ROOT="${HERMESOPS_ROOT:-/opt/docker/hermesops}"
+ROOT="${ORCHESTRA_ROOT:-/opt/orchestra}"
 REPO="${ROOT}/repo"
-DB="${ROOT}/state/controller/hermesops.db"
-UNIT="${HOME}/.config/systemd/user/hermesops-orchestrator.service"
+DB="${ROOT}/state/controller/orchestra.db"
 FIXTURE_REPO="${ROOT}/workspaces/.fixtures/transaction-fixture"
 
 orchestration_stage "required files"
 for file in \
-    "${REPO}/scripts/hermesops-orchestrator.py" \
-    "${REPO}/scripts/hermesops-planner.py" \
-    "${REPO}/scripts/hermesops-planner-entry.py" \
+    "${REPO}/scripts/orchestra-orchestrator.py" \
+    "${REPO}/scripts/orchestra-planner.py" \
+    "${REPO}/scripts/orchestra-planner-entry.py" \
     "${REPO}/migrations/009_orchestration_dag.sql" \
     "${REPO}/config/orchestrator.toml" \
-    "${REPO}/systemd/user/hermesops-orchestrator.service" \
+    "${REPO}/compose/agent.yaml" \
     "${REPO}/docs/ORCHESTRATION.md" \
-    "${REPO}/tests/test-orchestration-foundation.sh" \
-    "$UNIT"
+    "${REPO}/tests/test-orchestration-foundation.sh"
 do
     [[ -f "$file" ]]
 done
 
 orchestration_stage "python compilation"
 python3 -m py_compile \
-    "${REPO}/scripts/hermesops-recovery.py" \
-    "${REPO}/scripts/hermesops-orchestrator.py" \
-    "${REPO}/scripts/hermesops-planner.py" \
-    "${REPO}/scripts/hermesops-planner-entry.py"
+    "${REPO}/scripts/orchestra-recovery.py" \
+    "${REPO}/scripts/orchestra-orchestrator.py" \
+    "${REPO}/scripts/orchestra-planner.py" \
+    "${REPO}/scripts/orchestra-planner-entry.py"
 
 orchestration_stage "component self-tests"
-"${REPO}/scripts/hermesops-recovery.py" self-test
-"${REPO}/scripts/hermesops-orchestrator.py" self-test
-"${REPO}/scripts/hermesops-planner.py" self-test
+"${REPO}/scripts/orchestra-recovery.py" self-test
+"${REPO}/scripts/orchestra-orchestrator.py" self-test
+"${REPO}/scripts/orchestra-planner.py" self-test
 
 orchestration_stage "source contracts"
-grep -Fq 'HERMESOPS_ACTIVE_TASK_SANDBOX_PROTECTION_V1' \
-    "${REPO}/scripts/hermesops-recovery.py"
+grep -Fq 'ORCHESTRA_ACTIVE_TASK_SANDBOX_PROTECTION_V1' \
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'active_task_ids = {' \
-    "${REPO}/scripts/hermesops-recovery.py"
-grep -Fq 'hermes-task-id' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
+grep -Fq 'orchestra-task-id' \
+    "${REPO}/scripts/orchestra-recovery.py"
 grep -Fq 'if container_task_id in active_task_ids:' \
-    "${REPO}/scripts/hermesops-recovery.py"
+    "${REPO}/scripts/orchestra-recovery.py"
 
 grep -Fq 'def validate_plan' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'def topological_order' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'Same-project PIPELINE tasks must be dependency-ordered' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'ThreadPoolExecutor' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
-grep -Fq 'hermesops-worker.py' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
-grep -Fq 'hermesops-reviewer.py' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
-grep -Fq 'hermesops-integrator.py' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
+grep -Fq 'orchestra-worker.py' \
+    "${REPO}/scripts/orchestra-orchestrator.py"
+grep -Fq 'orchestra-reviewer.py' \
+    "${REPO}/scripts/orchestra-orchestrator.py"
+grep -Fq 'orchestra-integrator.py' \
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'def launch_reviewer_with_transport_retry' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'def is_transient_review_transport_failure' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'ORCHESTRATION_REVIEW_TRANSPORT_RETRY' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
+    "${REPO}/scripts/orchestra-orchestrator.py"
 grep -Fq 'review_transport_attempts' \
     "${REPO}/config/orchestrator.toml"
 grep -Fq 'review_retry_backoff_seconds' \
     "${REPO}/config/orchestrator.toml"
 grep -Fq 'orchestrator process restarted' \
-    "${REPO}/scripts/hermesops-orchestrator.py"
-grep -Fq 'Restart=always' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-grep -Fq 'After=hermesops-supervisor.service' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-grep -Fq 'NoNewPrivileges=true' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-grep -Fq 'PrivateTmp=true' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-grep -Fq 'RestrictSUIDSGID=true' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-grep -Fq 'LockPersonality=true' \
-    "${REPO}/systemd/user/hermesops-orchestrator.service"
-
-for forbidden in \
-    'ProtectSystem=' \
-    'ProtectHome=' \
-    'ReadWritePaths=' \
-    'ProtectControlGroups=' \
-    'ProtectKernelModules=' \
-    'ProtectKernelTunables=' \
-    'CapabilityBoundingSet=' \
-    'AmbientCapabilities='
-do
-    if grep -Fq "$forbidden" \
-        "${REPO}/systemd/user/hermesops-orchestrator.service"
-    then
-        echo "Directive systemd utilisateur non portable: $forbidden" >&2
-        exit 1
-    fi
-done
+    "${REPO}/scripts/orchestra-orchestrator.py"
+grep -Fq '  orchestrator:' "${REPO}/compose/agent.yaml"
+grep -Fq 'container_name: orchestra-orchestrator' "${REPO}/compose/agent.yaml"
+grep -Fq 'condition: service_healthy' "${REPO}/compose/agent.yaml"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
+grep -Fq '/run/orchestra-docker' "${REPO}/compose/agent.yaml"
 
 orchestration_stage "database schema"
 LATEST_MIGRATION_FILE="$(
@@ -155,12 +128,12 @@ grep -q . && {
 [[ "$(sqlite3 "$DB" 'PRAGMA quick_check;')" == "ok" ]]
 
 orchestration_stage "orchestrator service"
-systemctl --user is-enabled --quiet hermesops-orchestrator.service
-systemctl --user is-active --quiet hermesops-orchestrator.service
+"${REPO}/scripts/orchestra-compose.sh" ps --status running --services |
+    grep -Fxq orchestrator
 
 orchestration_stage "daemon status"
 DAEMON_STATUS="$(
-    "${REPO}/scripts/hermesops-orchestrator.py" daemon-status
+    "${REPO}/scripts/orchestra-orchestrator.py" daemon-status
 )"
 python3 - "$DAEMON_STATUS" <<'PY'
 import json
@@ -174,7 +147,7 @@ assert payload["instance"]["status"] == "RUNNING"
 PY
 
 orchestration_stage "historical orchestration proofs"
-# HERMESOPS_4A_AUDIT_PLAN_SELECTOR_V1
+# ORCHESTRA_4A_AUDIT_PLAN_SELECTOR_V1
 #
 # 4A created one controlled AI plan as a cancelled audit artifact. Future
 # milestones legitimately create newer AI plans with other terminal states,
@@ -337,7 +310,7 @@ RESUME_PLAN="$(
 orchestration_stage "production registry invariants"
 [[ "$(sqlite3 "$DB" 'SELECT COUNT(*) FROM project_locks;')" == "0" ]]
 
-# HERMESOPS_ORCHESTRATION_REAL_PROJECT_REGISTRY_COMPATIBILITY_V1
+# ORCHESTRA_ORCHESTRATION_REAL_PROJECT_REGISTRY_COMPATIBILITY_V1
 [[ "$(
     sqlite3 "$DB" \
         "SELECT COUNT(*)
@@ -382,16 +355,16 @@ orchestration_stage "fixture integrity"
 [[ ! -e "${FIXTURE_REPO}/orchestration-result.txt" ]]
 
 orchestration_stage "runtime cleanup"
-if find "${ROOT}/workspaces/.hermesops-worker-clones" \
+if find "${ROOT}/workspaces/.orchestra-worker-clones" \
     -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
     echo "Clone worker résiduel après orchestration." >&2
     exit 1
 fi
 
-if find "${ROOT}/workspaces/.hermesops-reviewer-clones" \
+if find "${ROOT}/workspaces/.orchestra-reviewer-clones" \
     -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
     echo "Clone reviewer résiduel après orchestration." >&2
     exit 1
 fi
 
-echo "HermesOps persistent multi-task orchestration foundation: PASS"
+echo "Orchestra persistent multi-task orchestration foundation: PASS"

@@ -313,7 +313,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
 
     def test_human_review_event_is_in_public_catalog(self) -> None:
         schema = json.loads((ROOT / "specs" / "events-v1.schema.json").read_text())
-        known = schema["properties"]["type"]["x-hermesops-known-event-types"]
+        known = schema["properties"]["type"]["x-orchestra-known-event-types"]
         self.assertIn("review.human_review_requested", known)
         contract = (ROOT / "docs" / "api" / "EVENTS_V1.md").read_text()
         self.assertIn("review.human_review_requested", contract)
@@ -331,10 +331,10 @@ class EventJournalAdversarialTest(unittest.TestCase):
             root = Path(directory)
             (root / "repo").symlink_to(ROOT, target_is_directory=True)
             environment = os.environ.copy()
-            environment["HERMESOPS_ROOT"] = str(root)
+            environment["ORCHESTRA_ROOT"] = str(root)
             command = [
                 sys.executable,
-                str(ROOT / "scripts" / "hermesops-db.py"),
+                str(ROOT / "scripts" / "orchestra-db.py"),
                 "migrate",
             ]
             first = subprocess.run(
@@ -351,7 +351,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
                 text=True,
                 env=environment,
             )
-            for version in range(15, 24):
+            for version in range(15, 25):
                 self.assertIn(
                     f"Migration {version:03d}: applied",
                     first.stdout,
@@ -360,7 +360,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
                     f"Migration {version:03d}: already applied",
                     second.stdout,
                 )
-            database = root / "state" / "controller" / "hermesops.db"
+            database = root / "state" / "controller" / "orchestra.db"
             verify = sqlite3.connect(database)
             try:
                 all_versions = [
@@ -369,10 +369,10 @@ class EventJournalAdversarialTest(unittest.TestCase):
                         "SELECT version FROM schema_migrations ORDER BY version"
                     )
                 ]
-                self.assertEqual(all_versions, list(range(1, 24)))
+                self.assertEqual(all_versions, list(range(1, 25)))
                 self.assertEqual(
                     verify.execute("PRAGMA user_version").fetchone()[0],
-                    23,
+                    24,
                 )
             finally:
                 verify.close()

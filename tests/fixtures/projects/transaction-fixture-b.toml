@@ -2,13 +2,13 @@ schema_version = 1
 
 [project]
 id = "transaction-fixture-b"
-name = "HermesOps Transaction Fixture B"
+name = "Orchestra Transaction Fixture B"
 enabled = false
 policy = "default"
 
 [paths]
-repo = "/opt/docker/hermesops/workspaces/.fixtures/transaction-fixture-b"
-data = "/opt/docker/hermesops/project-data/.fixtures/transaction-fixture-b"
+repo = "/opt/orchestra/workspaces/.fixtures/transaction-fixture-b"
+data = "/opt/orchestra/project-data/.fixtures/transaction-fixture-b"
 
 [git]
 default_branch = "main"

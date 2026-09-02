@@ -23,16 +23,13 @@ if str(SCRIPTS) not in sys.path:
 
 from controller_api.execution_reads import ExecutionReadStore  # noqa: E402
 from environment_resolution import ResolvedEnvironment  # noqa: E402
-from legacy_worker_environment import LegacyLocalEnvironment  # noqa: E402
 import sandbox_backend as sandbox_backend_module  # noqa: E402
 from sandbox_backend import (  # noqa: E402
-    LegacyPreparedEnvironment,
     NestedDaemonSandboxBackend,
     NestedDockerImageClient,
     PreparedEnvironment,
     SandboxContainerExpectation,
     SandboxPreparationError,
-    prepare_legacy_environment,
     verify_prepared_container,
 )
 
@@ -58,18 +55,8 @@ def prepared_environment() -> PreparedEnvironment:
     return PreparedEnvironment(resolved_environment(), LOCAL_CONFIG_ID)
 
 
-def legacy_prepared_environment() -> LegacyPreparedEnvironment:
-    return prepare_legacy_environment(
-        LegacyLocalEnvironment(
-            environment_id="default-worker",
-            local_image_config_id=LOCAL_CONFIG_ID,
-            local_image_tag="hermesops-worker-sandbox:0.2",
-        )
-    )
-
-
 def inspected_container(
-    preparation: PreparedEnvironment | LegacyPreparedEnvironment,
+    preparation: PreparedEnvironment,
     *,
     read_only: bool = False,
 ) -> dict[str, object]:
@@ -81,9 +68,9 @@ def inspected_container(
             "Image": preparation.executable_image_selector,
             "User": "1000:1000",
             "Labels": {
-                "hermesops-sandbox": "1",
-                "hermesops-task-id": "task-test",
-                "hermesops-runtime-request-id": "request-test",
+                "orchestra-sandbox": "1",
+                "orchestra-task-id": "task-test",
+                "orchestra-runtime-request-id": "request-test",
             },
         },
         "Mounts": [
@@ -104,7 +91,7 @@ def inspected_container(
 
 
 def expectation(
-    preparation: PreparedEnvironment | LegacyPreparedEnvironment,
+    preparation: PreparedEnvironment,
     *,
     read_only: bool = False,
 ) -> SandboxContainerExpectation:
@@ -115,6 +102,7 @@ def expectation(
         runtime_request_id="request-test",
         workspace=Path("/srv/workspace"),
         read_only=read_only,
+        expected_user="1000:1000",
     )
 
 
@@ -163,15 +151,6 @@ class PreparedEnvironmentTest(unittest.TestCase):
         )
         with self.assertRaises(SandboxPreparationError):
             backend.prepare(resolved_environment())
-
-    def test_legacy_bridge_has_no_oci_identity(self) -> None:
-        prepared = legacy_prepared_environment()
-        self.assertEqual(prepared.local_image_config_id, LOCAL_CONFIG_ID)
-        self.assertEqual(prepared.executable_image_selector, LOCAL_CONFIG_ID)
-        self.assertIsNone(prepared.oci_digest)
-        self.assertIsNone(prepared.image_reference)
-        self.assertFalse(hasattr(prepared, "resolved_environment"))
-
 
 class MaterializationTest(unittest.TestCase):
     def test_materialize_pulls_and_inspects_the_exact_immutable_reference(self) -> None:
@@ -280,9 +259,6 @@ class MaterializationTest(unittest.TestCase):
             [
                 [
                     "docker",
-                    "exec",
-                    "hermesops-sandbox-engine",
-                    "docker",
                     "image",
                     "pull",
                     "--platform",
@@ -290,9 +266,6 @@ class MaterializationTest(unittest.TestCase):
                     IMAGE_REFERENCE,
                 ],
                 [
-                    "docker",
-                    "exec",
-                    "hermesops-sandbox-engine",
                     "docker",
                     "image",
                     "inspect",
@@ -390,7 +363,10 @@ class MaterializationTest(unittest.TestCase):
                 IMAGE_REFERENCE,
                 "linux/amd64",
             )
-        self.assertEqual(observed[0]["DOCKER_HOST"], "unix:///var/run/docker.sock")
+        self.assertEqual(
+            observed[0]["DOCKER_HOST"],
+            "unix:///run/orchestra-docker/docker.sock",
+        )
         self.assertEqual(observed[0]["DOCKER_CONTEXT"], "default")
         self.assertEqual(
             observed[0]["DOCKER_CONFIG"],
@@ -426,7 +402,7 @@ class ContainerAuthorityTest(unittest.TestCase):
 
     def test_wrong_task_and_request_bindings_are_detected(self) -> None:
         prepared = prepared_environment()
-        for label in ("hermesops-task-id", "hermesops-runtime-request-id"):
+        for label in ("orchestra-task-id", "orchestra-runtime-request-id"):
             container = inspected_container(prepared)
             container["Config"]["Labels"][label] = "wrong"  # type: ignore[index]
             with self.subTest(label=label), self.assertRaises(
@@ -442,16 +418,17 @@ class ContainerAuthorityTest(unittest.TestCase):
             verify_prepared_container(container, expectation(prepared))
         with self.assertRaisesRegex(ValueError, "full container ID"):
             SandboxContainerExpectation(
-                container_id="hermesops-sandbox-friendly-name",
+                container_id="orchestra-sandbox-friendly-name",
                 preparation=prepared,
                 task_id="task-test",
                 runtime_request_id="request-test",
                 workspace=Path("/srv/workspace"),
                 read_only=False,
+                expected_user="1000:1000",
             )
 
     def test_reviewer_read_only_workspace_is_preserved(self) -> None:
-        prepared = legacy_prepared_environment()
+        prepared = prepared_environment()
         verify_prepared_container(
             inspected_container(prepared, read_only=True),
             expectation(prepared, read_only=True),
@@ -479,8 +456,8 @@ class ContainerAuthorityTest(unittest.TestCase):
 
     def test_worker_and_reviewer_call_shared_authority_verifier(self) -> None:
         for path, function_name in (
-            (SCRIPTS / "hermesops-worker.py", "audit_sandbox"),
-            (SCRIPTS / "hermesops-reviewer.py", "audit_reviewer_sandbox"),
+            (SCRIPTS / "orchestra-worker.py", "audit_sandbox"),
+            (SCRIPTS / "orchestra-reviewer.py", "audit_reviewer_sandbox"),
         ):
             with self.subTest(path=path.name):
                 source = path.read_text(encoding="utf-8")

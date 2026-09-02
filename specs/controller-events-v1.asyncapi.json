@@ -1,9 +1,9 @@
 {
   "asyncapi": "3.0.0",
   "info": {
-    "title": "HermesOps Controller Events",
+    "title": "Orchestra Controller Events",
     "version": "1.0.0-rc1",
-    "description": "Authenticated replayable WebSocket contract for HermesOps Console.",
+    "description": "Authenticated replayable WebSocket contract for Orchestra Console.",
     "license": {
       "name": "Apache-2.0"
     }
@@ -67,7 +67,7 @@
       "sessionCookie": {
         "type": "httpApiKey",
         "in": "cookie",
-        "name": "hermesops_session"
+        "name": "orchestra_session"
       }
     },
     "messages": {
@@ -121,7 +121,7 @@
         "payload": {
           "oneOf": [
             {
-              "$ref": "https://hermesops.dev/schemas/events-v1.schema.json"
+              "$ref": "https://orchestra.dev/schemas/events-v1.schema.json"
             },
             {
               "type": "object",

@@ -19,7 +19,7 @@ from controller_api.server import build_server
 
 
 VALID = """
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 kind: SandboxProfile
 metadata:
   name: python-project
@@ -77,14 +77,13 @@ class SandboxProfileHTTPReadTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
         (root / "repo").mkdir(mode=0o700)
-        (root / "repo" / "VERSION").write_text("test\n", encoding="utf-8")
         secrets = root / "secrets"
         secrets.mkdir(mode=0o700)
         self.token = "sandbox-http-test-" + "a" * 48
         session = secrets / "controller-session"
         session.write_text(self.token + "\n", encoding="ascii")
         session.chmod(0o600)
-        database = root / "state" / "controller" / "hermesops.db"
+        database = root / "state" / "controller" / "orchestra.db"
         database.parent.mkdir(parents=True, mode=0o700)
         self._apply_migrations(database)
         self.settings = Settings.from_root(
@@ -173,7 +172,7 @@ class SandboxProfileHTTPReadTest(unittest.TestCase):
             "Host": f"127.0.0.1:{self.port}",
         }
         if authenticated:
-            headers["Cookie"] = f"hermesops_session={self.token}"
+            headers["Cookie"] = f"orchestra_session={self.token}"
         if body is not None:
             headers["Content-Type"] = "application/json"
             headers["Content-Length"] = str(len(body))

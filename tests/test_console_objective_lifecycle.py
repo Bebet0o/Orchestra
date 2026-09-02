@@ -109,7 +109,7 @@ class ConsoleObjectiveLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
         common = {
             "Origin": f"http://127.0.0.1:{self.port}",
             "Content-Type": "application/json",
-            "Cookie": "hermesops_session=" + "a" * 64,
+            "Cookie": "orchestra_session=" + "a" * 64,
             "Idempotency-Key": "objective-console-0001",
             "X-CSRF-Token": "csrf1.example",
         }
@@ -160,7 +160,7 @@ class ConsoleObjectiveLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
             self.assertEqual(status, 404)
             self.assertEqual(
                 json.loads(payload)["type"],
-                "urn:hermesops:console:controller_route_not_exposed",
+                "urn:orchestra:console:controller_route_not_exposed",
             )
         self.assertEqual(len(self.controller.records), before)
 

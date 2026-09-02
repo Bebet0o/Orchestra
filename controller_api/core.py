@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from . import API_VERSION, SERVICE_NAME
 
 PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
-SESSION_COOKIE = "hermesops_session"
+SESSION_COOKIE = "orchestra_session"
 SESSION_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9._~-]{32,256}$")
 MAX_CONFIG_BYTES = 1024 * 1024
 
@@ -47,7 +47,6 @@ class ControllerError(RuntimeError):
 class Settings:
     root: Path
     database: Path
-    version_file: Path
     session_file: Path
     host: str = "127.0.0.1"
     port: int = 8765
@@ -75,10 +74,7 @@ class Settings:
             root=resolved_root,
             database=(
                 database
-                or resolved_root / "state" / "controller" / "hermesops.db"
-            ).resolve(strict=False),
-            version_file=(
-                resolved_root / "repo" / "VERSION"
+                or resolved_root / "state" / "controller" / "orchestra.db"
             ).resolve(strict=False),
             session_file=(
                 session_file
@@ -104,18 +100,18 @@ class Settings:
         port: int = 8765,
     ) -> "Settings":
         root = Path(
-            os.environ.get("HERMESOPS_ROOT", "/opt/docker/hermesops")
+            os.environ.get("ORCHESTRA_ROOT", "/opt/orchestra")
         )
-        database = os.environ.get("HERMESOPS_CONTROLLER_DATABASE")
+        database = os.environ.get("ORCHESTRA_CONTROLLER_DATABASE")
         session_file = os.environ.get(
-            "HERMESOPS_CONTROLLER_SESSION_FILE"
+            "ORCHESTRA_CONTROLLER_SESSION_FILE"
         )
         console_origin = os.environ.get(
-            "HERMESOPS_CONTROLLER_CONSOLE_ORIGIN",
+            "ORCHESTRA_CONTROLLER_CONSOLE_ORIGIN",
             "http://127.0.0.1:8787",
         )
         raw_websocket_limit = os.environ.get(
-            "HERMESOPS_CONTROLLER_MAX_WEBSOCKETS"
+            "ORCHESTRA_CONTROLLER_MAX_WEBSOCKETS"
         )
         try:
             websocket_limit = (
@@ -241,7 +237,7 @@ class ReadOnlyDatabase:
                 503,
                 "database_unavailable",
                 "Controller database unavailable",
-                "The HermesOps control database does not exist.",
+                "The Orchestra control database does not exist.",
             )
         uri = f"{self.settings.database.as_uri()}?mode=ro"
         try:
@@ -260,7 +256,7 @@ class ReadOnlyDatabase:
                 503,
                 "database_unavailable",
                 "Controller database unavailable",
-                "The HermesOps control database cannot be opened read-only.",
+                "The Orchestra control database cannot be opened read-only.",
             ) from error
         return connection
 
@@ -270,7 +266,7 @@ class ReadOnlyDatabase:
             503,
             "database_unavailable",
             "Controller database unavailable",
-            "The HermesOps control database cannot serve this request.",
+            "The Orchestra control database cannot serve this request.",
         )
 
     def readiness(self) -> tuple[bool, str]:
@@ -475,13 +471,7 @@ class ControllerService:
         self.browser_auth = BrowserAuthStore(settings)
 
     def version(self) -> str:
-        try:
-            value = self.settings.version_file.read_text(
-                encoding="utf-8"
-            ).strip()
-        except OSError:
-            return "unknown"
-        return value or "unknown"
+        return API_VERSION
 
     def session_token(self) -> str:
         path = self.settings.session_file
@@ -734,7 +724,7 @@ class ControllerService:
         request_id: str,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "type": f"urn:hermesops:problem:{error.code}",
+            "type": f"urn:orchestra:problem:{error.code}",
             "title": error.title,
             "status": error.status,
             "code": error.code,

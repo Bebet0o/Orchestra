@@ -1,4 +1,4 @@
-# Projets locaux HermesOps
+# Projets locaux Orchestra
 
 Ce répertoire contient uniquement les projets activés ou conservés sur
 l'installation locale.
@@ -18,8 +18,8 @@ cp ../examples/project.example.toml ./mon-projet.toml
 Adapter ensuite les chemins, puis exécuter :
 
 ```bash
-/opt/docker/hermesops/repo/scripts/hermesops-registry.py validate
-/opt/docker/hermesops/repo/scripts/hermesops-registry.py sync
+/opt/orchestra/repo/scripts/orchestra-registry.py validate
+/opt/orchestra/repo/scripts/orchestra-registry.py sync
 ```
 
 Les exemples publiables restent dans `config/examples/`.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-WEBUI="hermesops-webui"
-AGENT="hermesops-agent"
+WEBUI="orchestra-hermes-webui"
+AGENT="orchestra-hermes-agent"
 
 echo "=== Services ==="
 
@@ -25,7 +25,7 @@ echo
 echo "=== WebUI → Gateway ==="
 
 docker exec \
-    --user 1000:1000 \
+    --user "${ORCHESTRA_UID:-$(id -u)}:${ORCHESTRA_GID:-$(id -g)}" \
     "$WEBUI" \
     python - <<'PY'
 import json

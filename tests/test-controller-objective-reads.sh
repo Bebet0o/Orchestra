@@ -11,14 +11,14 @@ export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 python3 -m compileall -q \
     controller_api/objective_reads.py \
     controller_api/objective_probe.py \
-    scripts/hermesops-controller-objective-probe.py \
+    scripts/orchestra-controller-objective-probe.py \
     tests/test_controller_objective_reads.py
 
 python3 tests/test_controller_objective_reads.py
-python3 scripts/hermesops-controller-objective-probe.py --help >/dev/null
+python3 scripts/orchestra-controller-objective-probe.py --help >/dev/null
 (
     cd /tmp
-    env -u PYTHONPATH         python3 "$REPO/scripts/hermesops-controller-objective-probe.py"         --help >/dev/null
+    env -u PYTHONPATH         python3 "$REPO/scripts/orchestra-controller-objective-probe.py"         --help >/dev/null
 )
 
 python3 - "$REPO/specs/controller-api-v1.openapi.json" <<'PY'
@@ -100,7 +100,7 @@ for marker in (
 print("Controller durable-service readiness fixture: PASS")
 PY
 
-python3 - "$REPO/scripts/hermesops-controller-objective-probe.py" <<'PY'
+python3 - "$REPO/scripts/orchestra-controller-objective-probe.py" <<'PY'
 from pathlib import Path
 import sys
 
@@ -131,4 +131,4 @@ if "cursor_secret=session_token" not in server:
 print("Controller objective cursor authentication binding: PASS")
 PY
 
-echo "HERMESOPS_CONTROLLER_OBJECTIVE_READS_PASS"
+echo "ORCHESTRA_CONTROLLER_OBJECTIVE_READS_PASS"

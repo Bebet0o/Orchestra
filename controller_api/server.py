@@ -185,14 +185,14 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
     @staticmethod
     def _session_cookie(token: str, max_age: int) -> str:
         return (
-            f"hermesops_session={token}; Path=/; Max-Age={max_age}; "
+            f"orchestra_session={token}; Path=/; Max-Age={max_age}; "
             "HttpOnly; Secure; SameSite=Strict"
         )
 
     @staticmethod
     def _clear_session_cookie() -> str:
         return (
-            "hermesops_session=; Path=/; Max-Age=0; "
+            "orchestra_session=; Path=/; Max-Age=0; "
             "HttpOnly; Secure; SameSite=Strict"
         )
 
