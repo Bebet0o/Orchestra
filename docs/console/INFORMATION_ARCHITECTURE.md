@@ -1,8 +1,10 @@
 # Orchestra Console Information Architecture
 
-Status: **Design contract**
-Target: `v0.2.0-beta`
-Current implementation: **Not started**
+Status: **Current product information architecture**
+
+Implemented Console behavior is defined by the current source and Controller
+contracts. Sections describing broader navigation remain product guidance and
+must not be read as claims that every planned view is implemented.
 
 ## Product intent
 

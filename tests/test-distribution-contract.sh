@@ -80,6 +80,10 @@ retired = (
     "images/worker-sandbox.Dockerfile",
     "scripts/export-worker-image.sh",
     "scripts/legacy_worker_environment.py",
+    "scripts/hermes-sandbox-status.sh",
+    "docs/hermesfile/SPECIFICATION_V0.md",
+    "specs/hermesfile-v0.schema.json",
+    "systemd/.gitkeep",
     "tests/test-systemd-user-boot-order.sh",
     "tests/test-controller-service-lifecycle.sh",
     "tests/test-controller-service-persistence.sh",
@@ -87,6 +91,8 @@ retired = (
 for relative in retired:
     if (root / relative).exists():
         raise SystemExit(f"Retired distribution artifact remains: {relative}")
+if not (root / "scripts/orchestra-sandbox-status.sh").is_file():
+    raise SystemExit("Current Orchestra sandbox status helper is missing")
 if list((root / "systemd/user").glob("*.service")):
     raise SystemExit("Application user-systemd units remain")
 
