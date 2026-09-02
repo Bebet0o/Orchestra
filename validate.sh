@@ -76,7 +76,7 @@ static_validation() {
             return 1
         }
     done
-    if find "${REPO}/systemd/user" -maxdepth 1 -type f -name '*.service' -print -quit | grep -q .; then
+    if [[ -d "${REPO}/systemd/user" ]] && find "${REPO}/systemd/user" -maxdepth 1 -type f -name '*.service' -print -quit | grep -q .; then
         echo "Unités user-systemd applicatives encore présentes" >&2
         return 1
     fi

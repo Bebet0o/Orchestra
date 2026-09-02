@@ -33,14 +33,14 @@ Human-readable contracts:
 - [`../architecture/CONTROLLER_COMPONENTS.md`](../architecture/CONTROLLER_COMPONENTS.md)
 - [`../api/CONTROLLER_API_V1.md`](../api/CONTROLLER_API_V1.md)
 - [`../api/EVENTS_V1.md`](../api/EVENTS_V1.md)
-- [`../hermesfile/SPECIFICATION_V0.md`](../hermesfile/SPECIFICATION_V0.md)
+- Historical Hermesfile v0 specification (retained in Git history)
 - [`../console/INFORMATION_ARCHITECTURE.md`](../console/INFORMATION_ARCHITECTURE.md)
 
 Machine-readable contracts:
 
 - [`../../specs/controller-api-v1.openapi.json`](../../specs/controller-api-v1.openapi.json)
 - [`../../specs/events-v1.schema.json`](../../specs/events-v1.schema.json)
-- [`../../specs/hermesfile-v0.schema.json`](../../specs/hermesfile-v0.schema.json)
+- Historical Hermesfile v0 schema (retained in Git history)
 
 Accepted architecture decisions:
 
