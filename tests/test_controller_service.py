@@ -439,6 +439,7 @@ class ControllerProbeTest(unittest.TestCase):
                 "021_project_lifecycle.sql",
                 "022_hermesfile_lifecycle.sql",
                 "023_blueprint_migration.sql",
+                "024_blueprint_apiversion.sql",
             ):
                 migration_connection.executescript(
                     (

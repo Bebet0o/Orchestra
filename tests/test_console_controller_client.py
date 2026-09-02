@@ -81,13 +81,13 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/api/v1/projects/alpha":
             self._send_json(200, {"data": {"id": "alpha", "name": "Alpha", "state": "disabled", "resource_revision": 1}}, etag='"1"')
         elif self.path == "/api/v1/blueprints/template":
-            self._send_json(200, {"data": {"source": "apiVersion: hermesops.dev/v1\n", "source_format": "blueprint-v1", "canonical_sha256": "a" * 64}})
+            self._send_json(200, {"data": {"source": "apiVersion: orchestra.dev/v1\n", "source_format": "blueprint-v1", "canonical_sha256": "a" * 64}})
         elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32:
-            self._send_json(200, {"data": {"profile": {"id": "sandbox-" + "a" * 32, "profile_name": "python-project", "resource_revision": 1}, "revision": {"source_revision": 1, "source": "apiVersion: hermesops.dev/v1\n"}}}, etag='"1"')
+            self._send_json(200, {"data": {"profile": {"id": "sandbox-" + "a" * 32, "profile_name": "python-project", "resource_revision": 1}, "revision": {"source_revision": 1, "source": "apiVersion: orchestra.dev/v1\n"}}}, etag='"1"')
         elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/revisions":
             self._send_json(200, {"data": [{"source_revision": 1}], "meta": {"next_cursor": None}})
         elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/revisions/1":
-            self._send_json(200, {"data": {"source_revision": 1, "source": "apiVersion: hermesops.dev/v1\n"}})
+            self._send_json(200, {"data": {"source_revision": 1, "source": "apiVersion: orchestra.dev/v1\n"}})
         elif self.path == "/api/v1/blueprints/sandbox-" + "a" * 32 + "/diff?from=1&to=2":
             self._send_json(200, {"data": {"changed": True, "changes": [{"path": "/spec/runtime/cpu", "kind": "modified"}]}})
         elif self.path == "/api/v1/objectives/objective-" + "a" * 32:

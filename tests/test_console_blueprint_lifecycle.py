@@ -108,6 +108,11 @@ class ConsoleBlueprintLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
         self.assertEqual(status, 404)
         self.assertEqual(len(self.controller.records), before)
 
+    def test_console_contract_uses_current_orchestra_api_version(self) -> None:
+        source = (REPO / "config/examples/Blueprint").read_text(encoding="utf-8")
+        self.assertIn("apiVersion: orchestra.dev/v1", source)
+        self.assertNotIn("apiVersion: hermesops.dev/v1", source)
+
     def test_reads_validation_create_update_and_diff_are_forwarded(self) -> None:
         status, _, payload = self.request("GET", "/api/v1/blueprints")
         self.assertEqual(status, 200)
@@ -125,7 +130,7 @@ class ConsoleBlueprintLifecycleProxyHTTPTest(ConsoleControllerProxyTest):
             "X-CSRF-Token": "csrf1.example",
             "Idempotency-Key": "blueprint-console-0001",
         }
-        source_body = b'{"source":"apiVersion: hermesops.dev/v1\\n"}'
+        source_body = b'{"source":"apiVersion: orchestra.dev/v1\\n"}'
         status, _, payload = self.request(
             "POST", "/api/v1/blueprints/validate", body=source_body, headers=common
         )

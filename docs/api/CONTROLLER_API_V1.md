@@ -515,7 +515,7 @@ Create/update operations accept:
 {
   "name": "Default Python Worker",
   "source_format": "blueprint-v1",
-  "source": "apiVersion: hermesops.dev/v1\n..."
+  "source": "apiVersion: orchestra.dev/v1\n..."
 }
 ```
 

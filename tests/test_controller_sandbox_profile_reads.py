@@ -19,7 +19,7 @@ from controller_api.server import build_server
 
 
 VALID = """
-apiVersion: hermesops.dev/v1
+apiVersion: orchestra.dev/v1
 kind: SandboxProfile
 metadata:
   name: python-project

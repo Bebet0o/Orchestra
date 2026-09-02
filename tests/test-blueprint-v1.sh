@@ -21,7 +21,7 @@ schema = json.loads(
 )
 if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
     raise SystemExit("Blueprint v1 must use JSON Schema 2020-12")
-if schema["properties"]["apiVersion"].get("const") != "hermesops.dev/v1":
+if schema["properties"]["apiVersion"].get("const") != "orchestra.dev/v1":
     raise SystemExit("Blueprint v1 apiVersion contract drift")
 if schema["properties"]["kind"].get("const") != "SandboxProfile":
     raise SystemExit("Blueprint v1 kind contract drift")
@@ -119,7 +119,7 @@ python3 scripts/orchestra-blueprint.py \
 import json, sys
 payload = json.load(sys.stdin)
 assert payload["source_format"] == "blueprint-v1"
-assert payload["api_version"] == "hermesops.dev/v1"
+assert payload["api_version"] == "orchestra.dev/v1"
 assert len(payload["source_sha256"]) == 64
 assert len(payload["canonical_sha256"]) == 64
 print("Blueprint v1 CLI fingerprint: PASS")

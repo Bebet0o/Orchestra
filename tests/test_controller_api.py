@@ -491,6 +491,12 @@ default_branch = "main"
                     / "migrations/023_blueprint_migration.sql"
                 ).read_text(encoding="utf-8")
             )
+            migration_connection.executescript(
+                (
+                    Path(__file__).resolve().parents[1]
+                    / "migrations/024_blueprint_apiversion.sql"
+                ).read_text(encoding="utf-8")
+            )
             migration_connection.commit()
 
         self.settings = Settings.from_root(

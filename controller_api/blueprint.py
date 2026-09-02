@@ -16,7 +16,7 @@ from yaml.events import AliasEvent
 from yaml.nodes import MappingNode
 
 
-API_VERSION = "hermesops.dev/v1"
+API_VERSION = "orchestra.dev/v1"
 KIND = "SandboxProfile"
 SOURCE_FORMAT = "blueprint-v1"
 MAX_SOURCE_BYTES = 256 * 1024
@@ -617,7 +617,7 @@ def _validate_document(document: Any) -> _Validator:
         validator.add(
             "unsupported_api_version",
             "/apiVersion",
-            "Blueprint must use apiVersion hermesops.dev/v1.",
+            "Blueprint must use apiVersion orchestra.dev/v1.",
         )
     kind = validator.string(root.get("kind"), "/kind", maximum=64)
     if kind is not None and kind != KIND:

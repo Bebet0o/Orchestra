@@ -63,7 +63,8 @@ Implemented foundations include:
 - `AgentRuntime`, `HermesRuntime`, `NativeRuntime`, `ModelProvider`, and an
   OpenAI-compatible provider adapter;
 - Blueprint v1 parsing, canonicalization, persistence, immutable revision
-  history, API/CLI/Console lifecycle operations, and schema migration 22 to 23;
+  history, API/CLI/Console lifecycle operations, schema migration 22 to 23,
+  and the current Blueprint namespace migration to schema 24;
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 

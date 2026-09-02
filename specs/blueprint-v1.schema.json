@@ -13,7 +13,7 @@
   ],
   "properties": {
     "apiVersion": {
-      "const": "hermesops.dev/v1"
+      "const": "orchestra.dev/v1"
     },
     "kind": {
       "const": "SandboxProfile"

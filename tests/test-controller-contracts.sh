@@ -26,7 +26,7 @@ events = load("specs/events-v1.schema.json")
 asyncapi = load("specs/controller-events-v1.asyncapi.json")
 blueprint = load("specs/blueprint-v1.schema.json")
 require(
-    blueprint["properties"]["apiVersion"].get("const") == "hermesops.dev/v1",
+    blueprint["properties"]["apiVersion"].get("const") == "orchestra.dev/v1",
     "Blueprint v1 apiVersion contract drift",
 )
 api_doc = (root / "docs/api/CONTROLLER_API_V1.md").read_text(encoding="utf-8")

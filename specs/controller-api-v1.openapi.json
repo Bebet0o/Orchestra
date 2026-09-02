@@ -9731,7 +9731,7 @@
           },
           "api_version": {
             "type": "string",
-            "const": "hermesops.dev/v1"
+            "const": "orchestra.dev/v1"
           },
           "source_sha256": {
             "type": "string",
@@ -9778,7 +9778,7 @@
           },
           "api_version": {
             "type": "string",
-            "const": "hermesops.dev/v1"
+            "const": "orchestra.dev/v1"
           },
           "source_sha256": {
             "type": "string",

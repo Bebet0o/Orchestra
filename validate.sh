@@ -50,6 +50,9 @@ static_validation() {
         tests/test-install-platform-support.sh \
         tests/test-preflight-minimal-host.sh \
         tests/test-install-no-auth-contract.sh \
+        tests/test-blueprint-v1.sh \
+        tests/test-controller-blueprint-lifecycle.sh \
+        tests/test-controller-contracts.sh \
         tests/test-controller-service-contract.sh
     do
         [[ -f "${REPO}/${file}" ]] || {
@@ -139,6 +142,9 @@ PY
     "${REPO}/tests/test-install-platform-support.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"
+    "${REPO}/tests/test-blueprint-v1.sh"
+    "${REPO}/tests/test-controller-blueprint-lifecycle.sh"
+    "${REPO}/tests/test-controller-contracts.sh"
     "${REPO}/tests/test-public-empty-registry.sh"
     "${REPO}/tests/test-release-documentation.sh"
     "${REPO}/tests/test-controller-service-contract.sh"
