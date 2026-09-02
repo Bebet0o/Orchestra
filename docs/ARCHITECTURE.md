@@ -1,4 +1,7 @@
-# Architecture Orchestra
+# Orchestra architecture
+
+The public appliance topology and privilege boundary are documented in
+[`distribution/APPLIANCE.md`](distribution/APPLIANCE.md).
 
 ## Plan de contrôle
 

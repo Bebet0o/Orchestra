@@ -136,13 +136,12 @@ References:
 
 ## Getting started
 
-The public installer supports Debian 12+ or Ubuntu 22.04+ on amd64. It uses
-the selected operator's numeric UID/GID, installs at `/opt/orchestra`, and
-uses Docker Compose for the complete application lifecycle. It requires no
-application user-systemd units, user DBus session, or lingering. Docker Engine,
-CLI, and Compose upstream versions are pinned while distribution-specific APT
-revision suffixes are resolved uniquely from the validated Debian or Ubuntu
-repository.
+The public installer uses Docker Compose on Debian 12+ or Ubuntu 22.04+ on amd64.
+It creates
+the host data directory at `/opt/orchestra/data`, downloads the canonical
+Compose release asset, and starts the published Orchestra images. It does not
+clone this repository, build an application image, or install Python on the
+host. No application systemd units, user DBus session, or lingering are used.
 
 The default worker is the already accepted immutable OCI artifact recorded in
 `config/environments/default-worker.toml`. Installation pulls that exact
@@ -150,19 +149,26 @@ The default worker is the already accepted immutable OCI artifact recorded in
 verifies its exact RepoDigest; it does not build, import, or select a local
 worker tag.
 
-Review the preflight before changing the host:
+The canonical self-hosted contract contains two services: the unprivileged
+`orchestra` control plane and the privileged `orchestra-runtime` private
+container authority. Neither service mounts the host Docker socket. Both use
+the same persistent container data root, `/var/lib/orchestra`.
+
+At release, a normal installation starts with the standalone installer:
 
 ```bash
-git clone https://github.com/Bebet0o/Orchestra.git
-cd Orchestra
-./preflight.sh
-./install.sh --user "$USER"
+curl --fail --location --output install.sh \
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/install.sh
+chmod 0755 install.sh
+./install.sh
 ```
 
-`preflight.sh` is read-only. Authentication may be deferred, but objectives
-that need the Hermes Agent integration remain unavailable until its provider
-authentication is configured. Read [public installation](docs/PUBLIC_INSTALLATION.md)
-and `./install.sh --help` before installation or upgrade.
+The release images and assets do not exist until the separate trusted
+publication gate completes. During development, explicit image and Compose
+overrides are available. Authentication may be deferred, but objectives that
+need Hermes Agent remain unavailable until provider authentication is
+configured. See [public installation](docs/PUBLIC_INSTALLATION.md) and the
+[appliance architecture](docs/distribution/APPLIANCE.md).
 
 For repository development, clone the project and run the validation commands
 below. Python tests depend on the modules available on the supported host/CI

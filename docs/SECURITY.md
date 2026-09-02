@@ -1,22 +1,22 @@
-# Sécurité Orchestra
+# Orchestra security
 
-## Plan d'exécution
+## Execution plane
 
-Hermes Agent n'accède jamais au socket Docker du daemon hôte.
+Hermes Agent never accesses the host Docker daemon socket.
 
-Les outils Hermes utilisent un daemon Docker dédié :
+Dynamic execution uses a dedicated daemon owned by `orchestra-runtime`:
 
-- conteneur : `orchestra-sandbox-engine`
+- privileged service: `orchestra-runtime`
 - socket : `/run/orchestra-docker/docker.sock`
 - transport TCP : désactivé
 - port publié sur l'hôte : aucun
 - réseau partagé entre Agent et moteur : aucun
-- état moteur : `/opt/orchestra/state/sandbox-engine`
+- daemon state: the private `orchestra-runtime-data` volume
 
-Le socket dédié est partagé uniquement avec Hermes Agent et les services
-Supervisor/Orchestrator qui doivent gérer les runtimes. Controller, Console et
-Notifier ne le reçoivent pas. Il donne le contrôle du moteur sandbox, mais pas
-celui du daemon Docker hôte.
+The socket volume is shared with the unprivileged application appliance only
+for Supervisor, Orchestrator, worker, and reviewer operations. It controls the
+private daemon, never the host daemon. Controller remains loopback-only inside
+the application container.
 
 ## Sandboxes
 

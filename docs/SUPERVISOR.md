@@ -4,17 +4,16 @@ The Supervisor makes the deterministic Recovery Manager autonomous.
 
 ## Execution model
 
-The `supervisor` service is a persistent member of the canonical Orchestra
-Compose application. It runs with the selected operator's numeric UID/GID and
-depends on the healthy private sandbox engine, Hermes Agent, and Controller.
-Compose restarts it after a process crash.
+The Supervisor is a mandatory child of the unprivileged `orchestra` appliance.
+The appliance PID 1 starts it after the private runtime and Controller are
+ready. A Supervisor crash fails the appliance and Compose restarts it.
 
 The service:
 
 1. acquires an exclusive non-blocking file lock;
 2. registers its process instance in SQLite;
-3. waits for the private Docker daemon, `orchestra-sandbox-engine`, the Hermes
-   Agent endpoint, and the Controller to become healthy;
+3. verifies the private Docker daemon and Hermes Agent child through the
+   private socket, and waits for Controller readiness;
 4. performs an immediate startup sweep;
 5. performs periodic sweeps using the configured interval;
 6. records health, decisions, recovery counts, orphan cleanup and errors;
@@ -45,9 +44,10 @@ A second daemon or manual sweep exits with code 75 and performs no action.
 ## Operations
 
 ```bash
-/opt/orchestra/repo/scripts/orchestra-compose.sh ps supervisor
-/opt/orchestra/repo/scripts/orchestra-supervisor.py status
-/opt/orchestra/repo/scripts/orchestra-compose.sh logs supervisor
+docker compose ps orchestra
+docker compose logs orchestra
+docker compose exec orchestra \
+  python3 /opt/orchestra/app/scripts/orchestra-supervisor.py status
 ```
 
 

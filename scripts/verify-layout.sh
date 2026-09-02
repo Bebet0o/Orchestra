@@ -24,7 +24,7 @@ for directory in "${required_directories[@]}"; do
 done
 
 for file in \
-    "${REPO}/compose/agent.yaml" \
+    "${REPO}/compose/orchestra.yaml" \
     "${REPO}/config/controller.toml"
 do
     [[ -f "$file" ]] || {
