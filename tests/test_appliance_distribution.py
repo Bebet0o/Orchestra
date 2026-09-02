@@ -68,7 +68,8 @@ class ApplianceDistributionTest(unittest.TestCase):
     def test_worker_authority_is_exact(self) -> None:
         self.assertEqual(
             SERVICES["orchestra-runtime"]["environment"]["ORCHESTRA_WORKER_IMAGE"],
-            "ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49",
+            "${ORCHESTRA_WORKER_IMAGE:-ghcr.io/bebet0o/orchestra-worker@sha256:"
+            "3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49}",
         )
 
     def test_hermes_images_are_immutable_and_internal(self) -> None:
