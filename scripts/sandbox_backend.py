@@ -29,7 +29,7 @@ _FORBIDDEN_DOCKER_SOCKET_DESTINATIONS = {
 }
 _PRIVATE_DOCKER_SOCKET = "unix:///run/orchestra-docker/docker.sock"
 _HOST_PRIVATE_DOCKER_SOCKET = (
-    "unix:///opt/orchestra/runtime/sandbox-engine-socket/docker.sock"
+    "unix:///var/lib/orchestra/runtime/sandbox-engine-socket/docker.sock"
 )
 _DOCKER_PULL_TIMEOUT_SECONDS = 900
 _DOCKER_INSPECT_TIMEOUT_SECONDS = 30

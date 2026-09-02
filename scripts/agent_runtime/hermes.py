@@ -48,7 +48,7 @@ class HermesRuntime(AgentRuntime):
         self.profile_root = self.hermes_home / "profiles"
         self.planner_entry = self.repo / "scripts/orchestra-planner-entry.py"
         self.worker_entry = self.repo / "scripts/orchestra-worker-entry.py"
-        self.private_socket = self.root / "runtime/sandbox-engine-socket/docker.sock"
+        self.private_socket = Path("/run/orchestra-docker/docker.sock")
         self.docker_environment = {
             **os.environ,
             "DOCKER_HOST": "unix:///run/orchestra-docker/docker.sock",

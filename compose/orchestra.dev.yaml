@@ -1,0 +1,12 @@
+services:
+  orchestra:
+    image: orchestra:dev
+    build:
+      context: ..
+      dockerfile: images/orchestra.Dockerfile
+
+  orchestra-runtime:
+    image: orchestra-runtime:dev
+    build:
+      context: ..
+      dockerfile: images/orchestra-runtime.Dockerfile

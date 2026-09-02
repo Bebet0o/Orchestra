@@ -1,8 +1,8 @@
 schema_version = 1
 
-root = "/opt/orchestra"
-database = "/opt/orchestra/state/controller/orchestra.db"
-projects_directory = "/opt/orchestra/repo/config/projects.d"
+root = "/var/lib/orchestra"
+database = "/var/lib/orchestra/state/controller/orchestra.db"
+projects_directory = "/var/lib/orchestra/repo/config/projects.d"
 default_policy = "default"
 
 [limits]

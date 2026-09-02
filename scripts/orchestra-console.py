@@ -228,10 +228,10 @@ def read_safe_file(path: Path, maximum: int = MAX_FILE_SIZE) -> bytes:
     return data
 
 
-def _canonical_loopback_origin(value: str) -> str:
+def _canonical_origin(value: str, *, require_loopback: bool = True) -> str:
     parsed = urlsplit(value)
     if (
-        parsed.scheme != "http"
+        parsed.scheme not in {"http", "https"}
         or parsed.username is not None
         or parsed.password is not None
         or parsed.path
@@ -240,15 +240,19 @@ def _canonical_loopback_origin(value: str) -> str:
         or parsed.hostname is None
         or parsed.port is None
     ):
-        raise ConsoleServiceError("Controller origin must be one canonical loopback HTTP origin")
+        raise ConsoleServiceError("Controller origin must be one canonical HTTP origin")
+    host = parsed.hostname.lower()
     try:
-        address = ipaddress.ip_address(parsed.hostname)
-    except ValueError as error:
-        raise ConsoleServiceError("Controller origin host must be a loopback IP address") from error
-    if not address.is_loopback:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if require_loopback and parsed.scheme != "http":
+        raise ConsoleServiceError("Loopback Controller origin must use HTTP")
+    if require_loopback and (address is None or not address.is_loopback):
         raise ConsoleServiceError("Controller origin must be loopback")
-    host = f"[{address.compressed}]" if address.version == 6 else address.compressed
-    canonical = f"http://{host}:{parsed.port}"
+    if address is not None:
+        host = f"[{address.compressed}]" if address.version == 6 else address.compressed
+    canonical = f"{parsed.scheme}://{host}:{parsed.port}"
     if value != canonical:
         raise ConsoleServiceError("Controller origin is not canonical")
     return canonical
@@ -268,6 +272,7 @@ class Settings:
     controller_port: int = 8765
     controller_origin: str = "http://127.0.0.1:8787"
     controller_timeout: float = 5.0
+    public_bind: bool = False
 
     @classmethod
     def from_root(
@@ -281,6 +286,7 @@ class Settings:
         controller_port: int = 8765,
         controller_origin: str = "http://127.0.0.1:8787",
         controller_timeout: float = 5.0,
+        public_bind: bool = False,
     ) -> "Settings":
         if root.is_symlink():
             raise ConsoleServiceError("Console distribution root must not be a symlink")
@@ -294,6 +300,7 @@ class Settings:
             controller_port=controller_port,
             controller_origin=controller_origin,
             controller_timeout=controller_timeout,
+            public_bind=public_bind,
         )
         settings.validate()
         return settings
@@ -304,7 +311,10 @@ class Settings:
             controller_address = ipaddress.ip_address(self.controller_host)
         except ValueError as error:
             raise ConsoleServiceError("Console and Controller hosts must be loopback IP addresses") from error
-        if not address.is_loopback or not controller_address.is_loopback:
+        console_address_allowed = address.is_loopback or (
+            self.public_bind and address.is_unspecified
+        )
+        if not console_address_allowed or not controller_address.is_loopback:
             raise ConsoleServiceError("Console and Controller hosts must be loopback")
         if not 0 <= self.port <= 65_535:
             raise ConsoleServiceError("Console port is invalid")
@@ -314,7 +324,7 @@ class Settings:
             raise ConsoleServiceError("Console connection limit is invalid")
         if not PROXY_TIMEOUT_MIN <= self.controller_timeout <= PROXY_TIMEOUT_MAX:
             raise ConsoleServiceError("Controller timeout is invalid")
-        _canonical_loopback_origin(self.controller_origin)
+        _canonical_origin(self.controller_origin, require_loopback=not self.public_bind)
         if self.root.is_symlink() or not self.root.is_dir():
             raise ConsoleServiceError("Console distribution root is invalid")
         expected = {
@@ -429,13 +439,18 @@ class ConsoleHandler(http.server.BaseHTTPRequestHandler):
         if len(values) != 1:
             return False
         supplied = values[0].strip().lower()
-        expected = {
-            f"{self.settings.host}:{self.server.server_port}",
-            f"[{self.settings.host}]:{self.server.server_port}",
-        }
+        if self.settings.public_bind:
+            expected = {urlsplit(self.settings.controller_origin).netloc.lower()}
+        else:
+            expected = {
+                f"{self.settings.host}:{self.server.server_port}",
+                f"[{self.settings.host}]:{self.server.server_port}",
+            }
         return supplied in expected
 
     def _browser_origin(self) -> str:
+        if self.settings.public_bind:
+            return self.settings.controller_origin
         host = f"[{self.settings.host}]" if ":" in self.settings.host else self.settings.host
         return f"http://{host}:{self.server.server_port}"
 
@@ -821,6 +836,7 @@ def settings_from_arguments(arguments: argparse.Namespace) -> Settings:
         controller_port=arguments.controller_port,
         controller_origin=arguments.controller_origin,
         controller_timeout=arguments.controller_timeout,
+        public_bind=arguments.public_bind,
     )
 
 
@@ -837,6 +853,7 @@ def parser() -> argparse.ArgumentParser:
         child.add_argument("--controller-port", type=int, default=8765)
         child.add_argument("--controller-origin", default="http://127.0.0.1:8787")
         child.add_argument("--controller-timeout", type=float, default=5.0)
+        child.add_argument("--public-bind", action="store_true")
     return result
 
 

@@ -1,0 +1,15 @@
+**
+!controller_api/**
+!scripts/**
+!config/**
+!profiles/**
+!specs/**
+!migrations/**
+!console/dist/**
+!compose/images.lock.env
+__pycache__
+*.pyc
+tests
+docs
+.git
+.github
