@@ -47,7 +47,7 @@ services:
       ORCHESTRA_RUNTIME_GID: "1000"
       HERMES_AGENT_IMAGE: nousresearch/hermes-agent@sha256:9c841866021c54c4596849f6135717e8a4d52ba510b7f52c50aef1de1a283973
       HERMES_WEBUI_IMAGE: ghcr.io/nesquena/hermes-webui@sha256:10eaa2d43efbdd01833e7ff64aaaa5557beb15e2a34d32a489af4fd4ed5fbff5
-      ORCHESTRA_WORKER_IMAGE: ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49
+      ORCHESTRA_WORKER_IMAGE: ${ORCHESTRA_WORKER_IMAGE:-ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49}
     volumes:
       - ${ORCHESTRA_DATA_SOURCE:-orchestra-data}:/var/lib/orchestra
       - orchestra-runtime-socket:/run/orchestra-docker

@@ -37,3 +37,8 @@ reaps children, and fails the appliance if a mandatory child exits.
 The public Compose file and installer use the same images, mounts, health
 checks, startup dependency, and internal paths. `compose/orchestra.dev.yaml`
 adds local build directives only for repository development.
+
+For release installation, `install.sh` validates the accepted release manifest
+and injects all three immutable image references into this same Compose file.
+The reusable Compose defaults are convenience references, not installer
+authority; the installer never guesses or falls back to them.

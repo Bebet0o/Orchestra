@@ -137,11 +137,12 @@ References:
 ## Getting started
 
 The public installer uses Docker Compose on Debian 12+ or Ubuntu 22.04+ on amd64.
-It creates
-the host data directory at `/opt/orchestra/data`, downloads the canonical
-Compose release asset, and starts the published Orchestra images. It does not
-clone this repository, build an application image, or install Python on the
-host. No application systemd units, user DBus session, or lingering are used.
+It creates the host data directory at `/opt/orchestra/data`, downloads the
+canonical Compose and accepted release-manifest assets, and starts the exact
+immutable application and runtime image references recorded by that manifest.
+It does not clone this repository, build an application image, or install
+Python on the host. No application systemd units, user DBus session, or
+lingering are used.
 
 The default worker is the already accepted immutable OCI artifact recorded in
 `config/environments/default-worker.toml`. Installation pulls that exact
@@ -167,8 +168,9 @@ The release images and assets do not exist until the separate trusted
 publication gate completes. During development, explicit image and Compose
 overrides are available. Authentication may be deferred, but objectives that
 need Hermes Agent remain unavailable until provider authentication is
-configured. See [public installation](docs/PUBLIC_INSTALLATION.md) and the
-[appliance architecture](docs/distribution/APPLIANCE.md).
+configured. See [public installation](docs/PUBLIC_INSTALLATION.md), the
+[appliance architecture](docs/distribution/APPLIANCE.md), and the
+[release manifest contract](docs/distribution/RELEASE_MANIFEST.md).
 
 For repository development, clone the project and run the validation commands
 below. Python tests depend on the modules available on the supported host/CI

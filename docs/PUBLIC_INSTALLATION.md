@@ -49,22 +49,31 @@ chmod 0755 install.sh
 ```
 
 It checks or installs Docker and Compose, downloads the same canonical Compose
-asset, creates `/opt/orchestra/data`, starts the same two images, and waits for
-the application health check. It does not require Git, a source checkout, a
-local application build, or host Python.
+asset and the accepted `orchestra-release-manifest.json`, creates
+`/opt/orchestra/data`, starts the same two images, and waits for the application
+health check. It does not require Git, a source checkout, a local application
+build, or host Python.
 
-Until trusted application digests exist, development builds can be supplied
-explicitly:
+The manifest must be accepted for `v0.1.0`, target `linux/amd64`, and bind the
+exact application, private-runtime, and previously accepted worker OCI
+digests. Installation fails closed on a tag, missing digest, mismatched
+repository/reference, partial image set, or provisional manifest.
+
+Development image overrides remain explicit and require a local accepted
+manifest fixture:
 
 ```bash
 ./install.sh \
   --compose-file ./compose/orchestra.yaml \
+  --manifest-file ./accepted-development-manifest.json \
   --orchestra-image orchestra:dev \
   --runtime-image orchestra-runtime:dev
 ```
 
-The `latest` tag is rejected. Final release automation will inject accepted
-immutable application and runtime references rather than inventing digests.
+Release installation never uses `latest` or another mutable tag. The trusted
+release manifest supplies immutable application, runtime, and worker
+references; the checked-in template deliberately leaves unpublished digests
+null rather than inventing them.
 
 ## Persistent state and first boot
 

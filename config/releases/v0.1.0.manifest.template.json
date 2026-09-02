@@ -1,0 +1,24 @@
+{
+  "application": {
+    "digest": null,
+    "image_reference": null,
+    "repository": "ghcr.io/bebet0o/orchestra"
+  },
+  "candidate_ref": null,
+  "platform": "linux/amd64",
+  "publication_state": "template",
+  "runtime": {
+    "digest": null,
+    "image_reference": null,
+    "repository": "ghcr.io/bebet0o/orchestra-runtime"
+  },
+  "schema_version": 1,
+  "source_revision": null,
+  "version": "v0.1.0",
+  "worker": {
+    "digest": "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49",
+    "image_reference": "ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49",
+    "repository": "ghcr.io/bebet0o/orchestra-worker"
+  },
+  "workflow_run": null
+}
