@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,6 +17,109 @@ HOST_SOCKETS = {"/var/run/docker.sock", "/run/docker.sock"}
 
 
 class ApplianceDistributionTest(unittest.TestCase):
+    def run_uninstaller(
+        self, *, remaining_container: bool = False
+    ) -> tuple[subprocess.CompletedProcess[str], str, str]:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            install_root = temporary / "opt/orchestra"
+            install_root.mkdir(parents=True)
+            (install_root / "orchestra.yaml").write_text("services: {}\n", encoding="utf-8")
+            (install_root / "orchestra.env").write_text("TEST=1\n", encoding="utf-8")
+            sentinel = install_root / "data/preserved"
+            sentinel.parent.mkdir()
+            sentinel.write_text("keep\n", encoding="utf-8")
+
+            source = (ROOT / "uninstall.sh").read_text(encoding="utf-8")
+            source = source.replace(
+                'INSTALL_ROOT="/opt/orchestra"',
+                f'INSTALL_ROOT="{install_root}"',
+                1,
+            ).replace(
+                'sudo_run() { [[ "$EUID" == 0 ]] && "$@" || sudo "$@"; }',
+                'sudo_run() { sudo "$@"; }',
+                1,
+            )
+            uninstaller = temporary / "uninstall.sh"
+            uninstaller.write_text(source, encoding="utf-8")
+            uninstaller.chmod(0o755)
+
+            fake_bin = temporary / "bin"
+            fake_bin.mkdir()
+            sudo = fake_bin / "sudo"
+            sudo.write_text(
+                "#!/bin/sh\n"
+                'chmod 0750 "$TEST_INSTALL_ROOT"\n'
+                '"$@"\n'
+                "status=$?\n"
+                'chmod 0000 "$TEST_INSTALL_ROOT"\n'
+                "exit $status\n",
+                encoding="utf-8",
+            )
+            sudo.chmod(0o755)
+            docker = fake_bin / "docker"
+            docker.write_text(
+                "#!/bin/sh\n"
+                'printf "%s\\n" "$*" >>"$TEST_DOCKER_LOG"\n'
+                'case " $* " in\n'
+                '  *" down --remove-orphans "*)\n'
+                '    [ "${TEST_REMAINING_CONTAINER:-0}" = 1 ] || : >"$TEST_CONTAINER_STATE"\n'
+                "    ;;\n"
+                '  *" ps --all --quiet orchestra orchestra-runtime "*)\n'
+                '    cat "$TEST_CONTAINER_STATE"\n'
+                "    ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+
+            install_root.chmod(0)
+            with self.assertRaises(PermissionError):
+                (install_root / "orchestra.yaml").is_file()
+            docker_log = temporary / "docker.log"
+            container_state = temporary / "containers"
+            container_state.write_text("orchestra-id\norchestra-runtime-id\n", encoding="utf-8")
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PATH": f"{fake_bin}:{environment['PATH']}",
+                    "TEST_INSTALL_ROOT": str(install_root),
+                    "TEST_DOCKER_LOG": str(docker_log),
+                    "TEST_CONTAINER_STATE": str(container_state),
+                    "TEST_REMAINING_CONTAINER": "1" if remaining_container else "0",
+                }
+            )
+            result = subprocess.run(
+                [str(uninstaller)],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=environment,
+            )
+            install_root.chmod(0o750)
+            self.assertTrue(sentinel.is_file())
+            return (
+                result,
+                docker_log.read_text(encoding="utf-8"),
+                container_state.read_text(encoding="utf-8"),
+            )
+
+    def test_default_uninstall_crosses_privilege_boundary_and_tears_down(self) -> None:
+        result, docker_log, container_state = self.run_uninstaller()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(" down --remove-orphans", docker_log)
+        self.assertIn(" ps --all --quiet orchestra orchestra-runtime", docker_log)
+        self.assertEqual(container_state, "")
+        self.assertIn("ORCHESTRA_UNINSTALL_PASS", result.stdout)
+
+    def test_default_uninstall_rejects_remaining_service_container(self) -> None:
+        result, docker_log, container_state = self.run_uninstaller(remaining_container=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(" ps --all --quiet orchestra orchestra-runtime", docker_log)
+        self.assertEqual(container_state, "orchestra-id\norchestra-runtime-id\n")
+        self.assertIn("service containers remain", result.stderr)
+        self.assertNotIn("ORCHESTRA_UNINSTALL_PASS", result.stdout)
+
     def test_public_service_inventory_is_exact(self) -> None:
         self.assertEqual(set(SERVICES), {"orchestra", "orchestra-runtime"})
 
