@@ -26,11 +26,8 @@ then
     exit 1
 fi
 
-grep -Fq 'sqlite3 util-linux)' "$INSTALLER"
-
-grep -Fq \
-    'runuser reste absent après installation de util-linux' \
-    "$INSTALLER"
+! grep -Eq 'python3|git clone|rsync' "$INSTALLER"
+grep -Fq 'docker-compose-plugin' "$INSTALLER"
 
 grep -Fxq 'config/projects.d/*.toml' "${REPO}/.gitignore"
 

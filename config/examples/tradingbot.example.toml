@@ -7,8 +7,8 @@ enabled = false
 policy = "default"
 
 [paths]
-repo = "/opt/orchestra/workspaces/tradingbot"
-data = "/opt/orchestra/project-data/tradingbot"
+repo = "/var/lib/orchestra/workspaces/tradingbot"
+data = "/var/lib/orchestra/project-data/tradingbot"
 
 [git]
 default_branch = "main"

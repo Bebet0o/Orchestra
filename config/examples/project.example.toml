@@ -7,8 +7,8 @@ enabled = false
 policy = "default"
 
 [paths]
-repo = "/opt/orchestra/workspaces/example-project"
-data = "/opt/orchestra/project-data/example-project"
+repo = "/var/lib/orchestra/workspaces/example-project"
+data = "/var/lib/orchestra/project-data/example-project"
 
 [git]
 default_branch = "main"

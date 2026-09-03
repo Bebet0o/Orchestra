@@ -8,7 +8,7 @@ DB="${ROOT}/state/controller/orchestra.db"
 [[ -x "${REPO}/scripts/orchestra-recovery.py" ]]
 [[ -f "${REPO}/migrations/008_supervisor_watchdog.sql" ]]
 [[ -f "${REPO}/config/supervisor.toml" ]]
-[[ -f "${REPO}/compose/agent.yaml" ]]
+[[ -f "${REPO}/compose/orchestra.yaml" ]]
 [[ -f "${REPO}/docs/SUPERVISOR.md" ]]
 
 python3 -m py_compile \
@@ -30,10 +30,9 @@ grep -Fq '"startup"' \
     "${REPO}/scripts/orchestra-supervisor.py"
 grep -Fq '"periodic"' \
     "${REPO}/scripts/orchestra-supervisor.py"
-grep -Fq '  supervisor:' "${REPO}/compose/agent.yaml"
-grep -Fq 'container_name: orchestra-supervisor' "${REPO}/compose/agent.yaml"
-grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
-grep -Fq '/run/orchestra-docker' "${REPO}/compose/agent.yaml"
+grep -Fq 'processes["supervisor"] = spawn' "${REPO}/scripts/orchestra-appliance.py"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/orchestra.yaml"
+grep -Fq '/run/orchestra-docker' "${REPO}/compose/orchestra.yaml"
 
 LATEST_MIGRATION_FILE="$(
     find "${REPO}/migrations" \

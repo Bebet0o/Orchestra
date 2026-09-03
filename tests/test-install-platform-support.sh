@@ -61,10 +61,10 @@ then
     exit 1
 fi
 
-grep -Fq 'linux/${DOCKER_REPOSITORY_FAMILY}/gpg' "${REPO}/install.sh"
-grep -Fq 'linux/${DOCKER_REPOSITORY_FAMILY}' "${REPO}/install.sh"
+grep -Fq 'linux/${ID}/gpg' "${REPO}/install.sh"
+grep -Fq 'download.docker.com/linux/%s %s stable' "${REPO}/install.sh"
 grep -Fq 'Debian 12+ or Ubuntu 22.04+ on amd64' "${REPO}/README.md"
-grep -Fq 'Debian 12 ou version ultérieure' "${REPO}/docs/PUBLIC_INSTALLATION.md"
-grep -Fq 'Ubuntu 22.04 ou version ultérieure' "${REPO}/docs/PUBLIC_INSTALLATION.md"
+grep -Fq 'Debian 12+' "${REPO}/docs/PUBLIC_INSTALLATION.md"
+grep -Fq 'Ubuntu 22.04+' "${REPO}/docs/PUBLIC_INSTALLATION.md"
 
 echo "Orchestra public install platform matrix: PASS"

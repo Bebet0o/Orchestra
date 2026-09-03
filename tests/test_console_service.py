@@ -205,6 +205,16 @@ class ConsoleHTTPTest(unittest.TestCase):
 
 
 class ConsoleSettingsTest(unittest.TestCase):
+    def test_explicit_appliance_public_bind_accepts_unspecified_listener(self) -> None:
+        settings = service_module.Settings.from_root(
+            REPO / "console/dist",
+            host="0.0.0.0",
+            port=8080,
+            controller_origin="https://orchestra.example:443",
+            public_bind=True,
+        )
+        self.assertTrue(settings.public_bind)
+
     def test_non_loopback_and_unsafe_distribution_are_rejected(self) -> None:
         with self.assertRaises(service_module.ConsoleServiceError):
             service_module.Settings.from_root(REPO / "console/dist", host="0.0.0.0")

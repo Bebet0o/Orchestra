@@ -28,14 +28,16 @@ static_validation() {
 
     for file in \
         install.sh preflight.sh uninstall.sh validate.sh \
-        compose/agent.yaml compose/images.lock.env \
-        images/orchestra-control-plane.Dockerfile \
-        images/orchestra-control-plane.Dockerfile.dockerignore \
+        compose/orchestra.yaml compose/orchestra.dev.yaml compose/images.lock.env \
+        images/orchestra.Dockerfile images/orchestra.Dockerfile.dockerignore \
+        images/orchestra-runtime.Dockerfile \
+        images/orchestra-runtime.Dockerfile.dockerignore \
         images/orchestra-worker.Dockerfile \
         images/orchestra-worker.Dockerfile.dockerignore \
         config/host-packages.lock.toml \
         config/environments/default-worker.toml \
         scripts/platform-support.sh scripts/orchestra-compose.sh \
+        scripts/orchestra-appliance.py scripts/orchestra-runtime-entrypoint.sh \
         scripts/sandbox_backend.py scripts/agent_runtime/contract.py \
         scripts/agent_runtime/hermes.py \
         scripts/orchestra-worker.py scripts/orchestra-reviewer.py \
@@ -46,6 +48,12 @@ static_validation() {
         scripts/orchestra-worker-entry.py scripts/orchestra-planner-entry.py \
         .github/workflows/publish-worker.yml \
         .github/workflows/accept-worker-publication.yml \
+        .github/workflows/publish-official-images.yml \
+        .github/workflows/accept-official-images.yml \
+        .github/scripts/official_image_publication.py \
+        .github/scripts/anonymous_official_image_pull.py \
+        specs/release-manifest-v1.schema.json \
+        config/releases/v0.1.0.manifest.template.json \
         tests/test-distribution-contract.sh \
         tests/test-install-platform-support.sh \
         tests/test-preflight-minimal-host.sh \
@@ -138,6 +146,7 @@ PY
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_sandbox_backend.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_worker_distribution.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_worker_publication.py"
+    PYTHONPATH="$REPO" python3 "${REPO}/tests/test_official_image_publication.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_trusted_worker_publisher.py"
     "${REPO}/tests/test-install-platform-support.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
@@ -155,28 +164,8 @@ PY
 
     local task_compose_tmp
     task_compose_tmp="$(mktemp -d)"
-    mkdir -p \
-        "$task_compose_tmp/root/repo/compose" \
-        "$task_compose_tmp/root/repo/images" \
-        "$task_compose_tmp/root/secrets" \
-        "$task_compose_tmp/root/state" \
-        "$task_compose_tmp/root/runtime" \
-        "$task_compose_tmp/root/workspaces" \
-        "$task_compose_tmp/root/project-data"
-    cp "${REPO}/compose/agent.yaml" "${REPO}/compose/images.lock.env" \
-        "$task_compose_tmp/root/repo/compose/"
-    cp "${REPO}/images/orchestra-control-plane.Dockerfile" \
-        "$task_compose_tmp/root/repo/images/"
-    cp "${REPO}/compose/agent.env.example" \
-        "$task_compose_tmp/root/secrets/agent.env"
-    cp "${REPO}/compose/webui.env.example" \
-        "$task_compose_tmp/root/secrets/webui.env"
-
-    ORCHESTRA_UID="$(id -u)" ORCHESTRA_GID="$(id -g)" \
-    docker compose \
-        --project-directory "$task_compose_tmp/root/repo/compose" \
-        --env-file "$task_compose_tmp/root/repo/compose/images.lock.env" \
-        -f "$task_compose_tmp/root/repo/compose/agent.yaml" \
+    docker compose --project-directory "$task_compose_tmp" \
+        -f "${REPO}/compose/orchestra.yaml" \
         config --format json >"$task_compose_tmp/rendered.json"
 
     python3 - "$task_compose_tmp/rendered.json" <<'PY'
@@ -185,13 +174,13 @@ import json
 import sys
 
 document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-expected = {
-    "sandbox-engine", "hermes-agent", "hermes-webui", "controller",
-    "console", "supervisor", "orchestrator", "notifier",
-}
+expected = {"orchestra", "orchestra-runtime"}
 services = document.get("services", {})
 if set(services) != expected:
     raise SystemExit(f"Rendered Compose service mismatch: {sorted(services)}")
+privileged = [name for name, service in services.items() if service.get("privileged")]
+if privileged != ["orchestra-runtime"]:
+    raise SystemExit(f"Privileged service mismatch: {privileged}")
 for name, service in services.items():
     for volume in service.get("volumes", []) or []:
         source = str(volume.get("source", ""))
@@ -225,10 +214,7 @@ runtime_validation() {
     "${REPO}/scripts/orchestra-roles.py" verify-profiles
     "${REPO}/scripts/orchestra-compose.sh" config --quiet
 
-    for container in \
-        orchestra-sandbox-engine orchestra-hermes-agent orchestra-hermes-webui \
-        orchestra-controller orchestra-console orchestra-supervisor \
-        orchestra-orchestrator orchestra-notifier
+    for container in orchestra orchestra-runtime
     do
         health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
         [[ "$health" == "healthy" || "$health" == "running" ]] || {
@@ -237,9 +223,7 @@ runtime_validation() {
         }
     done
 
-    curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8642/health >/dev/null
-    curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8787/health >/dev/null
-    curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8788/health >/dev/null
+    curl --silent --show-error --fail --max-time 5 http://127.0.0.1:8080/ >/dev/null
 
     python3 - "$REPO" "$ROOT" <<'PY'
 from pathlib import Path
@@ -257,7 +241,7 @@ result = subprocess.run(
     [
         "docker",
         "--host",
-        f"unix://{root}/runtime/sandbox-engine-socket/docker.sock",
+        "unix:///run/orchestra-docker/docker.sock",
         "image",
         "inspect",
         reference,
@@ -277,7 +261,7 @@ PY
         --session-file "${ROOT}/secrets/controller-session" \
         --wait-seconds 10
     "${REPO}/scripts/orchestra-console-probe.py" \
-        --base-url http://127.0.0.1:8788 \
+        --base-url http://127.0.0.1:8080 \
         --wait-seconds 10
     "${REPO}/scripts/orchestra-controller-session.py" check
     [[ "$(stat -c '%a' "${ROOT}/secrets/controller-session")" == "600" ]]

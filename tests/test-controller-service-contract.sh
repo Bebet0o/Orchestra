@@ -8,8 +8,8 @@ export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 cd "$REPO"
 
 for file in \
-    compose/agent.yaml \
-    images/orchestra-control-plane.Dockerfile \
+    compose/orchestra.yaml \
+    images/orchestra.Dockerfile \
     controller_api/service_support.py \
     scripts/orchestra-controller-session.py \
     scripts/orchestra-controller-probe.py \
@@ -27,31 +27,29 @@ import sys
 import yaml
 
 root = Path(sys.argv[1])
-compose = yaml.safe_load((root / "compose/agent.yaml").read_text(encoding="utf-8"))
-controller = compose["services"]["controller"]
-expected = [
-    "python3",
-    "/opt/orchestra/repo/scripts/orchestra-controller-api.py",
-    "serve",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    "8765",
-    "--log-level",
-    "INFO",
-]
-if controller["command"] != expected:
-    raise SystemExit(f"Controller Compose command mismatch: {controller['command']!r}")
-if controller.get("network_mode") != "host":
-    raise SystemExit("Controller does not preserve loopback host networking")
+compose = yaml.safe_load((root / "compose/orchestra.yaml").read_text(encoding="utf-8"))
+controller = compose["services"]["orchestra"]
+if controller.get("privileged") is True:
+    raise SystemExit("Control-plane appliance is privileged")
 if controller.get("restart") != "unless-stopped":
-    raise SystemExit("Controller restart policy mismatch")
+    raise SystemExit("Control-plane restart policy mismatch")
 if controller.get("read_only") is not True:
-    raise SystemExit("Controller root filesystem is not read-only")
+    raise SystemExit("Control-plane root filesystem is not read-only")
 if "no-new-privileges:true" not in controller.get("security_opt", []):
-    raise SystemExit("Controller no-new-privileges policy missing")
+    raise SystemExit("Control-plane no-new-privileges policy missing")
+if controller.get("cap_drop") != ["ALL"]:
+    raise SystemExit("Control-plane capabilities are not dropped")
 if not controller.get("healthcheck"):
-    raise SystemExit("Controller healthcheck missing")
+    raise SystemExit("Control-plane healthcheck missing")
+
+appliance = (root / "scripts/orchestra-appliance.py").read_text(encoding="utf-8")
+for token in (
+    'processes["controller"] = spawn',
+    '"--host", "127.0.0.1", "--port", "8765"',
+    'scripts/orchestra-controller-probe.py',
+):
+    if token not in appliance:
+        raise SystemExit(f"Controller appliance contract missing: {token}")
 
 for retired in (
     root / "systemd/user/hermesops-controller-api.service",
@@ -66,13 +64,13 @@ for name in ("install.sh", "uninstall.sh", "validate.sh"):
         raise SystemExit(f"Application user-systemd usage remains in {name}")
 
 installer = (root / "install.sh").read_text(encoding="utf-8")
-if '"${REPO}/scripts/orchestra-compose.sh" up -d' not in installer:
+if '"${compose[@]}" up -d' not in installer:
     raise SystemExit("Installer does not start the Compose-owned application")
-if '"${REPO}/scripts/orchestra-controller-probe.py"' not in installer:
-    raise SystemExit("Installer Controller readiness probe missing")
+if "did not become healthy" not in installer:
+    raise SystemExit("Installer appliance readiness wait missing")
 
 uninstaller = (root / "uninstall.sh").read_text(encoding="utf-8")
-if '"${REPO}/scripts/orchestra-compose.sh" down' not in uninstaller:
+if 'down --remove-orphans' not in uninstaller:
     raise SystemExit("Uninstaller does not stop the Compose-owned application")
 if 'rm -f "${ROOT}/secrets/controller-session"' in uninstaller:
     raise SystemExit("Conservative uninstall deletes the Controller session")

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Bebet0o/Orchestra/blob/main/specs/release-manifest-v1.schema.json",
+  "title": "Orchestra release manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "publication_state",
+    "version",
+    "source_revision",
+    "platform",
+    "application",
+    "runtime",
+    "worker"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "publication_state": {"enum": ["template", "provisional", "accepted"]},
+    "version": {"type": "string", "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+|candidate-[0-9a-f]{40})$"},
+    "candidate_ref": {"type": ["string", "null"]},
+    "source_revision": {"type": ["string", "null"]},
+    "platform": {"const": "linux/amd64"},
+    "application": {"$ref": "#/$defs/application"},
+    "runtime": {"$ref": "#/$defs/runtime"},
+    "worker": {"$ref": "#/$defs/worker"},
+    "workflow_run": {"type": ["string", "null"], "pattern": "^[0-9]+$"},
+    "anonymous_verification": {"type": "object"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {
+      "anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "image_reference"],
+      "properties": {
+        "repository": {"const": "ghcr.io/bebet0o/orchestra"},
+        "digest": {"$ref": "#/$defs/nullableDigest"},
+        "image_reference": {"type": ["string", "null"]}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "image_reference"],
+      "properties": {
+        "repository": {"const": "ghcr.io/bebet0o/orchestra-runtime"},
+        "digest": {"$ref": "#/$defs/nullableDigest"},
+        "image_reference": {"type": ["string", "null"]}
+      }
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "image_reference"],
+      "properties": {
+        "repository": {"const": "ghcr.io/bebet0o/orchestra-worker"},
+        "digest": {"const": "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"},
+        "image_reference": {"const": "ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"publication_state": {"const": "template"}}},
+      "then": {
+        "properties": {
+          "source_revision": {"type": "null"},
+          "application": {"properties": {"digest": {"type": "null"}, "image_reference": {"type": "null"}}},
+          "runtime": {"properties": {"digest": {"type": "null"}, "image_reference": {"type": "null"}}}
+        }
+      },
+      "else": {
+        "required": ["candidate_ref", "workflow_run", "anonymous_verification"],
+        "properties": {
+          "source_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "application": {
+            "properties": {
+              "digest": {"$ref": "#/$defs/digest"},
+              "image_reference": {"type": "string", "pattern": "^ghcr\\.io/bebet0o/orchestra@sha256:[0-9a-f]{64}$"}
+            }
+          },
+          "runtime": {
+            "properties": {
+              "digest": {"$ref": "#/$defs/digest"},
+              "image_reference": {"type": "string", "pattern": "^ghcr\\.io/bebet0o/orchestra-runtime@sha256:[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

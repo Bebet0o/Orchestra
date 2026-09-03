@@ -1,119 +1,112 @@
-# Installation publique
+# Public installation
 
-## Contrat de plateforme
+Orchestra v0.1.0 targets Debian 12+ and Ubuntu 22.04+ on amd64 with Docker
+Engine and Docker Compose. The release remains gated until the official images
+and release assets have passed trusted publication and fresh-host smoke tests.
 
-Le chemin public actuel prend en charge :
+## Runtime contract
 
-- Debian 12 ou version ultérieure sur amd64 ;
-- Ubuntu 22.04 ou version ultérieure sur amd64 ;
-- un utilisateur opérateur local avec une identité UID/GID numérique valide ;
-- la racine fixe `/opt/orchestra` ;
-- Docker Engine et Docker CLI amont `29.6.1` ;
-- le plugin Docker Compose amont `5.3.0`.
+The public deployment has exactly two top-level services:
 
-L'éligibilité du système et la disponibilité des paquets sont deux contrôles
-distincts. L'installateur choisit le dépôt APT Docker correspondant au système
-validé (`linux/debian` ou `linux/ubuntu`), puis résout exactement une révision
-de paquet pour chaque version amont verrouillée. Une version absente ou une
-résolution ambiguë bloque l'installation. Une révision Debian n'est jamais
-installée sur Ubuntu.
+- `orchestra`: the unprivileged application and control plane;
+- `orchestra-runtime`: the privileged private nested-container authority.
 
-## Préflight et installation
+Controller, Console, Supervisor, Orchestrator, and Notifier are supervised
+inside `orchestra`. Hermes Agent, Hermes WebUI, workers, reviewers, and
+sandboxes are children of the private daemon in `orchestra-runtime`.
 
-```bash
-git clone https://github.com/Bebet0o/Orchestra.git
-cd Orchestra
+Neither service mounts `/var/run/docker.sock` or `/run/docker.sock` from the
+host. They communicate through a dedicated volume containing only the private
+socket at `/run/orchestra-docker/docker.sock`.
 
-./preflight.sh
-./install.sh --user "$USER"
-```
+## Self-hosting
 
-`preflight.sh` est en lecture seule. L'installateur dérive l'UID et le GID
-effectifs de l'utilisateur choisi ; aucune identité `1000:1000` n'est imposée.
-Si l'utilisateur doit être ajouté au groupe `docker`, l'installation s'arrête
-avec `RELOGIN_REQUIRED`. Fermez alors la session, reconnectez-vous, puis
-relancez la même commande.
-
-Un fichier d'authentification OpenAI Codex existant peut être fourni sans être
-affiché :
+The canonical file is `compose/orchestra.yaml`. It has no `build:` directive,
+source bind mount, fixed project name, or `container_name`. It can be copied
+into an existing Compose project and supports either the default named data
+volume or a bind mount:
 
 ```bash
-./install.sh --user "$USER" --auth-file "$HOME/auth.json"
+ORCHESTRA_DATA_SOURCE=/mnt/appdata/orchestra docker compose \
+  -f orchestra.yaml up -d
 ```
 
-Une installation divergente exige `--upgrade` et crée auparavant un bundle Git
-ainsi qu'une sauvegarde SQLite cohérente. `--skip-start` installe et migre les
-données sans démarrer la pile.
+The stable container data path is `/var/lib/orchestra`. Host directory choice
+does not change application behavior. The Console is published on port 8080 by
+default and can be changed with `ORCHESTRA_PORT`.
+When accessed through another hostname, port, or HTTPS reverse proxy, set
+`ORCHESTRA_PUBLIC_ORIGIN` to that exact canonical browser origin.
 
-## Cycle de vie Compose
+## Comfort installer
 
-Docker Compose possède tous les processus de longue durée :
-
-- Controller API ;
-- Console ;
-- Supervisor ;
-- Orchestrator ;
-- Notifier ;
-- moteur sandbox privé ;
-- intégration Hermes Agent et Hermes WebUI.
-
-Il n'existe aucune unité applicative user-systemd, aucune exigence de linger,
-de bus DBus utilisateur ou de `systemctl --user`. Les services HTTP restent
-liés à la boucle locale : Controller `127.0.0.1:8765`, Hermes Agent
-`127.0.0.1:8642`, Hermes WebUI `127.0.0.1:8787` et Console
-`127.0.0.1:8788`.
+The release installer is standalone:
 
 ```bash
-ORCHESTRA_ROOT=/opt/orchestra \
-ORCHESTRA_UID="$(id -u)" ORCHESTRA_GID="$(id -g)" \
-  /opt/orchestra/repo/scripts/orchestra-compose.sh ps
-
-curl --fail http://127.0.0.1:8765/health
-curl --fail http://127.0.0.1:8788/health
+curl --fail --location --output install.sh \
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/install.sh
+chmod 0755 install.sh
+./install.sh
 ```
 
-## Autorité Docker et worker
+It checks or installs Docker and Compose, downloads the same canonical Compose
+asset and the accepted `orchestra-release-manifest.json`, creates
+`/opt/orchestra/data`, starts the same two images, and waits for the application
+health check. It does not require Git, a source checkout, a local application
+build, or host Python.
 
-Les opérations dynamiques utilisent exclusivement le daemon DIND privé via
-`/run/orchestra-docker/docker.sock`. Le socket Docker de l'hôte n'est monté
-dans aucun conteneur du plan de contrôle.
+The manifest must be accepted for `v0.1.0`, target `linux/amd64`, and bind the
+exact application, private-runtime, and previously accepted worker OCI
+digests. Installation fails closed on a tag, missing digest, mismatched
+repository/reference, partial image set, or provisional manifest.
 
-Le worker par défaut est l'image OCI immuable publiée :
+Development image overrides remain explicit and require a local accepted
+manifest fixture:
+
+```bash
+./install.sh \
+  --compose-file ./compose/orchestra.yaml \
+  --manifest-file ./accepted-development-manifest.json \
+  --orchestra-image orchestra:dev \
+  --runtime-image orchestra-runtime:dev
+```
+
+Release installation never uses `latest` or another mutable tag. The trusted
+release manifest supplies immutable application, runtime, and worker
+references; the checked-in template deliberately leaves unpublished digests
+null rather than inventing them.
+
+## Persistent state and first boot
+
+The appliance initializes secrets, creates a fresh schema-24 database, and
+runs forward-only migrations at startup. Existing supported data is migrated
+under the same fail-closed rules. Provider authentication is optional at boot;
+features requiring Hermes Agent remain unavailable until it is configured.
+
+The accepted worker authority remains:
 
 ```text
 ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49
 ```
 
-L'installation effectue un pull exact dans le daemon privé et vérifie le
-RepoDigest exact. Il n'existe plus de contrat d'archive worker, de mode hors
-ligne partiel, de tag local autoritaire, ni de fallback basé sur l'ID local
-d'une image Docker.
+## Health and logs
 
-## Installation historique
+The `orchestra-runtime` health check verifies its daemon and required Hermes
+children. The `orchestra` health check verifies Controller, Console, all
+mandatory supervised processes, and access to the private daemon.
 
-Une racine historique `/opt/docker/hermesops` ou une ancienne unité
-applicative est détectée uniquement pour empêcher une installation parallèle.
-La détection se produit avant toute mutation et bloque avec une demande de
-procédure de migration explicite. L'installateur ne démarre, n'arrête, ne
-migre et ne supprime jamais silencieusement cet état historique.
-
-## Registre initial
-
-Une installation neuve ne crée aucun projet métier. Les fixtures conservées
-sous `tests/fixtures/projects/` ne sont installées que sur demande explicite :
+Use normal Compose operations:
 
 ```bash
-ORCHESTRA_ENABLE_TEST_FIXTURES=1 \
-  /opt/orchestra/repo/scripts/init-test-fixtures.sh
+docker compose ps
+docker compose logs orchestra
+docker compose logs orchestra-runtime
 ```
 
-## Désinstallation non destructive
+## Uninstall
+
+`uninstall.sh` removes the two containers while preserving persistent data,
+secrets, projects, workspaces, and backups. Data removal is explicit:
 
 ```bash
-./uninstall.sh --user "$USER"
+./uninstall.sh --remove-data --confirm REMOVE_DATA
 ```
-
-La commande arrête la pile Compose et conserve par défaut l'état, les secrets,
-les workspaces, les données projet et les sauvegardes. La suppression du dépôt
-requiert explicitement `--remove-repo --confirm REMOVE_REPO` et crée d'abord
-un bundle Git lorsque le dépôt installé en contient un.

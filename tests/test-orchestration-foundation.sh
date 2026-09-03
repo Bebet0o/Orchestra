@@ -27,7 +27,7 @@ for file in \
     "${REPO}/scripts/orchestra-planner-entry.py" \
     "${REPO}/migrations/009_orchestration_dag.sql" \
     "${REPO}/config/orchestrator.toml" \
-    "${REPO}/compose/agent.yaml" \
+    "${REPO}/compose/orchestra.yaml" \
     "${REPO}/docs/ORCHESTRATION.md" \
     "${REPO}/tests/test-orchestration-foundation.sh"
 do
@@ -82,11 +82,10 @@ grep -Fq 'review_retry_backoff_seconds' \
     "${REPO}/config/orchestrator.toml"
 grep -Fq 'orchestrator process restarted' \
     "${REPO}/scripts/orchestra-orchestrator.py"
-grep -Fq '  orchestrator:' "${REPO}/compose/agent.yaml"
-grep -Fq 'container_name: orchestra-orchestrator' "${REPO}/compose/agent.yaml"
-grep -Fq 'condition: service_healthy' "${REPO}/compose/agent.yaml"
-grep -Fq 'no-new-privileges:true' "${REPO}/compose/agent.yaml"
-grep -Fq '/run/orchestra-docker' "${REPO}/compose/agent.yaml"
+grep -Fq 'processes["orchestrator"] = spawn' "${REPO}/scripts/orchestra-appliance.py"
+grep -Fq 'condition: service_healthy' "${REPO}/compose/orchestra.yaml"
+grep -Fq 'no-new-privileges:true' "${REPO}/compose/orchestra.yaml"
+grep -Fq '/run/orchestra-docker' "${REPO}/compose/orchestra.yaml"
 
 orchestration_stage "database schema"
 LATEST_MIGRATION_FILE="$(

@@ -1,0 +1,66 @@
+services:
+  orchestra:
+    image: ${ORCHESTRA_IMAGE:-ghcr.io/bebet0o/orchestra:v0.1.0}
+    restart: unless-stopped
+    depends_on:
+      orchestra-runtime:
+        condition: service_healthy
+    ports:
+      - "${ORCHESTRA_PORT:-8080}:8080"
+    environment:
+      ORCHESTRA_ROOT: /var/lib/orchestra
+      ORCHESTRA_DATA_ROOT: /var/lib/orchestra
+      DOCKER_HOST: unix:///run/orchestra-docker/docker.sock
+      DOCKER_CONTEXT: default
+      DOCKER_CONFIG: /nonexistent/orchestra-empty-docker-config
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /opt/orchestra/app:/opt/orchestra/app/scripts
+      ORCHESTRA_PUBLIC_ORIGIN: ${ORCHESTRA_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
+      ORCHESTRA_CONTROLLER_CONSOLE_ORIGIN: ${ORCHESTRA_PUBLIC_ORIGIN:-http://127.0.0.1:8080}
+    volumes:
+      - ${ORCHESTRA_DATA_SOURCE:-orchestra-data}:/var/lib/orchestra
+      - orchestra-runtime-socket:/run/orchestra-docker
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+      - /var/tmp:rw,noexec,nosuid,size=64m
+    healthcheck:
+      test: [CMD, python3, /opt/orchestra/app/scripts/orchestra-appliance.py, health]
+      interval: 10s
+      timeout: 8s
+      retries: 18
+      start_period: 30s
+    stop_grace_period: 120s
+
+  orchestra-runtime:
+    image: ${ORCHESTRA_RUNTIME_IMAGE:-ghcr.io/bebet0o/orchestra-runtime:v0.1.0}
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+      ORCHESTRA_DATA_ROOT: /var/lib/orchestra
+      ORCHESTRA_RUNTIME_UID: "1000"
+      ORCHESTRA_RUNTIME_GID: "1000"
+      HERMES_AGENT_IMAGE: nousresearch/hermes-agent@sha256:9c841866021c54c4596849f6135717e8a4d52ba510b7f52c50aef1de1a283973
+      HERMES_WEBUI_IMAGE: ghcr.io/nesquena/hermes-webui@sha256:10eaa2d43efbdd01833e7ff64aaaa5557beb15e2a34d32a489af4fd4ed5fbff5
+      ORCHESTRA_WORKER_IMAGE: ${ORCHESTRA_WORKER_IMAGE:-ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49}
+    volumes:
+      - ${ORCHESTRA_DATA_SOURCE:-orchestra-data}:/var/lib/orchestra
+      - orchestra-runtime-socket:/run/orchestra-docker
+      - orchestra-runtime-data:/var/lib/docker
+    healthcheck:
+      test: [CMD, /usr/local/bin/orchestra-runtime-entrypoint, health]
+      interval: 10s
+      timeout: 8s
+      retries: 18
+      start_period: 30s
+    stop_grace_period: 120s
+
+volumes:
+  orchestra-data:
+  orchestra-runtime-socket:
+  orchestra-runtime-data:

@@ -28,7 +28,7 @@
         'docs/blueprint/SPECIFICATION_V1.md'
         'specs/blueprint-v1.schema.json'
         'config/examples/Blueprint'
-        './install.sh --user "$USER"'
+        './install.sh'
         'Debian 12+ or Ubuntu 22.04+ on amd64'
         './validate.sh --static --quiet'
         'SECURITY.md'
@@ -60,7 +60,8 @@
     ! grep -Fq 'HermesOps 0.2.0 development (unreleased historical material)' \
         "$CHANGELOG"
     grep -Fq 'Docker Compose' "$README"
-    grep -Fq '/opt/orchestra' "$README"
+    grep -Fq '/var/lib/orchestra' "$README"
+    grep -Fq 'orchestra-runtime' "$README"
     grep -Fq 'GitHub private vulnerability reporting is not currently enabled' \
         "$SECURITY"
 

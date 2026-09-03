@@ -1,0 +1,225 @@
+name: Publish Orchestra application/runtime candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Full repository-owned branch ref
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact lowercase 40-hex candidate branch head
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: orchestra-official-publication-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'bebet0o/Orchestra' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      APPLICATION_REPOSITORY: ghcr.io/bebet0o/orchestra
+      RUNTIME_REPOSITORY: ghcr.io/bebet0o/orchestra-runtime
+      PLATFORM: linux/amd64
+    steps:
+      - name: Checkout trusted publication foundation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Validate candidate request
+        id: request
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: python3 trusted/.github/scripts/official_image_publication.py validate-request
+
+      - name: Fetch and authorize exact candidate branch head
+        id: fetched
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          git -C trusted fetch --no-tags --no-recurse-submodules --depth=1 --force origin \
+            "$REQUESTED_CANDIDATE_REF:refs/remotes/orchestra-official-publication/candidate"
+          FETCHED_CANDIDATE_SHA="$(git -C trusted rev-parse --verify \
+            'refs/remotes/orchestra-official-publication/candidate^{commit}')"
+          export FETCHED_CANDIDATE_SHA
+          python3 trusted/.github/scripts/official_image_publication.py verify-fetched
+
+      - name: Checkout detached candidate source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.fetched.outputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Verify detached candidate source
+        id: source
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          verify-checkout --checkout-path candidate
+
+      - name: Validate candidate Dockerfile policy
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          validate-dockerfiles --checkout-path candidate
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build application image exactly once
+        id: build-application
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: candidate
+          file: candidate/images/orchestra.Dockerfile
+          platforms: ${{ env.PLATFORM }}
+          load: true
+          push: false
+          provenance: false
+          tags: orchestra-application-contract:${{ steps.source.outputs.candidate_sha }}
+          build-args: |
+            OCI_REVISION=${{ steps.source.outputs.candidate_sha }}
+            OCI_VERSION=candidate-${{ steps.source.outputs.candidate_sha }}
+
+      - name: Build runtime image exactly once
+        id: build-runtime
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: candidate
+          file: candidate/images/orchestra-runtime.Dockerfile
+          platforms: ${{ env.PLATFORM }}
+          load: true
+          push: false
+          provenance: false
+          tags: orchestra-runtime-contract:${{ steps.source.outputs.candidate_sha }}
+          build-args: |
+            OCI_REVISION=${{ steps.source.outputs.candidate_sha }}
+            OCI_VERSION=candidate-${{ steps.source.outputs.candidate_sha }}
+
+      - name: Validate exact local image set
+        id: local
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          APPLICATION_LOCAL_TAG: orchestra-application-contract:${{ steps.source.outputs.candidate_sha }}
+          RUNTIME_LOCAL_TAG: orchestra-runtime-contract:${{ steps.source.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          APPLICATION_INSPECT_JSON="$(docker image inspect "$APPLICATION_LOCAL_TAG")"
+          RUNTIME_INSPECT_JSON="$(docker image inspect "$RUNTIME_LOCAL_TAG")"
+          export APPLICATION_INSPECT_JSON RUNTIME_INSPECT_JSON
+          python3 trusted/.github/scripts/official_image_publication.py validate-local-set
+
+      - name: Probe validated application image contents
+        env:
+          VALIDATED_APPLICATION_IMAGE_ID: ${{ steps.local.outputs.validated_application_image_id }}
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "$VALIDATED_APPLICATION_IMAGE_ID" -ec '
+            test "$(id -u)" = 1000
+            test -x /opt/orchestra/app/scripts/orchestra-appliance.py
+            test -f /opt/orchestra/app/controller_api/core.py
+            test -f /opt/orchestra/app/console/dist/index.html
+            test -f /opt/orchestra/app/migrations/024_blueprint_api_namespace.sql
+            test -d /opt/orchestra/app/profiles
+            test -d /opt/orchestra/app/specs
+            test ! -e /opt/orchestra/app/tests
+            test ! -e /opt/orchestra/app/.git
+            test ! -e /opt/orchestra/app/.github
+            test ! -e /opt/orchestra/app/scripts/orchestra-console-build.py
+          '
+
+      - name: Probe validated runtime image contents
+        env:
+          VALIDATED_RUNTIME_IMAGE_ID: ${{ steps.local.outputs.validated_runtime_image_id }}
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh "$VALIDATED_RUNTIME_IMAGE_ID" -ec '
+            command -v dockerd >/dev/null
+            test -x /usr/local/bin/orchestra-runtime-entrypoint
+            grep -F "/run/orchestra-docker/docker.sock" /usr/local/bin/orchestra-runtime-entrypoint >/dev/null
+            test ! -e /opt/orchestra/app
+          '
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push exact validated image set
+        id: pushed
+        env:
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          VALIDATED_APPLICATION_IMAGE_ID: ${{ steps.local.outputs.validated_application_image_id }}
+          VALIDATED_RUNTIME_IMAGE_ID: ${{ steps.local.outputs.validated_runtime_image_id }}
+        run: |
+          set -euo pipefail
+          APPLICATION_REGISTRY_TAG="${APPLICATION_REPOSITORY}:candidate-${CHECKED_OUT_SHA}"
+          RUNTIME_REGISTRY_TAG="${RUNTIME_REPOSITORY}:candidate-${CHECKED_OUT_SHA}"
+          docker image tag "$VALIDATED_APPLICATION_IMAGE_ID" "$APPLICATION_REGISTRY_TAG"
+          docker image tag "$VALIDATED_RUNTIME_IMAGE_ID" "$RUNTIME_REGISTRY_TAG"
+          APPLICATION_REGISTRY_TAG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$APPLICATION_REGISTRY_TAG")"
+          RUNTIME_REGISTRY_TAG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$RUNTIME_REGISTRY_TAG")"
+          test "$APPLICATION_REGISTRY_TAG_IMAGE_ID" = "$VALIDATED_APPLICATION_IMAGE_ID"
+          test "$RUNTIME_REGISTRY_TAG_IMAGE_ID" = "$VALIDATED_RUNTIME_IMAGE_ID"
+          APPLICATION_PUSH_OUTPUT_PATH="$(mktemp "${RUNNER_TEMP}/orchestra-application-push.XXXXXX")"
+          RUNTIME_PUSH_OUTPUT_PATH="$(mktemp "${RUNNER_TEMP}/orchestra-runtime-push.XXXXXX")"
+          docker image push "$APPLICATION_REGISTRY_TAG" >"$APPLICATION_PUSH_OUTPUT_PATH" 2>&1
+          docker image push "$RUNTIME_REGISTRY_TAG" >"$RUNTIME_PUSH_OUTPUT_PATH" 2>&1
+          APPLICATION_REGISTRY_REPO_DIGESTS="$(docker image inspect --format '{{json .RepoDigests}}' "$APPLICATION_REGISTRY_TAG")"
+          RUNTIME_REGISTRY_REPO_DIGESTS="$(docker image inspect --format '{{json .RepoDigests}}' "$RUNTIME_REGISTRY_TAG")"
+          export APPLICATION_REGISTRY_TAG RUNTIME_REGISTRY_TAG
+          export APPLICATION_REGISTRY_TAG_IMAGE_ID RUNTIME_REGISTRY_TAG_IMAGE_ID
+          export APPLICATION_PUSH_OUTPUT_PATH RUNTIME_PUSH_OUTPUT_PATH
+          export APPLICATION_REGISTRY_REPO_DIGESTS RUNTIME_REGISTRY_REPO_DIGESTS
+          python3 trusted/.github/scripts/official_image_publication.py verify-pushed-set
+
+      - name: Create trusted provisional image-set manifest
+        env:
+          REQUESTED_CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
+          FETCHED_CANDIDATE_SHA: ${{ steps.fetched.outputs.candidate_sha }}
+          CHECKED_OUT_SHA: ${{ steps.source.outputs.candidate_sha }}
+          APPLICATION_REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
+          RUNTIME_REVISION_LABEL: ${{ steps.source.outputs.candidate_sha }}
+          APPLICATION_DIGEST: ${{ steps.pushed.outputs.application_digest }}
+          RUNTIME_DIGEST: ${{ steps.pushed.outputs.runtime_digest }}
+          WORKFLOW_RUN: ${{ github.run_id }}
+        run: >-
+          python3 trusted/.github/scripts/official_image_publication.py
+          record-provisional
+
+      - name: Upload provisional image-set manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orchestra-official-publication-provisional-${{ steps.source.outputs.candidate_sha }}
+          path: trusted/orchestra-release-manifest-provisional.json
+          if-no-files-found: error
+          retention-days: 14

@@ -17,9 +17,6 @@ _SHA = re.compile(r"[0-9a-f]{40}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 _BRANCH_BODY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 EXPECTED_REPOSITORY = "ghcr.io/bebet0o/orchestra-worker"
-_REGISTRY_TAG = re.compile(
-    re.escape(EXPECTED_REPOSITORY) + r":candidate-[0-9a-f]{40}"
-)
 MAX_PUSH_OUTPUT_BYTES = 1_048_576
 
 
@@ -96,10 +93,18 @@ def resolve_detached_checkout(path: Path) -> str:
     return validate_candidate_sha(resolved.stdout.rstrip("\n"))
 
 
-def parse_push_registry_digest(path: Path, expected_registry_tag: object) -> str:
+def parse_push_registry_digest(
+    path: Path,
+    expected_registry_tag: object,
+    *,
+    expected_repository: str = EXPECTED_REPOSITORY,
+) -> str:
+    registry_tag_pattern = re.compile(
+        re.escape(expected_repository) + r":candidate-[0-9a-f]{40}"
+    )
     if (
         not isinstance(expected_registry_tag, str)
-        or _REGISTRY_TAG.fullmatch(expected_registry_tag) is None
+        or registry_tag_pattern.fullmatch(expected_registry_tag) is None
     ):
         raise PublicationContractError("expected registry tag is invalid")
     try:

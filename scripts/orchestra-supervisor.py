@@ -63,10 +63,10 @@ CORE_CONTAINERS = (
 INFORMATIONAL_CONTAINERS = (
     "orchestra-hermes-webui",
 )
-SERVICE_HEALTH_ENDPOINTS = {
-    "orchestra-hermes-agent": "http://127.0.0.1:8642/health",
-    "orchestra-hermes-webui": "http://127.0.0.1:8787/health",
-}
+PRIVATE_RUNTIME_CONTAINERS = (
+    "orchestra-hermes-agent",
+    "orchestra-hermes-webui",
+)
 PRIVATE_DOCKER_ENVIRONMENT = {
     **os.environ,
     "DOCKER_HOST": "unix:///run/orchestra-docker/docker.sock",
@@ -254,18 +254,25 @@ def docker_health() -> dict[str, Any]:
         "error": None,
     }
 
-    for name, endpoint in SERVICE_HEALTH_ENDPOINTS.items():
-        error_message: str | None = None
-        try:
-            with urllib.request.urlopen(endpoint, timeout=3) as response:
-                healthy = response.status == 200
-        except (OSError, urllib.error.URLError) as error:
-            healthy = False
-            error_message = str(error)
+    for name in PRIVATE_RUNTIME_CONTAINERS:
+        inspected = run_command(
+            ["docker", "inspect", "--format", "{{json .State}}", name],
+            timeout=10,
+        )
+        error_message: str | None = inspected.stderr.strip() or None
+        state: dict[str, Any] = {}
+        if inspected.returncode == 0:
+            try:
+                state = json.loads(inspected.stdout)
+            except json.JSONDecodeError:
+                error_message = "private runtime returned invalid container state"
+        running = state.get("Running") is True
+        health = (state.get("Health") or {}).get("Status")
+        healthy = running and health in (None, "healthy")
         result["containers"][name] = {
-            "present": healthy,
-            "running": healthy,
-            "health": "healthy" if healthy else None,
+            "present": inspected.returncode == 0,
+            "running": running,
+            "health": health,
             "healthy": healthy,
             "error": error_message,
         }

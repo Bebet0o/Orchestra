@@ -179,10 +179,10 @@ if [[ "$CI_MODE" == 0 ]]; then
 fi
 
 for required in \
-    README.md compose/agent.yaml compose/images.lock.env \
+    README.md compose/orchestra.yaml compose/orchestra.dev.yaml compose/images.lock.env \
     config/controller.toml config/roles.toml migrations \
     console/src console/dist profiles scripts \
-    images/orchestra-control-plane.Dockerfile tests
+    images/orchestra.Dockerfile images/orchestra-runtime.Dockerfile tests
 do
     [[ -e "${SOURCE}/${required}" ]] \
         && pass "Présent: ${required}" \
