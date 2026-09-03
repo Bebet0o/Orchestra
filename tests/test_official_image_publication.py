@@ -276,6 +276,28 @@ class WorkflowContractTest(unittest.TestCase):
         pre_login = self.publish_steps[:login]
         self.assertNotIn("secrets.GITHUB_TOKEN", "\n".join(json.dumps(step) for step in pre_login))
 
+    def test_application_probe_requires_canonical_schema_24_migration(self) -> None:
+        canonical_name = "024_blueprint_apiversion.sql"
+        stale_name = "024_blueprint_api_namespace.sql"
+        probe = self.publish_by_name["Probe validated application image contents"]["run"]
+        required_path = f"/opt/orchestra/app/migrations/{canonical_name}"
+
+        self.assertTrue((ROOT / "migrations" / canonical_name).is_file())
+        self.assertFalse((ROOT / "migrations" / stale_name).exists())
+        self.assertIn(f"test -f {required_path}", probe)
+        self.assertNotIn(stale_name, probe)
+
+        with tempfile.TemporaryDirectory() as directory:
+            absent_path = Path(directory) / "migrations" / canonical_name
+            result = subprocess.run(
+                ["sh", "-ec", f'test -f "{absent_path}"'],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        self.assertNotEqual(result.returncode, 0)
+
     def test_push_reuses_validated_ids_and_records_only_complete_set(self) -> None:
         push = self.publish_by_name["Tag and push exact validated image set"]["run"]
         self.assertEqual(len(re.findall(r"(?m)^\s*docker image push ", push)), 2)

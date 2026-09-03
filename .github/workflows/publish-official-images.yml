@@ -143,7 +143,7 @@ jobs:
             test -x /opt/orchestra/app/scripts/orchestra-appliance.py
             test -f /opt/orchestra/app/controller_api/core.py
             test -f /opt/orchestra/app/console/dist/index.html
-            test -f /opt/orchestra/app/migrations/024_blueprint_api_namespace.sql
+            test -f /opt/orchestra/app/migrations/024_blueprint_apiversion.sql
             test -d /opt/orchestra/app/profiles
             test -d /opt/orchestra/app/specs
             test ! -e /opt/orchestra/app/tests
