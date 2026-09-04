@@ -27,6 +27,41 @@ Dependencies become `READY` only after every parent is `COMPLETED`. A failed
 parent blocks descendants. Tasks from different projects or controller-only
 test actions can run concurrently, bounded by both plan and global limits.
 
+## Planner task graph
+
+The existing planner produces one bounded schema-v1 JSON plan with 1–32
+logical tasks and at most 256 dependency edges. Each task has a stable key,
+human-readable title, graph position, instruction, existing worker-role
+binding, and dependency keys. Planner output is untrusted: Orchestra rejects
+unknown or duplicate keys and edges, unsupported roles, self-dependencies,
+cross-plan edges, excessive graphs, and cycles before activation.
+
+The normalized `orchestration_dependencies` rows are scheduler authority; the
+JSON plan remains provenance rather than the only graph representation. A
+logical task is distinct from its `orchestration_attempts` and from a
+`worker_pool_assignments` capacity claim. Schema 27 records graph activation
+metadata and runtime-neutral task-graph lifecycle events, while query snapshots
+join tasks to assignments and attempts without copying runtime output.
+
+Readiness reconciliation runs in one immediate SQLite transaction to a stable
+fixpoint. A PENDING task becomes READY only when every parent is COMPLETED. A
+FAILED, CANCELLED, or BLOCKED parent makes the task BLOCKED, including
+transitive descendants. Concurrent parent completions cannot create duplicate
+work because WorkerPool has one active assignment per logical task and graph
+dispatch linkage is idempotent.
+
+The responsibility boundary is:
+
+1. Planner creates the validated durable DAG.
+2. Task Graph owns dependency, readiness, blocking, and graph terminality.
+3. The scheduler submits READY work.
+4. WorkerPool alone owns bounded capacity and durable queuing.
+5. AgentRuntime selects HermesRuntime or NativeRuntime for execution.
+
+Graph activation is immutable; this milestone does not rewrite a live graph.
+Shared project context, advanced reviewer/judge behavior, automated recovery
+and retries, model routing, and Console graph visualization remain deferred.
+
 ## Native worker pool
 
 Pipeline tasks enter an Orchestra-owned `WorkerPool`. This is bounded execution
