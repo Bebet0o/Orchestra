@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from worker_pool import WorkerAssignment, WorkerPool
+from shared_context import ContextProjector, canonical_json as context_canonical_json
 import orchestra_review_assignment as ASSIGNMENTS
 
 
@@ -2572,6 +2573,7 @@ def execute_pipeline(
     attempt_id: str,
     instance_id: str,
     config: dict[str, int],
+    context_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     task_directory = (
         RUNTIME
@@ -2582,9 +2584,16 @@ def execute_pipeline(
     )
     task_directory.mkdir(parents=True, mode=0o750)
     instruction_path = task_directory / "worker-instruction.txt"
+    context_path = task_directory / "worker-context.json"
     review_path = task_directory / "review-instruction.txt"
     instruction_path.write_text(task["instruction"] + "\n", encoding="utf-8")
     instruction_path.chmod(0o600)
+    if context_snapshot is not None:
+        context_path.write_text(
+            context_canonical_json(context_snapshot["projection"]),
+            encoding="utf-8",
+        )
+        context_path.chmod(0o600)
     review_path.write_text(build_review_instruction(task), encoding="utf-8")
     review_path.chmod(0o600)
 
@@ -2613,21 +2622,35 @@ def execute_pipeline(
     set_attempt_links(attempt_id, run_id=run_id)
 
     try:
-        worker = run_json(
+        worker_arguments = [
+            str(WORKER),
+            "launch",
+            "--run",
+            run_id,
+            "--role",
+            task["role_id"],
+            "--instruction-file",
+            str(instruction_path),
+        ]
+        if context_snapshot is not None:
+            worker_arguments.extend(
+                [
+                    "--context-file",
+                    str(context_path),
+                    "--context-snapshot",
+                    context_snapshot["context_snapshot_id"],
+                ]
+            )
+        worker_arguments.extend(
             [
-                str(WORKER),
-                "launch",
-                "--run",
-                run_id,
-                "--role",
-                task["role_id"],
-                "--instruction-file",
-                str(instruction_path),
                 "--marker",
                 task["marker"],
                 "--timeout",
                 str(config["worker_timeout_seconds"]),
-            ],
+            ]
+        )
+        worker = run_json(
+            worker_arguments,
             timeout=config["worker_timeout_seconds"] + 120,
         )
         set_attempt_links(
@@ -2826,6 +2849,13 @@ def execute_task(
     heartbeat_thread.start()
 
     try:
+        context_snapshot: dict[str, Any] | None = None
+        if pool_assignment_id is not None:
+            context_snapshot = ContextProjector(connect).freeze_task(
+                task_id=task["orchestration_task_id"],
+                assignment_id=pool_assignment_id,
+                attempt_id=attempt_id,
+            )
         kind = task["kind"]
 
         if kind == "NOOP":
@@ -2853,11 +2883,14 @@ def execute_task(
         elif kind == "TEST_FAIL":
             fail(f"Synthetic failure requested by task {task['task_key']}")
         elif kind == "PIPELINE":
+            if context_snapshot is None:
+                fail("Pipeline task has no immutable context snapshot")
             result = execute_pipeline(
                 task,
                 attempt_id,
                 instance_id,
                 config,
+                context_snapshot,
             )
         else:
             fail(f"Unhandled task kind: {kind}")
@@ -3765,6 +3798,16 @@ def execute_objective_planning(
     marker = "ORCHESTRA_OBJECTIVE_PLAN_OK"
 
     try:
+        context_snapshot = ContextProjector(connect).freeze_planner(
+            objective_id=objective_id,
+            objective_attempt_id=attempt_id,
+        )
+        context_path = directory / "planner-context.json"
+        context_path.write_text(
+            context_canonical_json(context_snapshot["projection"]),
+            encoding="utf-8",
+        )
+        context_path.chmod(0o600)
         result = run_json(
             [
                 str(PLANNER),
@@ -3773,6 +3816,10 @@ def execute_objective_planning(
                 str(objective_path),
                 "--projects",
                 ",".join(projects),
+                "--context-file",
+                str(context_path),
+                "--context-snapshot",
+                context_snapshot["context_snapshot_id"],
                 "--marker",
                 marker,
                 "--status",
