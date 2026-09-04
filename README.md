@@ -64,7 +64,8 @@ Implemented foundations include:
   OpenAI-compatible provider adapter;
 - Blueprint v1 parsing, canonicalization, persistence, immutable revision
   history, API/CLI/Console lifecycle operations, schema migration 22 to 23,
-  the Blueprint namespace migration, and runtime selection schema 25;
+  the Blueprint namespace migration, runtime selection, and worker-pool schema
+  26;
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
