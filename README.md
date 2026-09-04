@@ -22,8 +22,8 @@ for one execution:
 - **AgentRuntime** is the boundary for one planner, worker, or reviewer call.
 - **HermesRuntime** adapts that boundary to the external
   [Hermes Agent](https://github.com/NousResearch/hermes-agent) project.
-- **NativeRuntime** is an implemented, deliberately small provider-backed
-  runtime primitive; it is not yet the default orchestration backend.
+- **NativeRuntime** is an explicitly selectable provider-backed execution path;
+  Hermes remains the backward-compatible default.
 - **ModelProvider** isolates model-generation adapters from Orchestra domain
   state and policy.
 - **Worker environments** resolve to immutable, verified OCI artifacts before
@@ -64,12 +64,12 @@ Implemented foundations include:
   OpenAI-compatible provider adapter;
 - Blueprint v1 parsing, canonicalization, persistence, immutable revision
   history, API/CLI/Console lifecycle operations, schema migration 22 to 23,
-  and the current Blueprint namespace migration to schema 24;
+  the Blueprint namespace migration, and runtime selection schema 25;
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-Foundation-only or planned work includes native runtime selection in the full
-control plane, a native worker pool, parallel specialized workers, richer model
+Foundation-only or planned work includes a native worker pool, parallel
+specialized workers, richer model
 routing, shared context, stronger judge workflows, and broader Console
 operations. Existing components should not be read as a claim that these
 capabilities are complete.
@@ -227,16 +227,7 @@ asset, validation, and pull-request guidance.
 
 ## Roadmap
 
-The current direction includes:
-
-- wiring native runtimes and model selection into the full control plane;
-- native and parallel worker pools;
-- planner and model routing;
-- shared, bounded project context;
-- richer reviewer and judge workflows;
-- broader Console observability and recovery controls;
-- increasing autonomy while preserving explicit authority and fail-closed
-  behavior.
+The product roadmap is maintained in [ROADMAP.md](ROADMAP.md).
 
 Completed distribution and Blueprint foundations are recorded in
 [CHANGELOG.md](CHANGELOG.md). Historical milestone documents remain in the

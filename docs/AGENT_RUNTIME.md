@@ -39,7 +39,7 @@ contains no Hermes, Compose, profile, container-name, or discovery-label field.
 
 `RuntimeEvent` is the runtime-fact side of the boundary. Its envelope is
 limited to a strict `RuntimeEventKind`, the request and role bindings, and an
-aware UTC timestamp. Milestone 2X has exactly two event kinds: `STARTED`
+aware UTC timestamp. The contract has exactly two event kinds: `STARTED`
 reports that runtime pre-invocation validation has completed and backend
 invocation is beginning, and `HEARTBEAT` lets the current worker and reviewer
 consumers refresh their durable liveness. The
@@ -63,6 +63,13 @@ partial failure output to its internally derived journal path using a
 no-follow open. This removes arbitrary path and symlink writes from the public
 runtime contract and makes `FakeRuntime` and `HermesRuntime` obey the same
 output semantics.
+
+Schema 25 stores the selected `runtime_kind` on synchronized roles and snapshots
+it onto planner, worker, and reviewer execution rows. Runtime callbacks are
+appended to `runtime_events`, while the existing execution row remains the
+authority for terminal success or failure (`exit_code`, `failure_reason`, and
+`finished_at`). This lets restart/readback recover both runtime identity and
+terminal state without retaining an in-memory runtime object.
 
 The existing database columns named `runtime_profile` and
 `outer_container_name` remain unchanged for schema and recovery compatibility.
@@ -177,24 +184,42 @@ An unexpected provider exception is also `execution_failed`; its type and
 message are neither retained nor copied. Provider failures have no fabricated
 partial output or process exit status.
 
-NativeRuntime 2Z emits no synthetic `HEARTBEAT` while synchronous
+NativeRuntime emits no synthetic `HEARTBEAT` while synchronous
 `ModelProvider.generate` is blocked and creates no thread or background task.
 The current `RuntimeRequest` has no cancellation primitive, so NativeRuntime
 does not claim to interrupt an in-flight synchronous provider call. Advanced
 liveness and cancellation are future contract work.
 
-The default launch paths still call the centralized `create_runtime` factory,
-which continues to select `HermesRuntime`; 2Z does not integrate NativeRuntime
-into planner, worker, or reviewer. Each launch function also accepts an
-injected `AgentRuntime`. The factory remains
-the sole future configuration seam: adding and selecting another
-implementation does not require edits to planner, worker, reviewer, scheduler,
-integrator, or Recovery.
+## Runtime selection
+
+Runtime selection uses the existing role/profile configuration. Each role may
+contain exactly one bounded selector:
+
+```toml
+runtime = { kind = "hermes" }
+```
+
+The accepted values are `hermes` and `native`. Omitting `runtime` preserves the
+v0.1 behavior and selects Hermes; invalid values and unknown runtime fields are
+rejected. Role synchronization persists the selected kind and fixed existing
+top-level model ID. Every launch resolves its role snapshot and calls the same
+runtime factory before executing the same `RuntimeRequest` flow.
+
+For NativeRuntime, the factory constructs the existing OpenAI-compatible
+provider from `ORCHESTRA_NATIVE_ENDPOINT_URL` and the optional
+`ORCHESTRA_NATIVE_API_KEY`. The endpoint is required only when a native role is
+selected. Tests inject `FakeModelProvider` through the provider abstraction;
+no controller path switches on a concrete provider implementation. There is no
+model router, fallback, retry, worker pool, or multi-model policy here.
+
+`AgentRuntime` is the application boundary for an AI task. `HermesRuntime`
+executes it through external Hermes Agent, while `NativeRuntime` executes it
+directly through `ModelProvider`. The similarly named `orchestra-runtime`
+container is different: it is the sole privileged infrastructure service for
+the private sandbox engine. NativeRuntime selection does not grant privileges,
+mount the host Docker socket, or replace that service.
 
 ## Future direction
 
-NativeRuntime now supplies the primitive execution mechanism without changing
-the scheduler, planner/worker/reviewer domain logic, integrator, or Recovery.
-Future configuration/factory selection and any model-routing policy remain
-separate work. No model router, role-to-model mapping, provider registry,
-fallback, or multi-model policy is implemented by milestone 2Z.
+Native worker pooling, richer liveness and cancellation, recovery loops, and
+model routing remain later roadmap work.

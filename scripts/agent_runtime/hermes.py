@@ -33,6 +33,8 @@ from .contract import (
 class HermesRuntime(AgentRuntime):
     """Map runtime-neutral requests to the installed Hermes CLI container."""
 
+    runtime_kind = "hermes"
+
     def __init__(
         self,
         root: Path,

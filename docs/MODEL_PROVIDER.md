@@ -8,11 +8,10 @@ NativeRuntime -> ModelProvider -> concrete model backend
 ```
 
 `NativeRuntime` receives one provider and one fixed model ID, maps one runtime
-prompt to one user message, and performs one synchronous generation. It does
-not construct providers or route by role. Planner, worker, reviewer, the
-default runtime factory, and `HermesRuntime` remain functionally unchanged;
-control-plane selection of NativeRuntime is later work. No router is
-implemented.
+prompt to one user message, and performs one synchronous generation. The
+control-plane factory now selects it explicitly for roles configured with
+`runtime.kind = "native"`; the runtime itself still does not construct
+providers or route by role. No router is implemented.
 
 ## Public contract
 
@@ -50,7 +49,9 @@ The exact generation endpoint is injected through
 fragments, control characters, and non-ASCII endpoint syntax are rejected.
 An API key is optional, private, excluded from representations, and accepted
 only with HTTPS. It is sent only as `Authorization: Bearer ...`. There is no
-environment-variable or credential-file discovery.
+environment-variable or credential-file discovery inside the adapter. The
+control-plane runtime factory supplies `ORCHESTRA_NATIVE_ENDPOINT_URL` and, if
+present, `ORCHESTRA_NATIVE_API_KEY` as explicit adapter configuration.
 
 The adapter uses Python's standard urllib HTTP and TLS stack. Its concrete
 responses are normalized at the transport boundary into a private frozen
