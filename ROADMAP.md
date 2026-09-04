@@ -5,8 +5,8 @@ real software projects.
 
 ## v0.2.0 — Native Multi-Agent Execution
 
-- NativeRuntime activation
-- Native worker pool
+- NativeRuntime activation — closed
+- Native worker pool — implemented
 - Planner and task graph
 - Shared project context
 - Reviewer and judge
