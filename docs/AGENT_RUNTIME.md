@@ -29,8 +29,11 @@ unavailable runtime, failed execution, timeout, invalid result, and
 cancellation.
 
 The public request carries a typed role, prompt, opaque `runtime_config_id`,
-neutral request identifier, timeout, completion marker, optional sandbox
-facts, and one optional runtime-event sink. `RuntimeSandboxContext`
+neutral request identifier, timeout, completion marker, optional bounded
+schema-versioned structured context, optional sandbox facts, and one optional
+runtime-event sink. HermesRuntime and NativeRuntime receive the same immutable
+structured projection; presentation inside the role prompt is an adapter-level
+detail rather than a second context authority. `RuntimeSandboxContext`
 contains only an absolute workspace, image identity, CPU and memory limits,
 read-only and network policy, the control-plane task identity, and an opaque
 sandbox handle, plus the explicit numeric runtime UID/GID. The task identity is

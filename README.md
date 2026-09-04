@@ -65,15 +65,14 @@ Implemented foundations include:
 - Blueprint v1 parsing, canonicalization, persistence, immutable revision
   history, API/CLI/Console lifecycle operations, schema migration 22 to 23,
   the Blueprint namespace migration, runtime selection, worker-pool schema 26,
-  and planner task-graph schema 27;
+  planner task-graph schema 27, and durable shared-context schema 28;
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-Foundation-only or planned work includes a native worker pool, parallel
-specialized workers, richer model
-routing, shared context, stronger judge workflows, and broader Console
-operations. Existing components should not be read as a claim that these
-capabilities are complete.
+Foundation-only or planned work includes richer model routing, stronger judge
+workflows, automatic context intelligence, and broader Console operations.
+Existing components should not be read as a claim that these capabilities are
+complete.
 
 ## Architecture
 
@@ -83,6 +82,7 @@ Orchestra Console / CLI
           v
 Orchestra Control Plane
   +-- Projects / Objectives / task DAG
+  +-- SharedContextStore --> ContextProjector --> immutable ContextSnapshot
   +-- Blueprint and SandboxProfile lifecycle
   +-- Review / recovery / human approval
   +-- durable SQLite state and Git isolation
@@ -105,7 +105,8 @@ identity. Worker and reviewer preparation share the same materialization and
 verification path.
 
 See [Architecture](docs/ARCHITECTURE.md),
-[Agent runtime](docs/AGENT_RUNTIME.md), and
+[Agent runtime](docs/AGENT_RUNTIME.md),
+[shared project context](docs/SHARED_CONTEXT.md), and
 [worker distribution](docs/distribution/WORKER_IMAGE.md).
 
 ## Orchestra Blueprint
