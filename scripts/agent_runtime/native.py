@@ -54,6 +54,8 @@ _PROVIDER_ERROR_MAPPING = {
 class NativeRuntime(AgentRuntime):
     """Translate one runtime request into one synchronous model generation."""
 
+    runtime_kind = "native"
+
     def __init__(
         self,
         provider: ModelProvider,

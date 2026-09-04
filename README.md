@@ -22,8 +22,8 @@ for one execution:
 - **AgentRuntime** is the boundary for one planner, worker, or reviewer call.
 - **HermesRuntime** adapts that boundary to the external
   [Hermes Agent](https://github.com/NousResearch/hermes-agent) project.
-- **NativeRuntime** is an implemented, deliberately small provider-backed
-  runtime primitive; it is not yet the default orchestration backend.
+- **NativeRuntime** is an explicitly selectable provider-backed execution path;
+  Hermes remains the backward-compatible default.
 - **ModelProvider** isolates model-generation adapters from Orchestra domain
   state and policy.
 - **Worker environments** resolve to immutable, verified OCI artifacts before
@@ -68,8 +68,8 @@ Implemented foundations include:
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-Foundation-only or planned work includes native runtime selection in the full
-control plane, a native worker pool, parallel specialized workers, richer model
+Foundation-only or planned work includes a native worker pool, parallel
+specialized workers, richer model
 routing, shared context, stronger judge workflows, and broader Console
 operations. Existing components should not be read as a claim that these
 capabilities are complete.

@@ -27,6 +27,12 @@ from agent_runtime import (
     create_runtime,
     record_runtime_failure,
 )
+from runtime_control import (
+    persist_runtime_event,
+    require_runtime_state,
+    runtime_from_role,
+    runtime_kind_of,
+)
 import orchestra_review_assignment as ASSIGNMENTS
 from sandbox_backend import (
     SandboxContainerExpectation,
@@ -468,6 +474,7 @@ def reserve_review(
     output_path: Path,
     cpu_limit: int,
     memory_mb: int,
+    runtime_kind: str,
 ) -> None:
     now = WORKER.utc_now()
 
@@ -582,6 +589,15 @@ def reserve_review(
                 now,
                 now,
             ),
+        )
+
+        connection.execute(
+            """
+            UPDATE reviewer_executions
+            SET runtime_kind = ?
+            WHERE execution_id = ?
+            """,
+            (runtime_kind, execution_id),
         )
 
         ASSIGNMENTS.claim_assignment(
@@ -1341,7 +1357,7 @@ def command_launch(
     runtime: AgentRuntime | None = None,
 ) -> None:
     if runtime is None:
-        runtime = create_runtime(ROOT, required_role=RuntimeRole.REVIEWER)
+        require_runtime_state(ROOT)
     validate_controller_schema()
 
     instruction_path = Path(arguments.instruction_file).resolve()
@@ -1369,6 +1385,15 @@ def command_launch(
     with connect() as connection:
         role = load_role(connection, arguments.role)
         run = load_run(connection, arguments.run)
+
+    if runtime is None:
+        runtime_kind, runtime = runtime_from_role(
+            ROOT,
+            role,
+            required_role=RuntimeRole.REVIEWER,
+        )
+    else:
+        runtime_kind = runtime_kind_of(runtime)
 
     repository, worktree, result_commit = verify_transaction(run)
     references_before = git_references(repository)
@@ -1419,6 +1444,7 @@ def command_launch(
         output_path=output_path,
         cpu_limit=cpu_limit,
         memory_mb=memory_mb,
+        runtime_kind=runtime_kind.value,
     )
 
     clone: Path | None = None
@@ -1462,6 +1488,13 @@ def command_launch(
         )
 
         def handle_runtime_event(event: RuntimeEvent) -> None:
+            with connect() as connection:
+                persist_runtime_event(
+                    connection,
+                    execution_id=execution_id,
+                    runtime_kind=runtime_kind,
+                    event=event,
+                )
             if event.kind is RuntimeEventKind.HEARTBEAT:
                 heartbeat(run["run_id"], task_id)
 
@@ -1540,6 +1573,7 @@ def command_launch(
             "role_id": role["role_id"],
             "source_profile": role["profile_name"],
             "runtime_request_id": runtime_request_id,
+            "runtime_kind": runtime_kind.value,
             "sandbox_container_id": sandbox_id,
             "sandbox_image_reference": prepared_environment.image_reference,
             "sandbox_image_digest": prepared_environment.oci_digest,

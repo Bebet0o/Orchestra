@@ -69,6 +69,8 @@ ALLOWED_WORKSPACE_MODES = {
     "controller_only",
 }
 
+ALLOWED_RUNTIME_KINDS = {"hermes", "native"}
+
 IMPLEMENTATION_TOOLSETS = {
     "terminal",
     "file",
@@ -200,6 +202,20 @@ def discover_roles() -> list[dict[str, Any]]:
 
         profile = require_string(table, "profile", role_id)
         kind = require_string(table, "kind", role_id)
+        runtime_table = table.get("runtime", {})
+        if not isinstance(runtime_table, dict):
+            raise RoleError(f"{role_id}: runtime must be a table")
+        unknown_runtime_fields = set(runtime_table) - {"kind"}
+        if unknown_runtime_fields:
+            raise RoleError(
+                f"{role_id}: unknown runtime fields "
+                f"{sorted(unknown_runtime_fields)!r}"
+            )
+        runtime_kind = runtime_table.get("kind", "hermes")
+        if runtime_kind not in ALLOWED_RUNTIME_KINDS:
+            raise RoleError(
+                f"{role_id}: invalid runtime kind {runtime_kind!r}"
+            )
         description = require_string(
             table,
             "description",
@@ -378,6 +394,8 @@ def discover_roles() -> list[dict[str, Any]]:
             "role_id": role_id,
             "profile": profile,
             "kind": kind,
+            "runtime_kind": runtime_kind,
+            "model": document["model"],
             "description": description,
             "reasoning_effort": reasoning_effort,
             "max_turns": max_turns,
@@ -440,6 +458,8 @@ def command_sync() -> None:
                     role_id,
                     profile_name,
                     role_kind,
+                    runtime_kind,
+                    model_id,
                     description,
                     reasoning_effort,
                     max_turns,
@@ -459,12 +479,14 @@ def command_sync() -> None:
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, 1, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?
                 )
                 ON CONFLICT(role_id)
                 DO UPDATE SET
                     profile_name = excluded.profile_name,
                     role_kind = excluded.role_kind,
+                    runtime_kind = excluded.runtime_kind,
+                    model_id = excluded.model_id,
                     description = excluded.description,
                     reasoning_effort =
                         excluded.reasoning_effort,
@@ -487,6 +509,8 @@ def command_sync() -> None:
                     role["role_id"],
                     role["profile"],
                     role["kind"],
+                    role["runtime_kind"],
+                    role["model"],
                     role["description"],
                     role["reasoning_effort"],
                     role["max_turns"],

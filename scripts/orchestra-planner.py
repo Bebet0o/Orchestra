@@ -12,13 +12,22 @@ import uuid
 from pathlib import Path
 from typing import Any, NoReturn
 
+from model_provider import ModelProvider
+
 from agent_runtime import (
     AgentRuntime,
+    RuntimeEvent,
     RuntimeError as AgentRuntimeError,
     RuntimeRequest,
     RuntimeRole,
     create_runtime,
     record_runtime_failure,
+)
+from runtime_control import (
+    persist_runtime_event,
+    require_runtime_state,
+    runtime_from_role,
+    runtime_kind_of,
 )
 
 
@@ -220,6 +229,7 @@ def reserve_execution(
     prompt_path: Path,
     output_path: Path,
     marker: str,
+    runtime_kind: str,
 ) -> None:
     now = utc_now()
     with connect() as connection:
@@ -253,6 +263,14 @@ def reserve_execution(
                 now,
                 now,
             ),
+        )
+        connection.execute(
+            """
+            UPDATE orchestrator_executions
+            SET runtime_kind = ?
+            WHERE execution_id = ?
+            """,
+            (runtime_kind, execution_id),
         )
         connection.commit()
 
@@ -292,9 +310,29 @@ def finish_execution(
 def command_generate(
     arguments: argparse.Namespace,
     runtime: AgentRuntime | None = None,
+    provider: ModelProvider | None = None,
 ) -> None:
+    if runtime is not None and provider is not None:
+        raise ValueError("An injected runtime and provider are mutually exclusive")
     if runtime is None:
-        runtime = create_runtime(ROOT, required_role=RuntimeRole.PLANNER)
+        require_runtime_state(ROOT)
+        with connect() as connection:
+            role = connection.execute(
+                """
+                SELECT * FROM roles
+                WHERE role_id = 'orchestrator' AND enabled = 1
+                """
+            ).fetchone()
+        if role is None:
+            fail("Orchestrator role is unknown or disabled")
+        runtime_kind, runtime = runtime_from_role(
+            ROOT,
+            role,
+            required_role=RuntimeRole.PLANNER,
+            provider=provider,
+        )
+    else:
+        runtime_kind = runtime_kind_of(runtime)
     objective_path = Path(arguments.objective_file).resolve()
     if not objective_path.is_file():
         fail(f"Objective file is absent: {objective_path}")
@@ -336,6 +374,7 @@ def command_generate(
         prompt_path=prompt_path,
         output_path=output_path,
         marker=marker,
+        runtime_kind=runtime_kind.value,
     )
 
     exit_code: int | None = None
@@ -344,6 +383,15 @@ def command_generate(
     failure_reason: str | None = None
 
     try:
+        def handle_runtime_event(event: RuntimeEvent) -> None:
+            with connect() as connection:
+                persist_runtime_event(
+                    connection,
+                    execution_id=execution_id,
+                    runtime_kind=runtime_kind,
+                    event=event,
+                )
+
         runtime_result = runtime.execute(
             RuntimeRequest(
                 role=RuntimeRole.PLANNER,
@@ -352,6 +400,7 @@ def command_generate(
                 request_id=runtime_request_id,
                 timeout_seconds=arguments.timeout,
                 completion_marker=marker,
+                on_event=handle_runtime_event,
             )
         )
         exit_code = 0
@@ -386,6 +435,7 @@ def command_generate(
             "plan_id": plan_id,
             "source_profile": "ops-orchestrator",
             "runtime_request_id": runtime_request_id,
+            "runtime_kind": runtime_kind.value,
             "output_path": str(output_path),
             "marker_found": True,
             "plan_sha256": orchestrator.payload_sha256(plan),

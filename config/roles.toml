@@ -6,6 +6,7 @@ auth_strategy = "shared-root-symlink"
 [roles.orchestrator]
 profile = "ops-orchestrator"
 kind = "orchestrator"
+runtime = { kind = "hermes" }
 description = "Décompose les objectifs en tâches vérifiables, choisit les spécialistes et suit les dépendances sans modifier les projets."
 reasoning_effort = "high"
 max_turns = 30
@@ -21,6 +22,7 @@ memory_mb = 4096
 [roles.worker_code]
 profile = "ops-worker-code"
 kind = "worker"
+runtime = { kind = "hermes" }
 description = "Implémente du code dans un worktree attribué, exécute les contrôles requis et produit un handoff vérifiable."
 reasoning_effort = "high"
 max_turns = 80
@@ -41,6 +43,7 @@ memory_mb = 8192
 [roles.worker_tests]
 profile = "ops-worker-tests"
 kind = "worker"
+runtime = { kind = "hermes" }
 description = "Conçoit et exécute les tests, recherche les régressions et documente précisément toute défaillance."
 reasoning_effort = "high"
 max_turns = 60
@@ -60,6 +63,7 @@ memory_mb = 8192
 [roles.worker_docs]
 profile = "ops-worker-docs"
 kind = "worker"
+runtime = { kind = "hermes" }
 description = "Maintient la documentation technique en s'appuyant uniquement sur le comportement et les preuves réellement observés."
 reasoning_effort = "medium"
 max_turns = 50
@@ -78,6 +82,7 @@ memory_mb = 4096
 [roles.reviewer]
 profile = "ops-reviewer"
 kind = "reviewer"
+runtime = { kind = "hermes" }
 description = "Effectue une revue indépendante et adversariale en lecture seule, puis émet un verdict structuré fondé sur des preuves."
 reasoning_effort = "xhigh"
 max_turns = 60
@@ -97,6 +102,7 @@ memory_mb = 8192
 [roles.recovery]
 profile = "ops-recovery"
 kind = "recovery"
+runtime = { kind = "hermes" }
 description = "Analyse les états interrompus et choisit exclusivement RESUME_SAFE, ROLLBACK_SAFE ou BLOCK_HUMAN."
 reasoning_effort = "high"
 max_turns = 40
