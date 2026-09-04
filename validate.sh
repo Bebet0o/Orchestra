@@ -50,8 +50,10 @@ static_validation() {
         .github/workflows/accept-worker-publication.yml \
         .github/workflows/publish-official-images.yml \
         .github/workflows/accept-official-images.yml \
+        .github/workflows/promote-release-manifest.yml \
         .github/scripts/official_image_publication.py \
         .github/scripts/anonymous_official_image_pull.py \
+        .github/scripts/release_manifest_promotion.py \
         specs/release-manifest-v1.schema.json \
         config/releases/v0.1.0.manifest.template.json \
         tests/test-distribution-contract.sh \
@@ -147,6 +149,7 @@ PY
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_worker_distribution.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_worker_publication.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_official_image_publication.py"
+    PYTHONPATH="$REPO" python3 "${REPO}/tests/test_release_manifest_promotion.py"
     PYTHONPATH="$REPO" python3 "${REPO}/tests/test_trusted_worker_publisher.py"
     "${REPO}/tests/test-install-platform-support.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"

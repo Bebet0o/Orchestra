@@ -1,0 +1,110 @@
+name: Promote accepted Orchestra release manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Exact release version
+        required: true
+        type: string
+      candidate_ref:
+        description: Exact accepted candidate branch ref
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact certified product source revision
+        required: true
+        type: string
+      acceptance_run_id:
+        description: Exact accepted workflow run
+        required: true
+        type: string
+      accepted_artifact_id:
+        description: Exact accepted artifact ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: orchestra-release-manifest-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'bebet0o/Orchestra' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Validate exact promotion request
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
+          ACCEPTED_ARTIFACT_ID: ${{ inputs.accepted_artifact_id }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_VERSION" = 'v0.1.0'
+          test "$CANDIDATE_REF" = 'refs/heads/milestone/0.1-release-distribution-rc2'
+          test "$CANDIDATE_SHA" = '172071c71cf58076e85524b57cfa19ec8e9f5cb8'
+          test "$ACCEPTANCE_RUN_ID" = '33803446425'
+          test "$ACCEPTED_ARTIFACT_ID" = '9911963558'
+
+      - name: Checkout exact certified product source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: certified
+          persist-credentials: false
+
+      - name: Reauthorize candidate branch binding
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(git -C trusted ls-remote --exit-code origin "$CANDIDATE_REF" | awk 'NR == 1 { print $1 }')"
+          test "$remote_sha" = "$CANDIDATE_SHA"
+          test "$(git -C certified rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: Retrieve immutable accepted artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.accepted_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir evidence-input
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}" \
+            >evidence-input/artifact-metadata.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            >evidence-input/artifact.zip
+
+      - name: Promote and prove exact release manifest
+        run: |
+          set -euo pipefail
+          python3 trusted/.github/scripts/release_manifest_promotion.py \
+            --artifact-metadata evidence-input/artifact-metadata.json \
+            --artifact-archive evidence-input/artifact.zip \
+            --certified-installer certified/install.sh \
+            --output-directory promotion
+
+      - name: Upload trusted promotion result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: orchestra-release-manifest-v0.1.0-172071c71cf58076e85524b57cfa19ec8e9f5cb8
+          path: promotion
+          if-no-files-found: error
+          retention-days: 14
