@@ -22,6 +22,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, NoReturn
+
+from worker_pool import WorkerAssignment, WorkerPool
 import orchestra_review_assignment as ASSIGNMENTS
 
 
@@ -224,6 +226,21 @@ def load_config() -> dict[str, int]:
         document = tomllib.load(stream)
 
     section = document.get("orchestrator") or {}
+    pool_section = document.get("worker_pool") or {}
+    if not isinstance(pool_section, dict):
+        fail("worker_pool configuration must be a table")
+    pool_max_concurrency = int(
+        os.environ.get(
+            "ORCHESTRA_WORKER_POOL_MAX_CONCURRENCY",
+            os.environ.get(
+                "ORCHESTRA_ORCHESTRATOR_GLOBAL_PARALLEL_TASKS",
+                pool_section.get(
+                    "max_concurrency",
+                    section.get("global_parallel_tasks", 1),
+                ),
+            ),
+        )
+    )
     result = {
         "poll_seconds": int(
             os.environ.get(
@@ -231,12 +248,8 @@ def load_config() -> dict[str, int]:
                 section.get("poll_seconds", 3),
             )
         ),
-        "global_parallel_tasks": int(
-            os.environ.get(
-                "ORCHESTRA_ORCHESTRATOR_GLOBAL_PARALLEL_TASKS",
-                section.get("global_parallel_tasks", 3),
-            )
-        ),
+        "global_parallel_tasks": pool_max_concurrency,
+        "worker_pool_max_concurrency": pool_max_concurrency,
         "global_parallel_objectives": int(
             os.environ.get(
                 "ORCHESTRA_ORCHESTRATOR_GLOBAL_PARALLEL_OBJECTIVES",
@@ -272,6 +285,7 @@ def load_config() -> dict[str, int]:
     bounds = {
         "poll_seconds": (1, 60),
         "global_parallel_tasks": (1, 16),
+        "worker_pool_max_concurrency": (1, 16),
         "global_parallel_objectives": (1, 16),
         "planning_timeout_seconds": (60, 3600),
         "planning_retry_backoff_seconds": (1, 900),
@@ -2696,11 +2710,17 @@ def execute_task(
     *,
     instance_id: str,
     config: dict[str, int],
+    pool_assignment_id: str | None = None,
+    pool: WorkerPool | None = None,
 ) -> None:
     attempt_id, _, task = reserve_attempt(
         task_id,
         instance_id=instance_id,
     )
+    if pool_assignment_id is not None:
+        if pool is None:
+            fail("Worker pool assignment has no pool authority")
+        pool.bind_attempt(pool_assignment_id, attempt_id)
     heartbeat_stop = threading.Event()
     heartbeat_thread = threading.Thread(
         target=heartbeat_attempt,
@@ -2766,6 +2786,8 @@ def execute_task(
             finish_task_success(task, attempt_id, result)
     except Exception as error:
         finish_task_failure(task, attempt_id, str(error))
+        if pool_assignment_id is not None:
+            raise
     finally:
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=2)
@@ -3871,6 +3893,36 @@ def runnable_tasks(
     return selected
 
 
+def worker_assignment_snapshot(task_id: str) -> tuple[str, str]:
+    """Return the durable role/runtime facts captured by one pool assignment."""
+    with connect() as connection:
+        row = connection.execute(
+            """
+            SELECT task.role_id, role.runtime_kind
+            FROM orchestration_tasks AS task
+            JOIN roles AS role ON role.role_id = task.role_id
+            WHERE task.orchestration_task_id = ?
+              AND task.kind = 'PIPELINE'
+              AND role.enabled = 1
+            """,
+            (task_id,),
+        ).fetchone()
+    if row is None:
+        fail(f"Worker pool task has no enabled role: {task_id}")
+    return str(row[0]), str(row[1])
+
+
+def orchestration_task_kind(task_id: str) -> str:
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT kind FROM orchestration_tasks WHERE orchestration_task_id = ?",
+            (task_id,),
+        ).fetchone()
+    if row is None:
+        fail(f"Unknown orchestration task: {task_id}")
+    return str(row[0])
+
+
 def active_plan_ids() -> list[str]:
     with connect() as connection:
         return [
@@ -3919,19 +3971,45 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
 
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=config["global_parallel_tasks"],
-        thread_name_prefix="orchestra-task",
-    )
     planning_executor = concurrent.futures.ThreadPoolExecutor(
         max_workers=1,
         thread_name_prefix="orchestra-objective",
     )
-    futures: dict[concurrent.futures.Future[None], str] = {}
     planning_futures: dict[concurrent.futures.Future[None], str] = {}
+    controller_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=16,
+        thread_name_prefix="orchestra-controller-task",
+    )
+    controller_futures: dict[concurrent.futures.Future[None], str] = {}
+    pool: WorkerPool
+
+    def dispatch_worker(assignment: WorkerAssignment) -> None:
+        role_id, runtime_kind = worker_assignment_snapshot(assignment.task_id)
+        if (role_id, runtime_kind) != (
+            assignment.role_id,
+            assignment.runtime_kind,
+        ):
+            raise OrchestratorError(
+                "Worker assignment role/runtime snapshot changed before dispatch"
+            )
+        execute_task(
+            assignment.task_id,
+            instance_id=instance_id,
+            config=config,
+            pool_assignment_id=assignment.assignment_id,
+            pool=pool,
+        )
+
+    pool = WorkerPool(
+        connect,
+        dispatch_worker,
+        controller_instance_id=instance_id,
+        max_concurrency=config["worker_pool_max_concurrency"],
+    )
 
     try:
         update_instance(instance_id, status="RUNNING")
+        pool.reconcile()
         reconcile_interrupted_tasks(instance_id)
         reconcile_interrupted_planner_executions()
         reconcile_interrupted_objectives(instance_id)
@@ -4011,16 +4089,18 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
             for plan_id in active_plan_ids():
                 refresh_plan_states(plan_id)
 
-            completed = [future for future in futures if future.done()]
-            for future in completed:
-                task_id = futures.pop(future)
+            completed_controller = [
+                future for future in controller_futures if future.done()
+            ]
+            for future in completed_controller:
+                task_id = controller_futures.pop(future)
                 try:
                     future.result()
                 except Exception as error:
                     print(
                         canonical_json(
                             {
-                                "event": "executor-error",
+                                "event": "controller-task-error",
                                 "task_id": task_id,
                                 "error": str(error),
                             }
@@ -4028,16 +4108,20 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
                         flush=True,
                     )
 
-            capacity = config["global_parallel_tasks"] - len(futures)
-            active_ids = set(futures.values())
-            for task_id in runnable_tasks(active_ids, capacity=capacity):
-                future = executor.submit(
-                    execute_task,
-                    task_id,
-                    instance_id=instance_id,
-                    config=config,
-                )
-                futures[future] = task_id
+            active_ids = pool.active_task_ids() | set(controller_futures.values())
+            for task_id in runnable_tasks(active_ids, capacity=16):
+                if orchestration_task_kind(task_id) == "PIPELINE":
+                    role_id, runtime_kind = worker_assignment_snapshot(task_id)
+                    pool.submit(task_id, role_id, runtime_kind)
+                else:
+                    future = controller_executor.submit(
+                        execute_task,
+                        task_id,
+                        instance_id=instance_id,
+                        config=config,
+                    )
+                    controller_futures[future] = task_id
+            pool.pump()
 
             write_status(instance_id, message="scheduler sweep complete")
             stop_event.wait(config["poll_seconds"])
@@ -4045,7 +4129,8 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
         # Graceful service stops wait for current tasks. SIGKILL is validated
         # separately and is recovered from durable task/attempt records.
         planning_executor.shutdown(wait=True, cancel_futures=False)
-        executor.shutdown(wait=True, cancel_futures=False)
+        controller_executor.shutdown(wait=True, cancel_futures=False)
+        pool.shutdown(wait=True)
         update_instance(instance_id, status="STOPPED", stopped=True)
         write_status(instance_id, message="orchestrator stopped cleanly")
     except BaseException as error:

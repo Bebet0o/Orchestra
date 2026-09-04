@@ -2,7 +2,6 @@ schema_version = 2
 
 [orchestrator]
 poll_seconds = 3
-global_parallel_tasks = 3
 global_parallel_objectives = 2
 planning_timeout_seconds = 900
 planning_retry_backoff_seconds = 30
@@ -12,3 +11,6 @@ review_transport_attempts = 3
 review_retry_backoff_seconds = 15
 command_timeout_seconds = 300
 heartbeat_seconds = 5
+
+[worker_pool]
+max_concurrency = 1
