@@ -54,10 +54,10 @@ with tempfile.TemporaryDirectory() as directory:
         connection.execute("PRAGMA foreign_keys=ON")
         for item in sorted((root / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
             connection.executescript(item.read_text(encoding="utf-8"))
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 27:
-            raise SystemExit("fresh migration did not reach schema 27")
-        if connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] != 27:
-            raise SystemExit("fresh migration ledger did not reach 27")
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 28:
+            raise SystemExit("fresh migration did not reach schema 28")
+        if connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] != 28:
+            raise SystemExit("fresh migration ledger did not reach 28")
         if connection.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise SystemExit("fresh migration quick_check failed")
         required = {
@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory() as directory:
         else:
             raise SystemExit("Blueprint lifecycle migration rerun unexpectedly succeeded")
 
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 27:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 28:
             raise SystemExit("migration rerun changed schema version")
         if connection.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise SystemExit("migration rerun damaged database")

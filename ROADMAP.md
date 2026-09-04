@@ -7,8 +7,8 @@ real software projects.
 
 - NativeRuntime activation — closed
 - Native worker pool — closed
-- Planner and task graph — implemented
-- Shared project context
+- Planner and task graph — closed
+- Shared project context — implemented
 - Reviewer and judge
 - Recovery loop
 - Model router

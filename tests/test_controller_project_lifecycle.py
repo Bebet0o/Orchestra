@@ -119,8 +119,8 @@ class ProjectLifecycleTest(unittest.TestCase):
         ready, reason = self.fixture.store.readiness()
         self.assertTrue(ready, reason)
         with sqlite3.connect(self.fixture.database) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 27)
-            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 27)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 28)
+            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 28)
             columns = {row[1] for row in connection.execute("PRAGMA table_info(projects)")}
             self.assertTrue({"default_branch", "sandbox_profile_id", "archived", "repository_mode", "resource_revision"} <= columns)
 

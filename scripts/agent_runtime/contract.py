@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from oci_reference import (
     is_canonical_oci_digest,
@@ -204,6 +205,7 @@ class RuntimeRequest:
         compare=False,
         repr=False,
     )
+    context: dict[str, Any] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, RuntimeRole):
@@ -245,6 +247,25 @@ class RuntimeRequest:
             raise TypeError("Runtime sandbox must be a RuntimeSandboxContext")
         if self.on_event is not None and not callable(self.on_event):
             raise TypeError("Runtime event sink must be callable")
+        if self.context is not None:
+            if not isinstance(self.context, dict):
+                raise TypeError("Runtime context must be an object")
+            try:
+                canonical_context = json.dumps(
+                    self.context,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+                normalized_context = json.loads(canonical_context)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Runtime context must be JSON-compatible") from error
+            if not isinstance(normalized_context, dict):
+                raise TypeError("Runtime context must be an object")
+            if len(canonical_context.encode("utf-8")) > 65_536:
+                raise ValueError("Runtime context exceeds 64 KiB")
+            object.__setattr__(self, "context", normalized_context)
         if self.role is RuntimeRole.PLANNER and self.sandbox is not None:
             raise ValueError("Planner runtime request must not carry a task sandbox")
         if self.role is not RuntimeRole.PLANNER and self.sandbox is None:

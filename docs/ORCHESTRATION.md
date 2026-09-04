@@ -59,8 +59,39 @@ The responsibility boundary is:
 5. AgentRuntime selects HermesRuntime or NativeRuntime for execution.
 
 Graph activation is immutable; this milestone does not rewrite a live graph.
-Shared project context, advanced reviewer/judge behavior, automated recovery
-and retries, model routing, and Console graph visualization remain deferred.
+Advanced reviewer/judge behavior, automated recovery and retries, model
+routing, and Console graph visualization remain deferred.
+
+## Shared project context
+
+Schema 28 adds append-only `PROJECT` and `OBJECTIVE` knowledge through
+`SharedContextStore`. `ContextProjector` constructs one deterministic,
+runtime-neutral schema-v1 projection for planner, worker, and future reviewer
+consumers. Worker projections contain objective identity and instruction, the
+current logical task, eligible explicit entries, and bounded references plus
+excerpts for direct completed dependency results. They never traverse all DAG
+ancestors or copy runtime/event history.
+
+The projection limit is 64 KiB by default, with at most 64 explicit entries,
+16 KiB per entry, and an 8 KiB excerpt per dependency result. Mandatory
+objective/task identity is never truncated; if it cannot fit, dispatch fails.
+When lower-priority data is omitted, the projection reports
+`budget_exhausted` and `omitted_count`. Priority is core task data, direct
+dependency results, objective entries, then project entries. Stable graph
+positions and context sequence IDs define ordering.
+
+A canonical JSON projection and SHA-256 hash are frozen into an immutable
+`context_snapshots` row after WorkerPool claims capacity and the concrete task
+attempt is reserved and bound, but before AgentRuntime starts. A task that is
+only queued can therefore see newer eligible entries; a started attempt can
+never have its historical snapshot rewritten. Snapshot source rows retain the
+exact context-entry and dependency-task IDs used. Planner snapshots follow the
+same rule when their objective attempt starts. Restart readback reuses the
+attempt-bound snapshot rather than recomputing it.
+
+Task Graph remains dependency/readiness authority, WorkerPool remains capacity
+authority, and AgentRuntime remains execution authority. Shared context adds no
+worker-to-worker transport.
 
 ## Native worker pool
 
