@@ -470,6 +470,14 @@ def validate_plan(
             fail(f"Task {key} contains duplicate dependencies")
         if key in dependencies:
             fail(f"Task {key} depends on itself")
+        if len(dependencies) > 32:
+            fail(f"Task {key} exceeds 32 dependencies")
+
+        title = raw.get("title", key)
+        if not isinstance(title, str) or not title.strip():
+            fail(f"Task {key} title is required")
+        if len(title.encode()) > 256:
+            fail(f"Task {key} title exceeds 256 bytes")
 
         instruction = raw.get("instruction", "")
         if not isinstance(instruction, str):
@@ -534,6 +542,7 @@ def validate_plan(
         normalized.append(
             {
                 "key": key,
+                "title": title.strip(),
                 "kind": kind,
                 "project_id": project_id,
                 "role_id": role_id,
@@ -554,6 +563,9 @@ def validate_plan(
                 f"Task {task['key']} has unknown dependencies: "
                 + ", ".join(sorted(unknown))
             )
+
+    if sum(len(task["dependencies"]) for task in normalized) > 256:
+        fail("Plan exceeds 256 dependency edges")
 
     order = topological_order(normalized)
     by_key = {task["key"]: task for task in normalized}
@@ -589,6 +601,34 @@ def validate_plan(
         "max_parallel_tasks": maximum,
         "tasks": ordered_tasks,
     }
+
+
+def add_graph_event(
+    connection: sqlite3.Connection,
+    *,
+    plan_id: str,
+    task_id: str | None,
+    event_kind: str,
+    assignment_id: str | None = None,
+    attempt_id: str | None = None,
+    now: str | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO task_graph_events (
+            plan_id, orchestration_task_id, assignment_id,
+            attempt_id, event_kind, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            plan_id,
+            task_id,
+            assignment_id,
+            attempt_id,
+            event_kind,
+            now or utc_now(),
+        ),
+    )
 
 
 def insert_plan(
@@ -628,9 +668,12 @@ def insert_plan(
                 started_at,
                 heartbeat_at,
                 finished_at,
-                last_error
+                last_error,
+                graph_schema_version,
+                graph_activated_at
             )
-            VALUES (?, ?, ?, 'orchestrator', ?, ?, ?, ?, ?, NULL, ?, NULL, NULL)
+            VALUES (?, ?, ?, 'orchestrator', ?, ?, ?, ?, ?, NULL, ?, NULL, NULL,
+                    1, ?)
             """,
             (
                 plan_id,
@@ -642,10 +685,11 @@ def insert_plan(
                 plan_text,
                 now,
                 now,
+                now if initial_status == "READY" else None,
             ),
         )
 
-        for task in plan["tasks"]:
+        for graph_position, task in enumerate(plan["tasks"]):
             connection.execute(
                 """
                 INSERT INTO orchestration_tasks (
@@ -667,11 +711,13 @@ def insert_plan(
                     created_at,
                     started_at,
                     heartbeat_at,
-                    finished_at
+                    finished_at,
+                    title,
+                    graph_position
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, 0,
-                    '{}', NULL, ?, NULL, NULL, NULL
+                    '{}', NULL, ?, NULL, NULL, NULL, ?, ?
                 )
                 """,
                 (
@@ -687,7 +733,16 @@ def insert_plan(
                     task["marker"],
                     task["max_attempts"],
                     now,
+                    task.get("title", task["key"]),
+                    graph_position,
                 ),
+            )
+            add_graph_event(
+                connection,
+                plan_id=plan_id,
+                task_id=task_ids[task["key"]],
+                event_kind="CREATED",
+                now=now,
             )
 
         for task in plan["tasks"]:
@@ -921,64 +976,76 @@ def refresh_plan_states(plan_id: str) -> None:
             connection.rollback()
             return
 
-        tasks = connection.execute(
-            """
-            SELECT *
-            FROM orchestration_tasks
-            WHERE plan_id = ?
-            ORDER BY priority, created_at
-            """,
-            (plan_id,),
-        ).fetchall()
-
-        for task in tasks:
-            if task["status"] != "PENDING":
-                continue
-
-            parents = connection.execute(
+        while True:
+            changed = False
+            pending = connection.execute(
                 """
-                SELECT parent.status
-                FROM orchestration_dependencies AS dependency
-                JOIN orchestration_tasks AS parent
-                  ON parent.orchestration_task_id = dependency.depends_on_task_id
-                WHERE dependency.orchestration_task_id = ?
+                SELECT * FROM orchestration_tasks
+                WHERE plan_id = ? AND status = 'PENDING'
+                ORDER BY graph_position
                 """,
-                (task["orchestration_task_id"],),
+                (plan_id,),
             ).fetchall()
-            parent_statuses = {row["status"] for row in parents}
+            for task in pending:
+                parents = connection.execute(
+                    """
+                    SELECT parent.status
+                    FROM orchestration_dependencies AS dependency
+                    JOIN orchestration_tasks AS parent
+                      ON parent.orchestration_task_id = dependency.depends_on_task_id
+                    WHERE dependency.orchestration_task_id = ?
+                    """,
+                    (task["orchestration_task_id"],),
+                ).fetchall()
+                parent_statuses = {row["status"] for row in parents}
 
-            if parent_statuses & {"FAILED", "BLOCKED", "CANCELLED"}:
-                connection.execute(
-                    """
-                    UPDATE orchestration_tasks
-                    SET status = 'BLOCKED',
-                        failure_reason = 'dependency did not complete successfully',
-                        heartbeat_at = ?,
-                        finished_at = ?
-                    WHERE orchestration_task_id = ?
-                      AND status = 'PENDING'
-                    """,
-                    (now, now, task["orchestration_task_id"]),
-                )
-                add_event(
-                    connection,
-                    plan_id=plan_id,
-                    task_id=task["orchestration_task_id"],
-                    event_type="ORCHESTRATION_TASK_BLOCKED",
-                    severity="WARNING",
-                    payload={"reason": "dependency-failed"},
-                )
-            elif all(status == "COMPLETED" for status in parent_statuses):
-                connection.execute(
-                    """
-                    UPDATE orchestration_tasks
-                    SET status = 'READY',
-                        heartbeat_at = ?
-                    WHERE orchestration_task_id = ?
-                      AND status = 'PENDING'
-                    """,
-                    (now, task["orchestration_task_id"]),
-                )
+                if parent_statuses & {"FAILED", "BLOCKED", "CANCELLED"}:
+                    new_status = "BLOCKED"
+                    updated = connection.execute(
+                        """
+                        UPDATE orchestration_tasks
+                        SET status = 'BLOCKED',
+                            failure_reason = 'dependency did not complete successfully',
+                            heartbeat_at = ?,
+                            finished_at = ?
+                        WHERE orchestration_task_id = ?
+                          AND status = 'PENDING'
+                        """,
+                        (now, now, task["orchestration_task_id"]),
+                    ).rowcount
+                    if updated:
+                        add_event(
+                            connection,
+                            plan_id=plan_id,
+                            task_id=task["orchestration_task_id"],
+                            event_type="ORCHESTRATION_TASK_BLOCKED",
+                            severity="WARNING",
+                            payload={"reason": "dependency-failed"},
+                        )
+                elif all(status == "COMPLETED" for status in parent_statuses):
+                    new_status = "READY"
+                    updated = connection.execute(
+                        """
+                        UPDATE orchestration_tasks
+                        SET status = 'READY', heartbeat_at = ?
+                        WHERE orchestration_task_id = ? AND status = 'PENDING'
+                        """,
+                        (now, task["orchestration_task_id"]),
+                    ).rowcount
+                else:
+                    continue
+
+                if updated:
+                    add_graph_event(
+                        connection,
+                        plan_id=plan_id,
+                        task_id=task["orchestration_task_id"],
+                        event_kind=new_status,
+                        now=now,
+                    )
+                    changed = True
+            if not changed:
+                break
 
         statuses = [
             row[0]
@@ -1249,6 +1316,14 @@ def reserve_attempt(
                 "attempt_number": attempt_number,
                 "kind": task["kind"],
             },
+        )
+        add_graph_event(
+            connection,
+            plan_id=task["plan_id"],
+            task_id=task_id,
+            attempt_id=attempt_id,
+            event_kind="RUNNING",
+            now=now,
         )
         connection.commit()
 
@@ -1553,6 +1628,14 @@ def finish_task_success(
             event_type="ORCHESTRATION_TASK_COMPLETED",
             severity="INFO",
             payload={"attempt_id": attempt_id},
+        )
+        add_graph_event(
+            connection,
+            plan_id=task["plan_id"],
+            task_id=task["orchestration_task_id"],
+            attempt_id=attempt_id,
+            event_kind="COMPLETED",
+            now=now,
         )
         connection.commit()
 
@@ -2040,6 +2123,14 @@ def finish_task_failure(
                 "failure_reason": error,
                 "retry": retry,
             },
+        )
+        add_graph_event(
+            connection,
+            plan_id=task["plan_id"],
+            task_id=task["orchestration_task_id"],
+            attempt_id=attempt_id,
+            event_kind=next_status,
+            now=now,
         )
         connection.commit()
 
@@ -3294,11 +3385,12 @@ def promote_planned_objective(objective_id: str) -> str | None:
                 """
                 UPDATE orchestration_plans
                 SET status = 'READY',
+                    graph_activated_at = COALESCE(graph_activated_at, ?),
                     heartbeat_at = ?,
                     last_error = NULL
                 WHERE plan_id = ? AND status = 'DRAFT'
                 """,
-                (now, row["plan_id"]),
+                (now, now, row["plan_id"]),
             )
             new = "RUNNING"
             error = None
@@ -3521,11 +3613,12 @@ def finish_objective_planning_success(
                 """
                 UPDATE orchestration_plans
                 SET status = 'READY',
+                    graph_activated_at = COALESCE(graph_activated_at, ?),
                     heartbeat_at = ?,
                     last_error = NULL
                 WHERE plan_id = ? AND status = 'DRAFT'
                 """,
-                (now, plan_id),
+                (now, now, plan_id),
             )
             new = "RUNNING"
             finished_at = None
@@ -3923,6 +4016,89 @@ def orchestration_task_kind(task_id: str) -> str:
     return str(row[0])
 
 
+def record_task_dispatch(task_id: str, assignment_id: str) -> None:
+    """Idempotently link one logical task to its durable pool assignment."""
+    with connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        inserted = connection.execute(
+            """
+            INSERT OR IGNORE INTO task_graph_events (
+                plan_id, orchestration_task_id, assignment_id,
+                attempt_id, event_kind, created_at
+            )
+            SELECT plan_id, orchestration_task_id, ?, NULL, 'DISPATCHED', ?
+            FROM orchestration_tasks
+            WHERE orchestration_task_id = ?
+            """,
+            (assignment_id, utc_now(), task_id),
+        ).rowcount
+        if inserted not in {0, 1}:
+            connection.rollback()
+            fail("Task graph dispatch linkage was not singular")
+        connection.commit()
+
+
+def task_graph_snapshot(plan_id: str) -> dict[str, Any]:
+    """Return queryable logical tasks, edges, and execution linkage."""
+    with connect() as connection:
+        plan = connection.execute(
+            "SELECT * FROM orchestration_plans WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()
+        if plan is None:
+            fail(f"Unknown orchestration plan: {plan_id}")
+        tasks = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT * FROM orchestration_tasks
+                WHERE plan_id = ? ORDER BY graph_position
+                """,
+                (plan_id,),
+            ).fetchall()
+        ]
+        edges = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT child.task_key AS task_key,
+                       parent.task_key AS depends_on
+                FROM orchestration_dependencies AS dependency
+                JOIN orchestration_tasks AS child
+                  ON child.orchestration_task_id = dependency.orchestration_task_id
+                JOIN orchestration_tasks AS parent
+                  ON parent.orchestration_task_id = dependency.depends_on_task_id
+                WHERE dependency.plan_id = ?
+                ORDER BY child.graph_position, parent.graph_position
+                """,
+                (plan_id,),
+            ).fetchall()
+        ]
+        assignments = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT task.task_key, assignment.*,
+                       attempt.status AS attempt_status
+                FROM worker_pool_assignments AS assignment
+                JOIN orchestration_tasks AS task
+                  ON task.orchestration_task_id = assignment.orchestration_task_id
+                LEFT JOIN orchestration_attempts AS attempt
+                  ON attempt.attempt_id = assignment.attempt_id
+                WHERE task.plan_id = ?
+                ORDER BY assignment.queue_sequence
+                """,
+                (plan_id,),
+            ).fetchall()
+        ]
+    return {
+        "plan": dict(plan),
+        "tasks": tasks,
+        "dependencies": edges,
+        "assignments": assignments,
+    }
+
+
 def active_plan_ids() -> list[str]:
     with connect() as connection:
         return [
@@ -3936,6 +4112,12 @@ def active_plan_ids() -> list[str]:
                 """
             ).fetchall()
         ]
+
+
+def reconcile_task_graph() -> None:
+    """Recompute durable READY/BLOCKED/terminal graph state idempotently."""
+    for plan_id in active_plan_ids():
+        refresh_plan_states(plan_id)
 
 
 def daemon_loop(arguments: argparse.Namespace) -> None:
@@ -4011,6 +4193,7 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
         update_instance(instance_id, status="RUNNING")
         pool.reconcile()
         reconcile_interrupted_tasks(instance_id)
+        reconcile_task_graph()
         reconcile_interrupted_planner_executions()
         reconcile_interrupted_objectives(instance_id)
         write_status(instance_id, message="orchestrator started")
@@ -4112,7 +4295,8 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
             for task_id in runnable_tasks(active_ids, capacity=16):
                 if orchestration_task_kind(task_id) == "PIPELINE":
                     role_id, runtime_kind = worker_assignment_snapshot(task_id)
-                    pool.submit(task_id, role_id, runtime_kind)
+                    assignment_id = pool.submit(task_id, role_id, runtime_kind)
+                    record_task_dispatch(task_id, assignment_id)
                 else:
                     future = controller_executor.submit(
                         execute_task,

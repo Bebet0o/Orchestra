@@ -189,6 +189,7 @@ The JSON contract is:
   "tasks": [
     {{
       "key": "short_lowercase_key",
+      "title": "short human-readable task title",
       "kind": "PIPELINE",
       "project_id": "one available project id",
       "role_id": "one allowed worker role",
@@ -205,6 +206,7 @@ The JSON contract is:
 Rules:
 - Use only PIPELINE tasks.
 - Use 1 to 8 tasks.
+- Use at most 32 dependencies per task and 256 dependency edges in total.
 - Dependencies must form an acyclic graph.
 - Each task must be independently reviewable and produce one Git commit.
 - A project has writer concurrency 1, so same-project write tasks must be

@@ -225,7 +225,7 @@ class ApplianceDistributionTest(unittest.TestCase):
 
     def test_schema_and_blueprint_authorities_are_current(self) -> None:
         migrations = sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql"))
-        self.assertEqual(int(migrations[-1].name[:3]), 26)
+        self.assertEqual(int(migrations[-1].name[:3]), 27)
         blueprint = (ROOT / "controller_api/blueprint.py").read_text(encoding="utf-8")
         self.assertIn('API_VERSION = "orchestra.dev/v1"', blueprint)
 
