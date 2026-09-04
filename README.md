@@ -227,16 +227,7 @@ asset, validation, and pull-request guidance.
 
 ## Roadmap
 
-The current direction includes:
-
-- wiring native runtimes and model selection into the full control plane;
-- native and parallel worker pools;
-- planner and model routing;
-- shared, bounded project context;
-- richer reviewer and judge workflows;
-- broader Console observability and recovery controls;
-- increasing autonomy while preserving explicit authority and fail-closed
-  behavior.
+The product roadmap is maintained in [ROADMAP.md](ROADMAP.md).
 
 Completed distribution and Blueprint foundations are recorded in
 [CHANGELOG.md](CHANGELOG.md). Historical milestone documents remain in the
