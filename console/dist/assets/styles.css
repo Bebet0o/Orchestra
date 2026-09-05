@@ -321,3 +321,17 @@ summary { cursor: pointer; color: var(--accent); font-weight: 700; }
   .execution-grid, .execution-task-list { grid-template-columns: 1fr; }
   .execution-wide { grid-column: auto; }
 }
+
+
+/* v0.2-H Reviewer / Judge / Recovery console */
+.review-panel { margin-top: 1rem; }
+.review-grid { display: grid; grid-template-columns: minmax(18rem, 0.72fr) minmax(24rem, 1.28fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.review-detail-card { min-height: 15rem; }
+.review-wide { grid-column: 1 / -1; }
+.review-recovery-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.state-badge[data-state="approved"], .state-badge[data-state="resumed"], .state-badge[data-state="assessed"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="rolled_back"], .state-badge[data-state="metadata"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
+@media (max-width: 920px) {
+  .review-grid, .review-recovery-list { grid-template-columns: 1fr; }
+  .review-wide { grid-column: auto; }
+}

@@ -16,6 +16,7 @@ const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{1,62}$/;
 const SANDBOX_ID_PATTERN = /^sandbox-[0-9a-f]{32}$/;
 const OBJECTIVE_ID_PATTERN = /^objective-[0-9a-f]{32}$/;
 const PLAN_ID_PATTERN = /^plan-[0-9a-f]{32}$/;
+const REVIEW_ID_PATTERN = /^review-[0-9a-f]{32}$/;
 const OPERATION_ID_PATTERN = /^operation-[0-9a-f]{32}$/;
 const PROJECT_COMMANDS = new Set(["enable", "disable", "rescan", "archive"]);
 const OBJECTIVE_COMMANDS = new Set(["pause", "resume", "cancel"]);
@@ -85,6 +86,16 @@ function planId(value) {
     throw new ControllerClientError("Identifiant plan invalide.", {
       status: 400,
       code: "invalid_plan_id",
+    });
+  }
+  return value;
+}
+
+function reviewId(value) {
+  if (typeof value !== "string" || !REVIEW_ID_PATTERN.test(value)) {
+    throw new ControllerClientError("Identifiant review invalide.", {
+      status: 400,
+      code: "invalid_review_id",
     });
   }
   return value;
@@ -436,6 +447,18 @@ export function createControllerClient() {
     },
     async reviews() {
       return collection(await request("reviews"));
+    },
+    async review(identifier) {
+      return dataObject(await request({
+        method: "GET",
+        path: `/api/v1/reviews/${reviewId(identifier)}`,
+      }));
+    },
+    async reviewEvidence(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/reviews/${reviewId(identifier)}/evidence`,
+      }));
     },
     async recoveries() {
       return collection(await request("recoveries"));

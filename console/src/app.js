@@ -34,7 +34,7 @@ const routes = Object.freeze({
   "/reviews": {
     key: "reviews",
     title: "Reviews",
-    message: "Les décisions humaines et Recovery seront disponibles au jalon 2W.",
+    message: "Connectez-vous pour lire les reviews, preuves expurgées, assignations reviewer et Recovery.",
   },
   "/events": {
     key: "events",
@@ -138,6 +138,23 @@ const executionDependencyCount = document.getElementById("execution-dependency-c
 const executionDependencyList = document.getElementById("execution-dependency-list");
 const executionAttemptCount = document.getElementById("execution-attempt-count");
 const executionAttemptList = document.getElementById("execution-attempt-list");
+const reviewPanel = document.getElementById("review-panel");
+const reviewRefresh = document.getElementById("review-refresh");
+const reviewStatus = document.getElementById("review-status");
+const reviewCoverage = document.getElementById("review-coverage");
+const reviewCount = document.getElementById("review-count");
+const reviewList = document.getElementById("review-list");
+const reviewDetailCard = document.getElementById("review-detail-card");
+const reviewDetailTitle = document.getElementById("review-detail-title");
+const reviewDetailState = document.getElementById("review-detail-state");
+const reviewDetailMeta = document.getElementById("review-detail-meta");
+const reviewDetailFacts = document.getElementById("review-detail-facts");
+const reviewEvidenceCount = document.getElementById("review-evidence-count");
+const reviewEvidenceList = document.getElementById("review-evidence-list");
+const reviewAssignmentCount = document.getElementById("review-assignment-count");
+const reviewAssignmentList = document.getElementById("review-assignment-list");
+const reviewRecoveryCount = document.getElementById("review-recovery-count");
+const reviewRecoveryList = document.getElementById("review-recovery-list");
 
 const dashboardResources = Object.freeze([
   Object.freeze({ key: "projects", load: () => client.projects() }),
@@ -181,6 +198,10 @@ let executionLoading = false;
 let executionGeneration = 0;
 let executionsLoaded = false;
 let selectedPlanId = "";
+let reviewLoading = false;
+let reviewGeneration = 0;
+let reviewsLoaded = false;
+let selectedReviewId = "";
 
 function canonicalPath(pathname) {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -220,12 +241,14 @@ function displayFunctionalPanel() {
   const blueprintsRoute = key === "blueprints";
   const objectivesRoute = key === "objectives";
   const executionsRoute = key === "executions";
+  const reviewsRoute = key === "reviews";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
   executionPanel.hidden = !executionsRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute);
+  reviewPanel.hidden = !reviewsRoute || !authenticated;
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -259,6 +282,9 @@ function render(pathname, focusMain = false) {
   if (route.key === "executions" && authenticated && !executionsLoaded) {
     void refreshExecutions();
   }
+  if (route.key === "reviews" && authenticated && !reviewsLoaded) {
+    void refreshReviews();
+  }
 
   if (focusMain) {
     document.getElementById("main-content").focus({ preventScroll: true });
@@ -281,6 +307,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   clearBlueprintState();
   clearObjectiveState();
   clearExecutionState();
+  clearReviewState();
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
   sessionDetail.textContent = message;
@@ -322,6 +349,9 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "executions") {
     void refreshExecutions();
   }
+  if (currentRoute().key === "reviews") {
+    void refreshReviews();
+  }
 }
 
 function showUnavailable(error) {
@@ -334,6 +364,7 @@ function showUnavailable(error) {
   clearBlueprintState();
   clearObjectiveState();
   clearExecutionState();
+  clearReviewState();
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
   const requestSuffix = error instanceof ControllerClientError && error.requestId
@@ -1712,6 +1743,264 @@ async function refreshExecutions() {
   }
 }
 
+function clearReviewState() {
+  reviewGeneration += 1;
+  reviewLoading = false;
+  reviewsLoaded = false;
+  selectedReviewId = "";
+  reviewRefresh.disabled = false;
+  reviewCount.textContent = "0";
+  reviewEvidenceCount.textContent = "0";
+  reviewAssignmentCount.textContent = "0";
+  reviewRecoveryCount.textContent = "0";
+  reviewList.replaceChildren();
+  reviewEvidenceList.replaceChildren();
+  reviewAssignmentList.replaceChildren();
+  reviewRecoveryList.replaceChildren();
+  reviewDetailFacts.replaceChildren();
+  reviewDetailCard.hidden = true;
+  reviewCoverage.textContent = "Premières pages bornées du Controller.";
+}
+
+function setReviewBusy(busy) {
+  reviewLoading = busy;
+  reviewRefresh.disabled = busy;
+  reviewList.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+function renderReviewList(collection) {
+  reviewList.replaceChildren();
+  reviewCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewList, "Aucune review visible.");
+    return;
+  }
+  for (const review of collection.items) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    const state = document.createElement("span");
+    const identifier = safeId(review, "review");
+    button.type = "button";
+    button.dataset.reviewId = identifier;
+    button.className = "project-list-button";
+    button.disabled = reviewLoading;
+    if (identifier === selectedReviewId) {
+      button.setAttribute("aria-current", "true");
+    }
+    heading.textContent = safeText(review.summary, identifier, 180);
+    detail.textContent = `${identifier} · ${safeText(review.verdict, "verdict inconnu", 32)} · ${safeText(review.project_id, "projet inconnu", 63)}`;
+    state.className = "state-badge";
+    state.dataset.state = safeState(review);
+    state.textContent = safeState(review);
+    button.append(heading, detail, state);
+    item.append(button);
+    reviewList.append(item);
+  }
+}
+
+function appendReviewFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  reviewDetailFacts.append(wrapper);
+}
+
+function renderReviewDetail(review, evidence) {
+  selectedReviewId = safeId(review, "");
+  reviewDetailCard.hidden = false;
+  reviewDetailTitle.textContent = safeText(review.summary, selectedReviewId || "Review", 180);
+  const state = safeState(review);
+  reviewDetailState.dataset.state = state;
+  reviewDetailState.textContent = state;
+  reviewDetailMeta.textContent = `${selectedReviewId} · ${safeText(review.project_id, "projet inconnu", 63)} · ${safeText(review.run_id, "run inconnu", 96)}`;
+  reviewDetailFacts.replaceChildren();
+  appendReviewFact("Verdict", safeText(review.verdict, "inconnu", 32));
+  appendReviewFact("Décision", safeText(review.decision, "non liée", 32));
+
+  const reviewer = review && typeof review.reviewer === "object" && review.reviewer !== null
+    ? review.reviewer
+    : null;
+  appendReviewFact(
+    "Reviewer",
+    reviewer
+      ? `${safeText(reviewer.role_id, "rôle inconnu", 63)} · ${safeText(reviewer.source_profile, "profil inconnu", 63)}`
+      : "Aucune exécution reviewer liée",
+  );
+  appendReviewFact(
+    "Isolation reviewer",
+    reviewer
+      ? `${safeText(reviewer.workspace_mode, "inconnue", 32)} · réseau ${reviewer.network_enabled === false ? "désactivé" : "état inconnu"}`
+      : "Non applicable",
+  );
+
+  const integration = review && typeof review.integration === "object" && review.integration !== null
+    ? review.integration
+    : null;
+  appendReviewFact(
+    "Intégration",
+    integration
+      ? `${safeText(integration.status, "inconnue", 32)} · ${safeText(integration.id, "id inconnu", 96)}`
+      : "Aucune intégration liée",
+  );
+  appendReviewFact(
+    "Snapshot",
+    integration
+      ? `vérifié ${integration.snapshot_verified === true ? "oui" : "non"} · review courante ${integration.review_current === true ? "oui" : "non"}`
+      : "Non applicable",
+  );
+
+  reviewEvidenceList.replaceChildren();
+  reviewEvidenceCount.textContent = String(evidence.items.length);
+  if (evidence.items.length === 0) {
+    appendEmpty(reviewEvidenceList, "Aucune métadonnée de preuve publique pour cette review.");
+  } else {
+    for (const entry of evidence.items) {
+      appendOperationalItem(reviewEvidenceList, {
+        label: safeText(entry.kind, "preuve", 64),
+        title: safeText(entry.name, safeId(entry, "preuve"), 96),
+        state: entry.raw_content_available === true ? "available" : "metadata",
+        detail: `${safeId(entry, "preuve")} · SHA-256 ${safeText(entry.sha256, "indisponible", 64)} · contenu brut non exposé`,
+      });
+    }
+  }
+}
+
+function renderReviewAssignments(collection) {
+  reviewAssignmentList.replaceChildren();
+  reviewAssignmentCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewAssignmentList, "Aucune assignation reviewer visible.");
+    return;
+  }
+  for (const assignment of collection.items) {
+    const reviewLink = typeof assignment.review_id === "string"
+      ? ` · review ${safeText(assignment.review_id, "inconnue", 96)}`
+      : " · review non liée";
+    appendOperationalItem(reviewAssignmentList, {
+      label: `Assignation ${integerOrZero(assignment.assignment_number)}`,
+      title: safeText(assignment.role_id, safeId(assignment, "reviewer"), 63),
+      state: safeState(assignment),
+      detail: `${safeText(assignment.task_id, "tâche inconnue", 96)} · ${safeText(assignment.run_id, "run inconnu", 96)}${reviewLink}`,
+    });
+  }
+}
+
+function renderRecoveries(collection) {
+  reviewRecoveryList.replaceChildren();
+  reviewRecoveryCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewRecoveryList, "Aucune exécution Recovery visible.");
+    return;
+  }
+  for (const recovery of collection.items) {
+    const actions = recovery && typeof recovery.actions === "object" && recovery.actions !== null
+      ? recovery.actions
+      : {};
+    appendOperationalItem(reviewRecoveryList, {
+      label: "Recovery",
+      title: safeText(recovery.project_id, safeId(recovery, "recovery"), 63),
+      state: safeState(recovery),
+      detail: `${safeText(recovery.decision, "décision inconnue", 32)} · ${safeText(recovery.outcome, "issue inconnue", 32)} · ${integerOrZero(actions.count)} action(s) expurgée(s)`,
+    });
+  }
+}
+
+function updateReviewCoverage(reviews, assignments, recoveries) {
+  const truncated = [reviews, assignments, recoveries].filter((collection) => collection.truncated).length;
+  reviewCoverage.textContent = truncated
+    ? `${truncated} collection(s) possèdent une page suivante ; la Console n’extrapole aucun élément absent.`
+    : "Reviews, assignations reviewer et Recovery complets pour leurs premières pages selon le Controller.";
+}
+
+async function selectReview(identifier) {
+  if (!authenticated || reviewLoading) {
+    return;
+  }
+  setReviewBusy(true);
+  reviewStatus.textContent = `Lecture de la review ${safeText(identifier, "sélectionnée", 96)}…`;
+  reviewDetailCard.hidden = true;
+  reviewEvidenceList.replaceChildren();
+  reviewEvidenceCount.textContent = "0";
+  try {
+    const [review, evidence, reviews] = await Promise.all([
+      client.review(identifier),
+      client.reviewEvidence(identifier),
+      client.reviews(),
+    ]);
+    if (!authenticated) {
+      return;
+    }
+    renderReviewDetail(review, evidence);
+    renderReviewList(reviews);
+    reviewStatus.textContent = "Review et métadonnées de preuve chargées depuis les projections Controller expurgées.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les reviews.");
+      return;
+    }
+    reviewStatus.textContent = projectErrorMessage(error, "Lecture de la review impossible.");
+  } finally {
+    setReviewBusy(false);
+  }
+}
+
+async function refreshReviews() {
+  if (!authenticated || reviewLoading) {
+    return;
+  }
+  const generation = ++reviewGeneration;
+  setReviewBusy(true);
+  reviewStatus.textContent = "Lecture des reviews, assignations reviewer et Recovery…";
+  try {
+    const [reviews, assignments, recoveries] = await Promise.all([
+      client.reviews(),
+      client.reviewerAssignments(),
+      client.recoveries(),
+    ]);
+    if (generation !== reviewGeneration || !authenticated) {
+      return;
+    }
+    renderReviewList(reviews);
+    renderReviewAssignments(assignments);
+    renderRecoveries(recoveries);
+    updateReviewCoverage(reviews, assignments, recoveries);
+    reviewsLoaded = true;
+    reviewStatus.textContent = `${reviews.items.length} review(s), ${assignments.items.length} assignation(s), ${recoveries.items.length} Recovery reçu(s).`;
+    if (selectedReviewId && reviews.items.some((item) => safeId(item, "") === selectedReviewId)) {
+      const [review, evidence] = await Promise.all([
+        client.review(selectedReviewId),
+        client.reviewEvidence(selectedReviewId),
+      ]);
+      if (generation === reviewGeneration && authenticated) {
+        renderReviewDetail(review, evidence);
+      }
+    } else {
+      selectedReviewId = "";
+      reviewDetailCard.hidden = true;
+      reviewDetailFacts.replaceChildren();
+      reviewEvidenceList.replaceChildren();
+      reviewEvidenceCount.textContent = "0";
+    }
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les reviews.");
+      return;
+    }
+    reviewStatus.textContent = projectErrorMessage(error, "Reviews et Recovery indisponibles.");
+  } finally {
+    if (generation === reviewGeneration) {
+      setReviewBusy(false);
+    }
+  }
+}
+
 async function refreshSession() {
   setConnection("checking", "Vérification…", "Lecture de la session auprès du Controller.");
   try {
@@ -1950,6 +2239,18 @@ executionPlanList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-plan-id]");
   if (button) {
     void selectExecutionPlan(button.dataset.planId || "");
+  }
+});
+
+reviewRefresh.addEventListener("click", () => {
+  reviewsLoaded = false;
+  void refreshReviews();
+});
+
+reviewList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-review-id]");
+  if (button) {
+    void selectReview(button.dataset.reviewId || "");
   }
 });
 

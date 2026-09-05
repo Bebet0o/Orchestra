@@ -472,6 +472,77 @@
         </div>
       </section>
 
+
+      <section id="review-panel" class="review-panel" aria-labelledby="review-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Reviewer / Judge / Recovery</p>
+            <h2 id="review-console-title">Reviews et récupération</h2>
+            <p id="review-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+          </div>
+          <button id="review-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+
+        <div class="review-grid">
+          <section class="dashboard-card" aria-labelledby="review-list-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Judge</p>
+                <h3 id="review-list-title">Reviews</h3>
+              </div>
+              <span id="review-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-list" class="project-admin-list"></ul>
+            <p id="review-coverage" class="coverage-note">Premières pages bornées du Controller.</p>
+          </section>
+
+          <section id="review-detail-card" class="dashboard-card review-detail-card" aria-labelledby="review-detail-title" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Review sélectionnée</p>
+                <h3 id="review-detail-title">Détail de la review</h3>
+              </div>
+              <span id="review-detail-state" class="state-badge">inconnu</span>
+            </div>
+            <p id="review-detail-meta" class="project-meta"></p>
+            <dl id="review-detail-facts" class="objective-facts"></dl>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="review-evidence-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Preuves expurgées</p>
+                <h3 id="review-evidence-title">Métadonnées de preuve</h3>
+              </div>
+              <span id="review-evidence-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-evidence-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="review-assignment-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Reviewer pool</p>
+                <h3 id="review-assignment-title">Assignations reviewer</h3>
+              </div>
+              <span id="review-assignment-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-assignment-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card review-wide" aria-labelledby="review-recovery-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Recovery Loop</p>
+                <h3 id="review-recovery-title">Décisions et issues Recovery</h3>
+              </div>
+              <span id="review-recovery-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-recovery-list" class="operational-list review-recovery-list"></ul>
+          </section>
+        </div>
+      </section>
+
       <section id="route-panel" class="route-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Espace fonctionnel</p>

@@ -102,6 +102,10 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, {"data": [], "meta": {"next_cursor": None}})
         elif self.path == "/api/v1/plans/plan-" + "a" * 32 + "/attempts":
             self._send_json(200, {"data": [{"id": "orchestration-attempt-" + "a" * 32, "task_id": "orchestration-task-" + "a" * 32, "attempt_number": 1, "state": "running", "worker_execution_id": "execution-" + "a" * 32, "review_execution_id": None}], "meta": {"next_cursor": None}})
+        elif self.path == "/api/v1/reviews/review-" + "b" * 32:
+            self._send_json(200, {"data": {"id": "review-" + "b" * 32, "project_id": "alpha", "run_id": "run-" + "b" * 32, "state": "approved", "verdict": "PASS", "decision": "APPROVE", "summary": "Review passed", "details": {"fields": [], "redacted": True}, "reviewer": None, "integration": None, "created_at": "2026-09-05T00:00:00.000Z", "resource_revision": 1}})
+        elif self.path == "/api/v1/reviews/review-" + "b" * 32 + "/evidence":
+            self._send_json(200, {"data": [{"id": "review-evidence-" + "c" * 32, "review_id": "review-" + "b" * 32, "kind": "review-result-metadata", "name": "review-result", "media_type": "application/json", "sha256": "d" * 64, "created_at": "2026-09-05T00:00:00.000Z", "available": False, "raw_content_available": False}], "meta": {}})
         elif self.path in {
             "/api/v1/projects",
             "/api/v1/blueprints",
@@ -302,6 +306,30 @@ class ConsoleControllerProxyTest(unittest.TestCase):
             (plan + "/unknown", 404),
             (plan + "/tasks?limit=200", 400),
             ("/api/v1/plans/not-a-plan/tasks", 404),
+        )
+        for path, expected_status in rejected:
+            with self.subTest(rejected=path):
+                status, _, payload = self.request("GET", path)
+                self.assertEqual(status, expected_status)
+                problem = json.loads(payload)
+                self.assertTrue(str(problem.get("type", "")).startswith("urn:orchestra:console:"))
+        self.assertEqual(len(self.controller.records), before)
+
+    def test_review_detail_and_evidence_gets_are_forwarded(self) -> None:
+        review = "/api/v1/reviews/review-" + "b" * 32
+        for path in (review, review + "/evidence"):
+            with self.subTest(path=path):
+                status, _, payload = self.request("GET", path)
+                self.assertEqual(status, 200)
+                self.assertIn("data", json.loads(payload))
+                self.assertEqual(self.controller.records[-1]["path"], path)
+
+        before = len(self.controller.records)
+        rejected = (
+            (review + "/unknown", 404),
+            (review + "/evidence?limit=200", 400),
+            ("/api/v1/reviews/not-a-review", 404),
+            (review + "/evidence/extra", 404),
         )
         for path, expected_status in rejected:
             with self.subTest(rejected=path):
