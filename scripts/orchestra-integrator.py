@@ -288,6 +288,25 @@ def add_event(
     )
 
 
+def required_judge_authority(connection: sqlite3.Connection, run_id: str, execution_id: str) -> bool:
+    # Return False only for historical/default policy. Required review always fails closed.
+    task = connection.execute(
+        "SELECT t.review_required FROM orchestration_tasks t JOIN orchestration_attempts a "
+        "ON a.orchestration_task_id=t.orchestration_task_id WHERE a.run_id=?", (run_id,),
+    ).fetchone()
+    if task is None or not task[0]:
+        return False
+    judge = connection.execute(
+        "SELECT d.disposition, p.status FROM task_reviews r JOIN judge_decisions d USING(review_id) "
+        "LEFT JOIN approvals p ON p.approval_id=d.approval_id JOIN orchestration_attempts a ON a.attempt_id=r.attempt_id "
+        "WHERE a.run_id=? AND r.legacy_execution_id=? AND r.status='COMPLETED'",
+        (run_id, execution_id),
+    ).fetchone()
+    if judge is None or not (judge[0] == "PASS" or (judge[0] == "HUMAN_REVIEW" and judge[1] == "APPROVED")):
+        fail("Required Judge acceptance is absent")
+    return True
+
+
 def validate_review(
     connection: sqlite3.Connection,
     run: sqlite3.Row,
@@ -300,17 +319,18 @@ def validate_review(
         fail("Review decision or verdict is absent")
 
     action = classify_decision(decision, verdict)
+    required_judge = required_judge_authority(connection, run["run_id"], review["review_execution_id"])
 
     if review["execution_verdict"] != verdict:
         fail("Review and execution verdicts differ")
 
-    if review["review_role_id"] != "reviewer":
+    if not required_judge and review["review_role_id"] != "reviewer":
         fail("Review was not produced by the reviewer role")
 
-    if review["review_source_profile"] != "ops-reviewer":
+    if not required_judge and review["review_source_profile"] != "ops-reviewer":
         fail("Unexpected reviewer source profile")
 
-    if review["review_task_role"] != "reviewer":
+    if not required_judge and review["review_task_role"] != "reviewer":
         fail("Reviewer task role is invalid")
 
     if review["review_task_status"] != "COMPLETED":
@@ -392,6 +412,8 @@ def validate_review(
     if later_workers != 0:
         fail("Review is stale: a worker completed after the review")
 
+    if required_judge:
+        action, decision, verdict = "INTEGRATE", "APPROVE", "PASS"
     return action, decision, verdict, details, result
 
 
@@ -986,6 +1008,7 @@ def integrate_approved(
             connection.rollback()
             fail("Run already has an active or completed integration")
 
+        required_judge_authority(connection, run["run_id"], review["review_execution_id"])
         insert_integration(
             connection,
             integration_id=integration_id,

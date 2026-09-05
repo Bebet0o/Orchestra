@@ -1360,6 +1360,23 @@ def command_launch(
         require_runtime_state(ROOT)
     validate_controller_schema()
 
+    from reviewer_judge import ReviewStore, parse_review, review_prompt
+    graph_review_id = getattr(arguments, "graph_review", None)
+    graph_store = ReviewStore(connect)
+    graph_evidence = None
+    graph_record = None
+    structured = None
+    if graph_review_id:
+        graph_record = graph_store.get(graph_review_id)
+        if graph_record["status"] != "RUNNING" or graph_record["role_id"] != arguments.role:
+            fail("Graph review is not claimed for this role")
+        with connect() as connection:
+            attempt = connection.execute("SELECT run_id FROM orchestration_attempts WHERE attempt_id=?",
+                                         (graph_record["attempt_id"],)).fetchone()
+        if attempt[0] != arguments.run:
+            fail("Graph review run ownership mismatch")
+        graph_evidence = graph_store.evidence(graph_review_id)
+
     instruction_path = Path(arguments.instruction_file).resolve()
 
     if not instruction_path.is_file():
@@ -1395,6 +1412,11 @@ def command_launch(
     else:
         runtime_kind = runtime_kind_of(runtime)
 
+    if graph_record and (role["runtime_kind"] != graph_record["runtime_kind"]
+                         or role["profile_name"] != graph_record["runtime_config_id"]
+                         or role["model_id"] != graph_record["model_id"]):
+        fail("Reviewer role runtime snapshot changed")
+
     repository, worktree, result_commit = verify_transaction(run)
     references_before = git_references(repository)
     worktree_head_before = git(worktree, "rev-parse", "HEAD")
@@ -1412,7 +1434,7 @@ def command_launch(
     task_id = "task-" + uuid.uuid4().hex
     execution_id = "review-execution-" + uuid.uuid4().hex
     review_id = "review-" + uuid.uuid4().hex
-    runtime_request_id = f"agent-runtime-{suffix}"
+    runtime_request_id = graph_record["execution_id"] if graph_record else f"agent-runtime-{suffix}"
 
     execution_directory = EXECUTIONS_ROOT / run["run_id"] / suffix
     execution_directory.mkdir(parents=True, mode=0o750)
@@ -1425,6 +1447,9 @@ def command_launch(
         instruction=instruction,
         marker=marker,
     )
+
+    if graph_evidence is not None:
+        prompt = review_prompt(graph_evidence)
 
     prompt_path.write_text(prompt + "\n", encoding="utf-8")
     prompt_path.chmod(0o600)
@@ -1504,7 +1529,7 @@ def command_launch(
                 prompt=prompt,
                 runtime_config_id=str(role["profile_name"]),
                 request_id=runtime_request_id,
-                timeout_seconds=arguments.timeout,
+                timeout_seconds=min(arguments.timeout, 600) if graph_record else arguments.timeout,
                 completion_marker=marker,
                 sandbox=RuntimeSandboxContext(
                     workspace=clone,
@@ -1518,11 +1543,25 @@ def command_launch(
                     runtime_user=RUNTIME_USER,
                 ),
                 on_event=handle_runtime_event,
+                context=graph_evidence["input"] if graph_evidence else None,
             )
         )
         exit_code = 0
         persist_transcript(output_path, runtime_result.output)
-        review = parse_review_output(runtime_result.output, marker)
+        if graph_evidence is not None:
+            try:
+                structured = parse_review(runtime_result.output, graph_evidence["input"]["source_ids"])
+            except Exception:
+                graph_store.fail(graph_review_id, "INVALID_OUTPUT")
+                raise
+            decision, verdict = {
+                "pass": ("APPROVE", "PASS"), "needs_fix": ("REJECT", "FIX"),
+                "blocked": ("BLOCK_HUMAN", "HUMAN"), "human_review": ("BLOCK_HUMAN", "HUMAN"),
+            }[structured["assessment"]]
+            review = {"decision": decision, "verdict": verdict, "summary": structured["summary"],
+                      "findings": structured["findings"], "checks": []}
+        else:
+            review = parse_review_output(runtime_result.output, marker)
 
         audit = audit_reviewer_sandbox(
             container_id=sandbox_id,
@@ -1654,6 +1693,8 @@ def command_launch(
             failure_reason=failure_reason,
         )
 
+    if graph_review_id and structured is not None:
+        graph_store.complete(graph_review_id, structured, legacy_execution_id=execution_id)
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
@@ -1693,6 +1734,7 @@ def main() -> None:
     )
 
     launch = subparsers.add_parser("launch")
+    launch.add_argument("--graph-review")
     launch.add_argument("--run", required=True)
     launch.add_argument("--role", required=True)
     launch.add_argument("--assignment", required=True)

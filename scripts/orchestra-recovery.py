@@ -1600,6 +1600,16 @@ def apply_block(
     return actions
 
 
+def required_review_held(connection: sqlite3.Connection, run_id: str) -> bool:
+    """0.2-E dispositions are not inputs to the legacy automatic recovery loop."""
+    return bool(connection.execute(
+        "SELECT 1 FROM orchestration_tasks t JOIN orchestration_attempts a "
+        "ON a.orchestration_task_id=t.orchestration_task_id WHERE a.run_id=? "
+        "AND t.review_required=1 AND t.review_state<>'NONE' AND t.status='BLOCKED'",
+        (run_id,),
+    ).fetchone())
+
+
 def recover_run(
     *,
     run_id: str,
@@ -1608,6 +1618,9 @@ def recover_run(
     force: bool,
     expected_decision: str | None = None,
 ) -> dict[str, Any]:
+    with connect() as connection:
+        if not force and required_review_held(connection, run_id):
+            return {"run_id": run_id, "outcome": "NO_ACTION", "reason": "required task review disposition"}
     evidence = assess_run(run_id)
     decision = evidence["decision"]
 
@@ -2055,6 +2068,9 @@ def command_sweep(arguments: argparse.Namespace) -> None:
     results: list[dict[str, Any]] = []
 
     for row in rows:
+        with connect() as connection:
+            if required_review_held(connection, row["run_id"]):
+                continue
         age = age_seconds(row["heartbeat_at"])
 
         if age is not None and age < arguments.stale_seconds:
