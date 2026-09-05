@@ -543,6 +543,40 @@
         </div>
       </section>
 
+      <section id="event-panel" class="event-panel" aria-labelledby="event-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Replayable Event Stream</p>
+            <h2 id="event-console-title">Événements temps réel</h2>
+            <p id="event-status" class="dashboard-status" aria-live="polite">Flux non connecté.</p>
+          </div>
+          <button id="event-reconnect" class="secondary-button" type="button">Reconnecter</button>
+        </div>
+        <div class="event-grid">
+          <section class="dashboard-card" aria-labelledby="event-stream-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controller autoritaire</p>
+                <h3 id="event-stream-title">Flux borné en mémoire</h3>
+              </div>
+              <span id="event-count" class="count-badge">0</span>
+            </div>
+            <ul id="event-list" class="operational-list event-list"></ul>
+            <p id="event-coverage" class="coverage-note">Maximum 100 événements affichés, sans persistance navigateur.</p>
+          </section>
+          <section class="dashboard-card" aria-labelledby="event-state-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Réconciliation</p>
+                <h3 id="event-state-title">État du flux</h3>
+              </div>
+              <span id="event-connection-state" class="state-badge">hors ligne</span>
+            </div>
+            <dl id="event-facts" class="objective-facts"></dl>
+          </section>
+        </div>
+      </section>
+
       <section id="route-panel" class="route-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Espace fonctionnel</p>

@@ -39,7 +39,7 @@ const routes = Object.freeze({
   "/events": {
     key: "events",
     title: "Événements",
-    message: "Le flux temps réel et la réconciliation seront activés au jalon 2X.",
+    message: "Connectez-vous pour suivre le flux Controller replayable et son état de réconciliation.",
   },
   "/administration": {
     key: "administration",
@@ -155,6 +155,14 @@ const reviewAssignmentCount = document.getElementById("review-assignment-count")
 const reviewAssignmentList = document.getElementById("review-assignment-list");
 const reviewRecoveryCount = document.getElementById("review-recovery-count");
 const reviewRecoveryList = document.getElementById("review-recovery-list");
+const eventPanel = document.getElementById("event-panel");
+const eventReconnect = document.getElementById("event-reconnect");
+const eventStatus = document.getElementById("event-status");
+const eventCount = document.getElementById("event-count");
+const eventList = document.getElementById("event-list");
+const eventCoverage = document.getElementById("event-coverage");
+const eventConnectionState = document.getElementById("event-connection-state");
+const eventFacts = document.getElementById("event-facts");
 
 const dashboardResources = Object.freeze([
   Object.freeze({ key: "projects", load: () => client.projects() }),
@@ -202,6 +210,13 @@ let reviewLoading = false;
 let reviewGeneration = 0;
 let reviewsLoaded = false;
 let selectedReviewId = "";
+let eventStream = null;
+let eventStreamGeneration = 0;
+let eventReconnectTimer = 0;
+let eventReconnectAttempts = 0;
+let eventLastSequence = 0;
+let eventLatestSequence = 0;
+let eventMessages = [];
 
 function canonicalPath(pathname) {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -242,13 +257,15 @@ function displayFunctionalPanel() {
   const objectivesRoute = key === "objectives";
   const executionsRoute = key === "executions";
   const reviewsRoute = key === "reviews";
+  const eventsRoute = key === "events";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
   executionPanel.hidden = !executionsRoute || !authenticated;
   reviewPanel.hidden = !reviewsRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute);
+  eventPanel.hidden = !eventsRoute || !authenticated;
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -285,6 +302,11 @@ function render(pathname, focusMain = false) {
   if (route.key === "reviews" && authenticated && !reviewsLoaded) {
     void refreshReviews();
   }
+  if (route.key === "events" && authenticated && eventStream === null) {
+    connectEvents();
+  } else if (route.key !== "events") {
+    disconnectEvents(false);
+  }
 
   if (focusMain) {
     document.getElementById("main-content").focus({ preventScroll: true });
@@ -308,6 +330,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   clearObjectiveState();
   clearExecutionState();
   clearReviewState();
+  disconnectEvents(true);
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
   sessionDetail.textContent = message;
@@ -352,6 +375,9 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "reviews") {
     void refreshReviews();
   }
+  if (currentRoute().key === "events") {
+    connectEvents();
+  }
 }
 
 function showUnavailable(error) {
@@ -365,6 +391,7 @@ function showUnavailable(error) {
   clearObjectiveState();
   clearExecutionState();
   clearReviewState();
+  disconnectEvents(true);
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
   const requestSuffix = error instanceof ControllerClientError && error.requestId
@@ -2001,6 +2028,156 @@ async function refreshReviews() {
   }
 }
 
+function renderEventFacts() {
+  eventFacts.replaceChildren();
+  const facts = [
+    ["Dernière séquence reçue", String(eventLastSequence)],
+    ["Séquence Controller annoncée", String(eventLatestSequence)],
+    ["Tentatives de reconnexion", String(eventReconnectAttempts)],
+    ["Persistance navigateur", "désactivée"],
+  ];
+  for (const [label, value] of facts) {
+    const wrapper = document.createElement("div");
+    const term = document.createElement("dt");
+    const detail = document.createElement("dd");
+    term.textContent = label;
+    detail.textContent = value;
+    wrapper.append(term, detail);
+    eventFacts.append(wrapper);
+  }
+}
+
+function renderEventMessages() {
+  eventList.replaceChildren();
+  eventCount.textContent = String(eventMessages.length);
+  if (eventMessages.length === 0) {
+    appendEmpty(eventList, "Aucun événement reçu dans cette session navigateur.");
+    return;
+  }
+  for (const payload of eventMessages.slice().reverse()) {
+    const aggregate = payload && typeof payload.aggregate === "object" && payload.aggregate !== null ? payload.aggregate : {};
+    appendOperationalItem(eventList, {
+      label: safeText(payload.type, "event", 64),
+      title: safeText(aggregate.id, safeText(payload.id, "événement", 96), 96),
+      state: safeText(aggregate.type, "event", 40).toLowerCase(),
+      detail: `séquence ${Number.isSafeInteger(payload.sequence) ? payload.sequence : "?"} · ${safeText(payload.occurred_at, "horodatage indisponible", 64)}`,
+    });
+  }
+}
+
+function setEventConnection(state, message) {
+  eventConnectionState.dataset.state = state;
+  eventConnectionState.textContent = state;
+  eventStatus.textContent = message;
+  renderEventFacts();
+}
+
+function disconnectEvents(reset) {
+  if (eventReconnectTimer) {
+    globalThis.clearTimeout(eventReconnectTimer);
+    eventReconnectTimer = 0;
+  }
+  if (eventStream !== null) {
+    const stream = eventStream;
+    eventStream = null;
+    eventStreamGeneration += 1;
+    stream.close();
+  }
+  if (reset) {
+    eventReconnectAttempts = 0;
+    eventLastSequence = 0;
+    eventLatestSequence = 0;
+    eventMessages = [];
+    renderEventMessages();
+    setEventConnection("offline", "Flux non connecté.");
+  }
+}
+
+function scheduleEventReconnect() {
+  if (!authenticated || currentRoute().key !== "events" || eventReconnectTimer) {
+    return;
+  }
+  eventReconnectAttempts += 1;
+  const delay = Math.min(1000 * (2 ** Math.min(eventReconnectAttempts - 1, 4)), 15000);
+  setEventConnection("reconnecting", `Flux interrompu. Reconnexion bornée dans ${Math.ceil(delay / 1000)} s.`);
+  eventReconnectTimer = globalThis.setTimeout(() => {
+    eventReconnectTimer = 0;
+    connectEvents();
+  }, delay);
+}
+
+function handleEventPayload(payload) {
+  if (payload.type === "subscribed") {
+    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
+    eventReconnectAttempts = 0;
+    setEventConnection("connected", "Flux replayable connecté au Controller.");
+    return;
+  }
+  if (payload.type === "heartbeat") {
+    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
+    renderEventFacts();
+    return;
+  }
+  if (payload.type === "replay_unavailable") {
+    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
+    eventLastSequence = eventLatestSequence;
+    eventMessages = [];
+    renderEventMessages();
+    setEventConnection("degraded", "Replay trop ancien : snapshot HTTP requis avant reprise du flux.");
+    if (authenticated) {
+      dashboardLoaded = false;
+      void refreshDashboard();
+    }
+    return;
+  }
+  if (Number.isSafeInteger(payload.sequence) && payload.sequence > eventLastSequence) {
+    eventLastSequence = payload.sequence;
+    eventLatestSequence = Math.max(eventLatestSequence, payload.sequence);
+    eventMessages.push(payload);
+    if (eventMessages.length > 100) {
+      eventMessages = eventMessages.slice(-100);
+    }
+    renderEventMessages();
+    renderEventFacts();
+  }
+}
+
+function connectEvents() {
+  if (!authenticated || currentRoute().key !== "events" || eventStream !== null) {
+    return;
+  }
+  setEventConnection("connecting", "Connexion au flux événementiel Controller…");
+  try {
+    const generation = ++eventStreamGeneration;
+    eventStream = client.events({
+      afterSequence: eventLastSequence,
+      topics: ["all"],
+      onMessage: handleEventPayload,
+      onState: (state) => {
+        if (generation !== eventStreamGeneration) {
+          return;
+        }
+        if (state === "connected") {
+          setEventConnection("connected", "Abonnement événementiel en cours de négociation…");
+          return;
+        }
+        if (state === "error") {
+          setEventConnection("degraded", "Erreur du flux temps réel ; les lectures HTTP restent disponibles.");
+          return;
+        }
+        eventStream = null;
+        if (authenticated && currentRoute().key === "events") {
+          scheduleEventReconnect();
+        }
+      },
+    });
+  } catch (error) {
+    eventStream = null;
+    eventStatus.textContent = projectErrorMessage(error, "Flux événementiel indisponible.");
+    scheduleEventReconnect();
+  }
+}
+
 async function refreshSession() {
   setConnection("checking", "Vérification…", "Lecture de la session auprès du Controller.");
   try {
@@ -2252,6 +2429,12 @@ reviewList.addEventListener("click", (event) => {
   if (button) {
     void selectReview(button.dataset.reviewId || "");
   }
+});
+
+eventReconnect.addEventListener("click", () => {
+  disconnectEvents(false);
+  eventReconnectAttempts = 0;
+  connectEvents();
 });
 
 window.addEventListener("popstate", () => render(window.location.pathname));

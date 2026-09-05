@@ -275,6 +275,58 @@ async function csrfToken() {
   return csrf.token;
 }
 
+function eventTopics(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+    throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
+  }
+  const allowed = new Set(["all", "system", "projects", "objectives", "tasks", "runs", "reviews", "recoveries", "sandboxes", "backups", "notifications", "confirmations", "audit"]);
+  if (new Set(value).size !== value.length || value.some((topic) => typeof topic !== "string" || !allowed.has(topic)) || (value.includes("all") && value.length !== 1)) {
+    throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
+  }
+  return value.slice();
+}
+
+function eventSequence(value) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ControllerClientError("Séquence événementielle invalide.", { status: 400, code: "invalid_event_sequence" });
+  }
+  return value;
+}
+
+function openEventStream({ afterSequence = 0, topics = ["all"], onMessage, onState } = {}) {
+  const sequence = eventSequence(afterSequence);
+  const selectedTopics = eventTopics(topics);
+  if (typeof onMessage !== "function" || typeof onState !== "function") {
+    throw new ControllerClientError("Callbacks événementiels invalides.", { status: 400, code: "invalid_event_callbacks" });
+  }
+  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${scheme}//${window.location.host}/api/v1/events`);
+  let opened = false;
+  socket.addEventListener("open", () => {
+    opened = true;
+    socket.send(JSON.stringify({ type: "subscribe", after_sequence: sequence, topics: selectedTopics }));
+    onState("connected");
+  });
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data !== "string" || event.data.length > 256 * 1024) {
+      socket.close(1008, "invalid event payload");
+      return;
+    }
+    try {
+      const payload = JSON.parse(event.data);
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new TypeError("payload");
+      }
+      onMessage(payload);
+    } catch {
+      socket.close(1008, "invalid event payload");
+    }
+  });
+  socket.addEventListener("error", () => onState("error"));
+  socket.addEventListener("close", () => onState(opened ? "closed" : "unavailable"));
+  return Object.freeze({ close: () => socket.close(1000, "console navigation") });
+}
+
 export function createControllerClient() {
   return Object.freeze({
     async session() {
@@ -492,6 +544,9 @@ export function createControllerClient() {
     },
     async reviewerAssignments() {
       return collection(await request("reviewerAssignments"));
+    },
+    events(options) {
+      return openEventStream(options);
     },
     async logout() {
       const csrf = await csrfToken();

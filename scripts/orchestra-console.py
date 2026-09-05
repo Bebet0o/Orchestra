@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import http.client
+import http.cookies
 import http.server
 import ipaddress
 import json
 import logging
 import os
 import signal
+import select
 import socket
 import stat
 import threading
@@ -22,6 +25,9 @@ from urllib.parse import urlsplit
 MAX_FILE_SIZE = 512 * 1024
 MAX_PROXY_REQUEST_BODY = 384 * 1024
 MAX_PROXY_RESPONSE_BODY = 1024 * 1024
+MAX_WEBSOCKET_HANDSHAKE_BYTES = 16 * 1024
+MAX_WEBSOCKET_RELAY_CHUNK = 64 * 1024
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PROXY_TIMEOUT_MIN = 0.25
 PROXY_TIMEOUT_MAX = 30.0
 ROUTES = frozenset(
@@ -187,6 +193,11 @@ SINGLETON_REQUEST_HEADERS = frozenset(
         "origin",
         "transfer-encoding",
         "x-csrf-token",
+        "upgrade",
+        "sec-websocket-key",
+        "sec-websocket-version",
+        "sec-websocket-extensions",
+        "sec-websocket-protocol",
     }
 )
 RESPONSE_HEADER_ALLOWLIST = frozenset(
@@ -714,6 +725,168 @@ class ConsoleHandler(http.server.BaseHTTPRequestHandler):
             result.pop("content-type", None)
         return result
 
+    def _websocket_header(self, name: str, *, required: bool = False) -> str | None:
+        values = self.headers.get_all(name, failobj=[])
+        if len(values) > 1 or (required and len(values) != 1):
+            return None
+        if not values:
+            return None
+        value = values[0].strip()
+        return value if _safe_header_value(value, 4096) else None
+
+    @staticmethod
+    def _session_cookie(value: str) -> str | None:
+        try:
+            parsed = http.cookies.SimpleCookie()
+            parsed.load(value)
+        except http.cookies.CookieError:
+            return None
+        morsel = parsed.get("orchestra_session")
+        if morsel is None or not _safe_header_value(morsel.value, 4096):
+            return None
+        return f"orchestra_session={morsel.value}"
+
+    @staticmethod
+    def _websocket_accept(key: str) -> str | None:
+        if len(key) != 24 or not key.isascii():
+            return None
+        try:
+            decoded = base64.b64decode(key, validate=True)
+        except (ValueError, __import__("binascii").Error):
+            return None
+        if len(decoded) != 16 or base64.b64encode(decoded).decode("ascii") != key:
+            return None
+        digest = hashlib.sha1((key + WEBSOCKET_GUID).encode("ascii")).digest()
+        return base64.b64encode(digest).decode("ascii")
+
+    def _read_upgrade_response(self, upstream: socket.socket) -> tuple[int, dict[str, str], bytes]:
+        data = bytearray()
+        while b"\r\n\r\n" not in data:
+            chunk = upstream.recv(min(4096, MAX_WEBSOCKET_HANDSHAKE_BYTES - len(data)))
+            if not chunk:
+                raise ConsoleServiceError("Controller WebSocket handshake closed early")
+            data.extend(chunk)
+            if len(data) >= MAX_WEBSOCKET_HANDSHAKE_BYTES and b"\r\n\r\n" not in data:
+                raise ConsoleServiceError("Controller WebSocket handshake is too large")
+        raw_head, tail = bytes(data).split(b"\r\n\r\n", 1)
+        try:
+            lines = raw_head.decode("ascii").split("\r\n")
+        except UnicodeDecodeError as error:
+            raise ConsoleServiceError("Controller WebSocket handshake is invalid") from error
+        parts = lines[0].split(" ", 2)
+        if len(parts) < 2 or parts[0] != "HTTP/1.1" or not parts[1].isdigit():
+            raise ConsoleServiceError("Controller WebSocket status is invalid")
+        headers: dict[str, str] = {}
+        for line in lines[1:]:
+            if ":" not in line:
+                raise ConsoleServiceError("Controller WebSocket header is invalid")
+            name, value = line.split(":", 1)
+            key = name.strip().lower()
+            value = value.strip()
+            if key in headers or not key or not _safe_header_value(value):
+                raise ConsoleServiceError("Controller WebSocket header is invalid")
+            headers[key] = value
+        return int(parts[1]), headers, tail
+
+    def _proxy_websocket(self, request_id: str) -> None:
+        parsed = urlsplit(self.path)
+        if parsed.path != "/api/v1/events" or parsed.query or parsed.fragment or "%" in parsed.path or "\\" in parsed.path:
+            self._problem(404, "controller_route_not_exposed", "Controller route is not exposed", request_id)
+            return
+        if not self._valid_host() or not self._singleton_headers_valid():
+            self._problem(400, "invalid_websocket_request", "Invalid WebSocket request", request_id)
+            return
+        origin_values = self.headers.get_all("Origin", failobj=[])
+        if len(origin_values) != 1 or origin_values[0] != self._browser_origin():
+            self._problem(403, "origin_forbidden", "Request origin is forbidden", request_id)
+            return
+        upgrade = self._websocket_header("Upgrade", required=True)
+        connection = self._websocket_header("Connection", required=True)
+        version = self._websocket_header("Sec-WebSocket-Version", required=True)
+        key = self._websocket_header("Sec-WebSocket-Key", required=True)
+        raw_cookie = self._websocket_header("Cookie", required=True)
+        cookie = self._session_cookie(raw_cookie) if raw_cookie is not None else None
+        if (
+            upgrade is None or upgrade.lower() != "websocket"
+            or connection is None or "upgrade" not in {part.strip().lower() for part in connection.split(",")}
+            or version != "13"
+            or key is None or self._websocket_accept(key) is None
+            or cookie is None
+            or self.headers.get("Sec-WebSocket-Extensions") is not None
+            or self.headers.get("Sec-WebSocket-Protocol") is not None
+            or self.headers.get("Content-Length") not in {None, "0"}
+            or self.headers.get("Transfer-Encoding") is not None
+        ):
+            self._problem(400, "invalid_websocket_request", "Invalid WebSocket request", request_id)
+            return
+
+        upstream: socket.socket | None = None
+        try:
+            upstream = socket.create_connection(
+                (self.settings.controller_host, self.settings.controller_port),
+                timeout=self.settings.controller_timeout,
+            )
+            request = (
+                "GET /api/v1/events HTTP/1.1\r\n"
+                f"Host: {self.settings.controller_host}:{self.settings.controller_port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Version: 13\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                f"Origin: {self.settings.controller_origin}\r\n"
+                f"Cookie: {cookie}\r\n"
+                "\r\n"
+            ).encode("ascii")
+            upstream.sendall(request)
+            status, headers, tail = self._read_upgrade_response(upstream)
+            expected_accept = self._websocket_accept(key)
+            if status != 101:
+                self._problem(401 if status == 401 else 502, "websocket_upgrade_failed", "Controller WebSocket upgrade failed", request_id)
+                return
+            if (
+                headers.get("upgrade", "").lower() != "websocket"
+                or "upgrade" not in {part.strip().lower() for part in headers.get("connection", "").split(",")}
+                or headers.get("sec-websocket-accept") != expected_accept
+                or "sec-websocket-extensions" in headers
+                or "sec-websocket-protocol" in headers
+            ):
+                self._problem(502, "invalid_controller_response", "Controller WebSocket response is invalid", request_id)
+                return
+
+            self.send_response(101, "Switching Protocols")
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", expected_accept)
+            self.send_header("X-Request-ID", request_id)
+            for name, value in SECURITY_HEADERS.items():
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.flush()
+            self.close_connection = True
+            if tail:
+                self.connection.sendall(tail)
+            self.connection.settimeout(None)
+            upstream.settimeout(None)
+            sockets = [self.connection, upstream]
+            while True:
+                readable, _, exceptional = select.select(sockets, [], sockets, 30.0)
+                if exceptional:
+                    return
+                if not readable:
+                    continue
+                for source in readable:
+                    target = upstream if source is self.connection else self.connection
+                    chunk = source.recv(MAX_WEBSOCKET_RELAY_CHUNK)
+                    if not chunk:
+                        return
+                    target.sendall(chunk)
+        except (OSError, TimeoutError, ConsoleServiceError):
+            if not self.close_connection:
+                self._problem(503, "controller_unavailable", "Controller is unavailable", request_id)
+        finally:
+            if upstream is not None:
+                upstream.close()
+
     def _proxy_controller(self, method: str, path: str, request_id: str) -> None:
         if not _controller_route_exposed(method, path):
             self._problem(404, "controller_route_not_exposed", "Controller route is not exposed", request_id)
@@ -803,6 +976,9 @@ class ConsoleHandler(http.server.BaseHTTPRequestHandler):
         )
 
     def do_GET(self) -> None:
+        if self.path.split("?", 1)[0] == "/api/v1/events" and self.headers.get("Upgrade") is not None:
+            self._proxy_websocket(self._request_id())
+            return
         self._serve_static(head_only=False)
 
     def do_HEAD(self) -> None:

@@ -1,6 +1,6 @@
 # Console Browser Session and Controller Client
 
-Status: **implemented by milestone 2Q and extended through 2U**
+Status: **implemented and extended through Orchestra 0.2-H**
 
 ## Boundary
 
@@ -18,13 +18,19 @@ The Console service exposes a deliberately narrow same-origin gateway for:
 
 Milestone 2R additionally exposes six exact query-free GET collections for the
 operational dashboard: projects, objectives, reviews, recoveries, plans, and
-reviewer assignments. Milestone 2S adds only project detail, create, update, and
-`enable|disable|rescan|archive` command routes. The current gateway adds the
-exact Blueprint collection, template, validation, detail, revision, comparison,
-create, and update routes. The only query-bearing Console route is the bounded
-Blueprint comparison with positive integer `from` and `to` values. All other
-Controller paths remain unavailable. The gateway is not a general reverse
-proxy.
+reviewer assignments. Later slices add the bounded project, Blueprint,
+objective, multi-agent plan, and review-detail reads required by the current
+Console. The only query-bearing HTTP Console route is the bounded Blueprint
+comparison with positive integer `from` and `to` values.
+
+Orchestra 0.2-H also exposes exactly one WebSocket relay:
+`/api/v1/events`. It is not part of the normal HTTP allowlist. The relay accepts
+only an exact same-origin RFC 6455 upgrade with the browser's HttpOnly session
+cookie, translates Origin to the Controller's trusted Console origin, forbids
+query strings, extensions and subprotocols, validates the upstream `101`
+handshake, and then relays frames without interpreting credentials or event
+payloads. All other Controller paths remain unavailable. The gateway is not a
+general reverse proxy.
 
 ## Origin translation
 
@@ -72,18 +78,16 @@ queue mutations, retry passwords, or preserve destructive intent.
 
 ## Deferred work
 
-Milestone 2Q does not add:
+The current Console still does not add:
 
 - Blueprint build, activation, secret binding, or revision deletion;
 - project deletion or repository/default-branch mutation;
-- review commands;
+- review mutation commands;
 - objective start, replan, archive or delete commands;
-- WebSocket events;
-- offline queues or browser persistence;
-- a general-purpose API proxy.
+- offline queues, service workers, or browser persistence;
+- arbitrary WebSocket targets or a general-purpose API proxy.
 
-
-Milestone 2U adds only the objective collection/create route, exact objective
-detail, `pause|resume|cancel` command paths, and exact Controller operation
-reads. Objective task routes, unsupported commands, query strings and arbitrary
-operation resources remain closed before upstream.
+The 0.2-H event cursor exists only for the lifetime of the current page session.
+When the Controller reports `replay_unavailable`, the UI clears its volatile
+event window, refreshes bounded HTTP snapshot data, and reconnects from the
+latest sequence instead of inventing missing history.
