@@ -463,6 +463,29 @@ class ModelRouterPersistenceTest(unittest.TestCase):
                     """,
                     (NOW,NOW,"hermes",decision_id),
                 )
+            for statement in (
+                "UPDATE orchestrator_executions SET execution_id='planner-execution-renamed' "
+                "WHERE execution_id='planner-execution-route'",
+                "UPDATE orchestrator_executions SET runtime_kind='native' "
+                "WHERE execution_id='planner-execution-route'",
+            ):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    connection.execute(statement)
+            triggers = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' "
+                    "AND name LIKE '%model_route_identity_immutable'"
+                )
+            }
+            self.assertEqual(
+                triggers,
+                {
+                    'orchestrator_model_route_identity_immutable',
+                    'worker_model_route_identity_immutable',
+                    'reviewer_model_route_identity_immutable',
+                },
+            )
 
     def test_schema_31_preserves_historical_execution_rows_without_fabrication(self) -> None:
         temporary = tempfile.TemporaryDirectory()

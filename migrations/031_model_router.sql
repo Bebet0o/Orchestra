@@ -346,6 +346,45 @@ BEGIN
     SELECT RAISE(ABORT, 'reviewer model route linkage is immutable');
 END;
 
+-- Once a route is linked, the execution-side identity used by that immutable
+-- decision must not drift. Otherwise a later UPDATE could leave the FK link
+-- intact while making the execution row contradict the route provenance.
+CREATE TRIGGER orchestrator_model_route_identity_immutable
+BEFORE UPDATE OF execution_id, role_id, runtime_kind ON orchestrator_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+  AND (
+      NEW.execution_id IS NOT OLD.execution_id
+      OR NEW.role_id IS NOT OLD.role_id
+      OR NEW.runtime_kind IS NOT OLD.runtime_kind
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'planner model route execution identity is immutable');
+END;
+
+CREATE TRIGGER worker_model_route_identity_immutable
+BEFORE UPDATE OF execution_id, role_id, runtime_kind ON worker_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+  AND (
+      NEW.execution_id IS NOT OLD.execution_id
+      OR NEW.role_id IS NOT OLD.role_id
+      OR NEW.runtime_kind IS NOT OLD.runtime_kind
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'worker model route execution identity is immutable');
+END;
+
+CREATE TRIGGER reviewer_model_route_identity_immutable
+BEFORE UPDATE OF execution_id, role_id, runtime_kind ON reviewer_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+  AND (
+      NEW.execution_id IS NOT OLD.execution_id
+      OR NEW.role_id IS NOT OLD.role_id
+      OR NEW.runtime_kind IS NOT OLD.runtime_kind
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'reviewer model route execution identity is immutable');
+END;
+
 INSERT INTO schema_migrations(version, applied_at)
 VALUES (31, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
