@@ -40,11 +40,21 @@ routing.
 
 Every policy has a canonical SHA-256 over its version, ordered rules, selectors,
 and selected model IDs. A `ModelRouteDecision` records the selected model,
-policy version/hash, matched rule ID, and whether the result came from a rule or
-the configured-model default. The same policy and equivalent request fields
-therefore produce the same decision.
+policy version/hash, matched rule ID, and whether the result came from a rule,
+the configured-model default, or runtime-managed Hermes authority. The same
+policy and equivalent request fields therefore produce the same decision.
 
-This first foundation commit defines and tests the routing domain contract.
-Durable persistence, production configuration loading, and planner/worker/
-reviewer dispatch integration are added by the remaining 0.2-G work before the
-milestone is closed.
+## Durable authority
+
+Schema 31 stores the exact canonical policy under its SHA-256 and one immutable
+route decision per runtime request/execution identity. The decision preserves
+the bounded canonical request, request SHA-256, role/runtime/task selectors,
+configured model, selected model, policy version/hash, matched rule and route
+reason. Database guards reject decisions that do not match their policy rule or
+the configured/runtime-managed semantics.
+
+Planner, worker, and reviewer execution tables now have nullable foreign-key
+links to the decision authority. Historical rows remain valid with no fabricated
+route. Once a route is linked to an execution, the linkage is immutable.
+Production configuration loading and dispatch integration are added by the
+remaining 0.2-G work before the milestone is closed.

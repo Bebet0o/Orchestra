@@ -10,6 +10,7 @@ from .contract import (
     canonical_json,
 )
 from .router import ModelRouter
+from .store import ModelRouteStore
 
 __all__ = [
     "ModelRouteDecision",
@@ -17,6 +18,7 @@ __all__ = [
     "ModelRouteRequest",
     "ModelRouteRule",
     "ModelRouter",
+    "ModelRouteStore",
     "ModelRouterError",
     "ModelRoutingPolicy",
     "canonical_json",
