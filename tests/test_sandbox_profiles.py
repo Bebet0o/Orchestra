@@ -94,7 +94,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
         connection = sqlite3.connect(self.database)
         self.assertEqual(
             connection.execute("PRAGMA user_version").fetchone()[0],
-            29,
+            30,
         )
         self.assertEqual(
             connection.execute(

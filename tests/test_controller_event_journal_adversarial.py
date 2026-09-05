@@ -372,7 +372,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
                 self.assertEqual(all_versions, list(range(1, 31)))
                 self.assertEqual(
                     verify.execute("PRAGMA user_version").fetchone()[0],
-                    29,
+                    30,
                 )
             finally:
                 verify.close()
