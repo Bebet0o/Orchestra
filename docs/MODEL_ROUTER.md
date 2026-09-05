@@ -58,3 +58,27 @@ links to the decision authority. Historical rows remain valid with no fabricated
 route. Once a route is linked to an execution, the linkage is immutable.
 Production configuration loading and dispatch integration are added by the
 remaining 0.2-G work before the milestone is closed.
+
+## Production configuration
+
+The canonical policy is loaded from `config/orchestrator.toml` under
+`[model_router]`. The default policy has no rules and therefore preserves
+existing behavior. Rules are ordered and strict; unknown fields fail closed.
+For example, the policy can express a future production dispatch of one native
+worker role to a local OpenAI-compatible model alias without involving Hermes:
+
+```toml
+[model_router]
+version = 1
+
+[[model_router.rules]]
+id = "local-code"
+model = "qwen3.8-flash-next"
+role_id = "worker_code"
+runtime_kind = "native"
+```
+
+The role must still use `runtime = { kind = "native" }`; the policy selects the
+model while AgentRuntime selection remains explicit role configuration. The
+loader is active in this commit; planner/worker/reviewer dispatch consumes this
+policy in the next integration step.

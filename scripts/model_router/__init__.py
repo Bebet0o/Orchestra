@@ -10,6 +10,7 @@ from .contract import (
     canonical_json,
 )
 from .router import ModelRouter
+from .config import load_model_routing_policy
 from .store import ModelRouteStore
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ModelRouterError",
     "ModelRoutingPolicy",
     "canonical_json",
+    "load_model_routing_policy",
 ]

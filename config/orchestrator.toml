@@ -18,3 +18,8 @@ max_concurrency = 1
 [recovery]
 # Additional corrective attempts authorized by Judge NEEDS_FIX (0..3).
 max_retries = 0
+
+[model_router]
+# Ordered deterministic routing policy. With no rule tables, NativeRuntime uses
+# the role's configured model and HermesRuntime remains profile-managed.
+version = 1
