@@ -5,14 +5,14 @@ real software projects.
 
 ## v0.2.0 — Native Multi-Agent Execution
 
-- NativeRuntime activation — closed
-- Native worker pool — closed
-- Planner and task graph — closed
-- Shared project context — implemented
-- Reviewer and judge
-- Recovery loop
-- Model router
-- Multi-agent Console
+- 0.2-A NativeRuntime activation — CLOSED
+- 0.2-B Native worker pool — CLOSED
+- 0.2-C Planner and task graph — CLOSED
+- 0.2-D Shared project context — CLOSED
+- 0.2-E Reviewer and Judge — CLOSED ([lifecycle and provenance](docs/REVIEWER_JUDGE.md))
+- 0.2-F Recovery loop
+- 0.2-G Model router
+- 0.2-H Multi-agent Console
 
 ## v0.3.0 — Durable Project Intelligence
 
