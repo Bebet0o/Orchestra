@@ -41,10 +41,48 @@ class EventStreamConsoleSourceTest(unittest.TestCase):
         client = (REPO / "console/src/controller-client.js").read_text(encoding="utf-8")
         for marker in ('id="event-panel"', 'id="event-list"', 'id="event-connection-state"', 'id="event-facts"'):
             self.assertIn(marker, html)
-        for marker in ("connectEvents", "disconnectEvents", "scheduleEventReconnect", "replay_unavailable", "eventMessages.length > 100"):
+        for marker in ("connectEvents", "disconnectEvents", "scheduleEventReconnect", "replay_unavailable", "eventMessages.length > 100", "reconcileEventReplay", "refreshEventReconciliationSnapshot"):
             self.assertIn(marker, app)
         for marker in ("new WebSocket", '/api/v1/events', 'after_sequence', 'topics: selectedTopics'):
             self.assertIn(marker, client)
+
+
+    def test_replay_gap_requires_successful_http_snapshot_before_cursor_advance_and_reconnect(self) -> None:
+        app = (REPO / "console/src/app.js").read_text(encoding="utf-8")
+        replay_block = app.split('if (payload.type === "replay_unavailable") {', 1)[1].split('if (Number.isSafeInteger(payload.sequence)', 1)[0]
+        self.assertIn("eventReplayTargetSequence = payload.latest_sequence", replay_block)
+        self.assertNotIn("eventLastSequence =", replay_block)
+        self.assertIn("void reconcileEventReplay()", replay_block)
+
+        reconcile = app.split("async function reconcileEventReplay() {", 1)[1].split("function connectEvents() {", 1)[0]
+        snapshot_call = reconcile.index("await refreshEventReconciliationSnapshot()")
+        cursor_advance = reconcile.index("eventLastSequence = targetSequence")
+        target_clear = reconcile.index("eventReplayTargetSequence = null")
+        reconnect = reconcile.index("connectEvents()")
+        self.assertLess(snapshot_call, cursor_advance)
+        self.assertLess(cursor_advance, target_clear)
+        self.assertLess(target_clear, reconnect)
+        self.assertIn("if (!snapshotReady", reconcile)
+        self.assertIn("reconnexion bloquée", reconcile)
+
+        connect_guard = app.split("function connectEvents() {", 1)[1].split("setEventConnection", 1)[0]
+        self.assertIn("eventReplayReconciling", connect_guard)
+        self.assertIn("eventReplayTargetSequence !== null", connect_guard)
+        self.assertIn("eventReplayBlocked", connect_guard)
+        schedule_guard = app.split("function scheduleEventReconnect() {", 1)[1].split("eventReconnectAttempts", 1)[0]
+        self.assertIn("eventReplayReconciling", schedule_guard)
+        self.assertIn("eventReplayTargetSequence !== null", schedule_guard)
+        self.assertIn("eventReplayBlocked", schedule_guard)
+
+
+    def test_invalid_replay_metadata_fails_closed_without_reconnect(self) -> None:
+        app = (REPO / "console/src/app.js").read_text(encoding="utf-8")
+        replay_block = app.split('if (payload.type === "replay_unavailable") {', 1)[1].split('if (Number.isSafeInteger(payload.sequence)', 1)[0]
+        invalid = replay_block.split('if (!Number.isSafeInteger(payload.latest_sequence)', 1)[1].split('eventLatestSequence = payload.latest_sequence', 1)[0]
+        self.assertIn("eventReplayBlocked = true", invalid)
+        self.assertIn("reconnexion bloquée", invalid)
+        close_guard = app.split('eventStream = null;', 2)[2].split('scheduleEventReconnect();', 1)[0]
+        self.assertIn("!eventReplayBlocked", close_guard)
 
     def test_event_browser_surface_has_no_persistence_or_privileged_paths(self) -> None:
         source = "\n".join((REPO / "console/src" / name).read_text(encoding="utf-8") for name in ("app.js", "controller-client.js", "index.html"))

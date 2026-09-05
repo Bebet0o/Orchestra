@@ -226,6 +226,9 @@ let eventReconnectAttempts = 0;
 let eventLastSequence = 0;
 let eventLatestSequence = 0;
 let eventMessages = [];
+let eventReplayTargetSequence = null;
+let eventReplayReconciling = false;
+let eventReplayBlocked = false;
 let administrationLoading = false;
 let administrationLoaded = false;
 let administrationGeneration = 0;
@@ -2110,13 +2113,16 @@ function disconnectEvents(reset) {
     eventLastSequence = 0;
     eventLatestSequence = 0;
     eventMessages = [];
+    eventReplayTargetSequence = null;
+    eventReplayReconciling = false;
+    eventReplayBlocked = false;
     renderEventMessages();
     setEventConnection("offline", "Flux non connecté.");
   }
 }
 
 function scheduleEventReconnect() {
-  if (!authenticated || currentRoute().key !== "events" || eventReconnectTimer) {
+  if (!authenticated || currentRoute().key !== "events" || eventReconnectTimer || eventReplayReconciling || eventReplayBlocked || eventReplayTargetSequence !== null) {
     return;
   }
   eventReconnectAttempts += 1;
@@ -2141,15 +2147,19 @@ function handleEventPayload(payload) {
     return;
   }
   if (payload.type === "replay_unavailable") {
-    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
-    eventLastSequence = eventLatestSequence;
+    if (!Number.isSafeInteger(payload.latest_sequence) || payload.latest_sequence < 0) {
+      eventReplayTargetSequence = null;
+      eventReplayBlocked = true;
+      setEventConnection("degraded", "Replay indisponible sans séquence Controller valide ; reconnexion bloquée.");
+      return;
+    }
+    eventReplayBlocked = false;
+    eventLatestSequence = payload.latest_sequence;
+    eventReplayTargetSequence = payload.latest_sequence;
     eventMessages = [];
     renderEventMessages();
     setEventConnection("degraded", "Replay trop ancien : snapshot HTTP requis avant reprise du flux.");
-    if (authenticated) {
-      dashboardLoaded = false;
-      void refreshDashboard();
-    }
+    void reconcileEventReplay();
     return;
   }
   if (Number.isSafeInteger(payload.sequence) && payload.sequence > eventLastSequence) {
@@ -2164,8 +2174,85 @@ function handleEventPayload(payload) {
   }
 }
 
+
+async function refreshEventReconciliationSnapshot() {
+  if (!authenticated) {
+    return false;
+  }
+  dashboardLoaded = false;
+  dashboardLoading = true;
+  dashboardRefresh.disabled = true;
+  dashboardStatus.textContent = "Réconciliation du snapshot Controller après trou de replay…";
+  const generation = ++dashboardGeneration;
+  try {
+    const settled = await Promise.allSettled(dashboardResources.map((resource) => resource.load()));
+    if (generation !== dashboardGeneration || !authenticated) {
+      return false;
+    }
+    const collections = {};
+    const errors = [];
+    settled.forEach((result, index) => {
+      const resource = dashboardResources[index];
+      if (result.status === "fulfilled") {
+        collections[resource.key] = result.value;
+      } else {
+        errors.push(result.reason);
+      }
+    });
+    const sessionError = errors.find((error) => error instanceof ControllerClientError && error.status === 401);
+    if (sessionError) {
+      showSignedOut("Session expirée pendant la réconciliation du flux événementiel.");
+      return false;
+    }
+    if (errors.length !== 0 || Object.keys(collections).length !== dashboardResources.length) {
+      dashboardStatus.textContent = "Snapshot de réconciliation incomplet ; reprise du flux bloquée.";
+      dashboardCoverage.textContent = "Toutes les projections HTTP requises doivent réussir avant de reprendre le flux événementiel.";
+      return false;
+    }
+    renderDashboard(collections, []);
+    dashboardLoaded = true;
+    return true;
+  } finally {
+    if (generation === dashboardGeneration) {
+      dashboardLoading = false;
+      dashboardRefresh.disabled = false;
+    }
+  }
+}
+
+async function reconcileEventReplay() {
+  if (!authenticated || currentRoute().key !== "events" || eventReplayReconciling || eventReplayTargetSequence === null) {
+    return;
+  }
+  const targetSequence = eventReplayTargetSequence;
+  eventReplayReconciling = true;
+  setEventConnection("degraded", `Réconciliation HTTP en cours avant reprise à la séquence ${targetSequence}.`);
+  let reconnect = false;
+  try {
+    const snapshotReady = await refreshEventReconciliationSnapshot();
+    if (!snapshotReady || !authenticated || currentRoute().key !== "events" || eventReplayTargetSequence !== targetSequence) {
+      if (authenticated && currentRoute().key === "events" && eventReplayTargetSequence === targetSequence) {
+        setEventConnection("degraded", "Snapshot HTTP incomplet : reconnexion bloquée jusqu’à une nouvelle tentative.");
+      }
+      return;
+    }
+    eventLastSequence = targetSequence;
+    eventLatestSequence = Math.max(eventLatestSequence, targetSequence);
+    eventReplayTargetSequence = null;
+    eventReplayBlocked = false;
+    eventReconnectAttempts = 0;
+    reconnect = true;
+    setEventConnection("reconnecting", `Snapshot synchronisé ; reprise après la séquence ${targetSequence}.`);
+  } finally {
+    eventReplayReconciling = false;
+    if (reconnect && eventStream === null && authenticated && currentRoute().key === "events") {
+      connectEvents();
+    }
+  }
+}
+
 function connectEvents() {
-  if (!authenticated || currentRoute().key !== "events" || eventStream !== null) {
+  if (!authenticated || currentRoute().key !== "events" || eventStream !== null || eventReplayReconciling || eventReplayBlocked || eventReplayTargetSequence !== null) {
     return;
   }
   setEventConnection("connecting", "Connexion au flux événementiel Controller…");
@@ -2188,7 +2275,7 @@ function connectEvents() {
           return;
         }
         eventStream = null;
-        if (authenticated && currentRoute().key === "events") {
+        if (authenticated && currentRoute().key === "events" && !eventReplayReconciling && !eventReplayBlocked && eventReplayTargetSequence === null) {
           scheduleEventReconnect();
         }
       },
@@ -2563,6 +2650,14 @@ reviewList.addEventListener("click", (event) => {
 eventReconnect.addEventListener("click", () => {
   disconnectEvents(false);
   eventReconnectAttempts = 0;
+  if (eventReplayBlocked) {
+    setEventConnection("degraded", "Reconnexion bloquée : rechargez la session après une réponse de replay invalide.");
+    return;
+  }
+  if (eventReplayTargetSequence !== null) {
+    void reconcileEventReplay();
+    return;
+  }
   connectEvents();
 });
 
