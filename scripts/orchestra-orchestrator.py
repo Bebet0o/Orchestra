@@ -1573,6 +1573,11 @@ def plan_has_active_human_gate(
                   ON task.orchestration_task_id=attempt.orchestration_task_id
                 WHERE task.plan_id=?
                   AND approval.status='PENDING'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM recovery_actions AS recovery
+                      WHERE recovery.approval_id=approval.approval_id
+                        AND recovery.status='EXHAUSTED'
+                  )
             )
             """,
             (plan_id,),

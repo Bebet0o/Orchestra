@@ -57,11 +57,14 @@ transitions the action to `DISPATCHED`, and increments the task's
 assignments durably created. Reconciliation can run repeatedly or after a
 restart without consuming budget again.
 
-Exhaustion is an explicit terminal action and creates an approval through the
-existing `approvals` table when the attempt owns a run. `ACKNOWLEDGE` records
-that an operator saw the exhaustion; it never accepts the task or creates
-another attempt. Without a run, exhaustion remains directly inspectable rather
-than creating another approval subsystem.
+Exhaustion is an explicit terminal action and creates an informational
+approval through the existing `approvals` table when the attempt owns a run.
+`ACKNOWLEDGE` records that an operator saw the exhaustion; it never accepts the
+task, creates another attempt, or activates the plan-wide human gate. The
+exhausted task and its dependency branch remain blocked while independent READY
+tasks may continue through normal Task Graph and WorkerPool authority. Without
+a run, exhaustion remains directly inspectable rather than creating another
+approval subsystem.
 
 ## Corrective context and immutable lineage
 

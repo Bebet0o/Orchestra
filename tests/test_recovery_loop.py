@@ -583,8 +583,11 @@ class RecoveryLoopTest(unittest.TestCase):
                 self.assertEqual(runtime.execute(request).output, "corrected")
             self.assertEqual(execute.call_args.args[0].context["recovery"]["required_changes"], ["fix X"])
 
-    def test_exhaustion_reuses_existing_human_approval_authority(self) -> None:
-        plan_id = self.create(retries=0)
+    def test_exhaustion_acknowledgement_is_task_local_not_plan_gate(self) -> None:
+        plan_id = self.create(retries=0, diamond=True)
+        a = self.start(plan_id, "a")
+        self.finish(a, "A")
+        ORCH.refresh_plan_states(plan_id)
         first = self.start(plan_id, "b")
         with self.connect() as connection:
             connection.execute(
@@ -601,9 +604,29 @@ class RecoveryLoopTest(unittest.TestCase):
         self.recovery.reconcile(self.pool)
         action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
         self.assertEqual((action["status"], action["escalation_status"]), ("EXHAUSTED", "PENDING"))
+        with self.connect() as connection:
+            self.assertFalse(ORCH.plan_has_active_human_gate(connection, plan_id))
+        with self.connect() as connection:
+            task_ids = {
+                row["task_key"]: row["orchestration_task_id"]
+                for row in connection.execute(
+                    "SELECT task_key, orchestration_task_id FROM orchestration_tasks WHERE plan_id=?",
+                    (plan_id,),
+                )
+            }
+        runnable = set(ORCH.runnable_tasks(set(), capacity=16))
+        self.assertIn(task_ids["c"], runnable)
+        self.assertNotIn(task_ids["b"], runnable)
+        self.assertEqual(
+            self.states(plan_id),
+            {"a": "COMPLETED", "b": "BLOCKED", "c": "READY", "d": "PENDING"},
+        )
+        # Stronger than scheduler visibility: the independent task can reserve
+        # an actual attempt while the exhaustion acknowledgement is pending.
+        c = self.start(plan_id, "c")
+        self.assertEqual(c[0]["task_key"], "c")
         resolved = self.recovery.resolve_exhaustion(action["approval_id"], "ACKNOWLEDGE")
         self.assertEqual(resolved["escalation_status"], "APPROVED")
-        self.assertEqual(self.states(plan_id), {"b": "BLOCKED", "d": "PENDING"})
 
     def test_configuration_default_and_bounds(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
