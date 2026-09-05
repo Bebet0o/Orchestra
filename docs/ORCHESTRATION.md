@@ -93,6 +93,11 @@ Task Graph remains dependency/readiness authority, WorkerPool remains capacity
 authority, and AgentRuntime remains execution authority. Shared context adds no
 worker-to-worker transport.
 
+Review-required tasks may enter the bounded corrective flow documented in
+[Recovery Loop](RECOVERY_LOOP.md). RecoveryCoordinator translates only a
+durable Judge `NEEDS_FIX` decision into a new WorkerPool assignment; it does not
+alter dependencies or directly release downstream tasks.
+
 ## Native worker pool
 
 Pipeline tasks enter an Orchestra-owned `WorkerPool`. This is bounded execution

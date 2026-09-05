@@ -14,3 +14,7 @@ heartbeat_seconds = 5
 
 [worker_pool]
 max_concurrency = 1
+
+[recovery]
+# Additional corrective attempts authorized by Judge NEEDS_FIX (0..3).
+max_retries = 0

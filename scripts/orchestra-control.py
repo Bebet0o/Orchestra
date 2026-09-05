@@ -252,11 +252,23 @@ def command_resolve(arguments: argparse.Namespace) -> None:
             f"allowed={options}"
         )
     from reviewer_judge import ReviewStore
+    from recovery_coordinator import RecoveryCoordinator
     with connect() as connection:
         judge_gate = connection.execute("SELECT 1 FROM judge_decisions WHERE approval_id=?",
                                         (arguments.approval,)).fetchone()
     if judge_gate:
         payload = ReviewStore(connect).resolve_human(arguments.approval, arguments.decision)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    with connect() as connection:
+        recovery_gate = connection.execute(
+            "SELECT 1 FROM recovery_actions WHERE approval_id=?",
+            (arguments.approval,),
+        ).fetchone()
+    if recovery_gate:
+        payload = RecoveryCoordinator(connect).resolve_exhaustion(
+            arguments.approval, arguments.decision
+        )
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
     command = [
@@ -346,7 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("approval")
     resolve.add_argument(
         "decision",
-        choices=("RESUME_SAFE", "ROLLBACK_SAFE"),
+        choices=("RESUME_SAFE", "ROLLBACK_SAFE", "ACKNOWLEDGE"),
     )
     resolve.set_defaults(function=command_resolve)
 

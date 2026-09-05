@@ -136,6 +136,118 @@ class WorkerPool:
         self.pump()
         return assignment_id
 
+    def submit_recovery(
+        self,
+        recovery_action_id: str,
+        task_id: str,
+        role_id: str,
+        runtime_kind: str,
+    ) -> str | None:
+        """Atomically consume one recovery budget unit and queue its assignment."""
+        if runtime_kind not in {"hermes", "native"}:
+            raise ValueError("Worker assignment runtime kind is invalid")
+        assignment_id = "worker-assignment-" + uuid.uuid4().hex
+        now = utc_now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            action = connection.execute(
+                """
+                SELECT action.*, task.status AS task_status,
+                       task.review_state, task.role_id,
+                       task.recovery_retry_count, task.recovery_max_retries,
+                       role.runtime_kind, plan.status AS plan_status,
+                       plan.last_error AS plan_error
+                FROM recovery_actions action
+                JOIN orchestration_tasks task
+                  ON task.orchestration_task_id = action.task_id
+                JOIN roles role ON role.role_id = task.role_id
+                JOIN orchestration_plans plan ON plan.plan_id = task.plan_id
+                WHERE action.recovery_action_id = ? AND action.task_id = ?
+                """,
+                (recovery_action_id, task_id),
+            ).fetchone()
+            if action is None:
+                connection.rollback()
+                return None
+            if action["status"] == "DISPATCHED":
+                connection.rollback()
+                return str(action["target_assignment_id"])
+            if (
+                action["status"] != "PENDING"
+                or action["task_status"] != "BLOCKED"
+                or action["review_state"] != "NEEDS_FIX"
+                or action["role_id"] != role_id
+                or action["runtime_kind"] != runtime_kind
+                or int(action["recovery_retry_count"]) >= int(action["recovery_max_retries"])
+                or int(action["recovery_retry_count"]) + 1 != int(action["recovery_sequence"])
+            ):
+                connection.rollback()
+                return None
+            existing = connection.execute(
+                "SELECT assignment_id FROM worker_pool_assignments "
+                "WHERE orchestration_task_id=? AND status IN ('QUEUED','RUNNING')",
+                (task_id,),
+            ).fetchone()
+            if existing is not None:
+                connection.rollback()
+                return None
+            queue_sequence = int(
+                connection.execute(
+                    "SELECT COALESCE(MAX(queue_sequence), 0) + 1 "
+                    "FROM worker_pool_assignments WHERE pool_name = ?",
+                    (self.pool_name,),
+                ).fetchone()[0]
+            )
+            connection.execute(
+                """
+                INSERT INTO worker_pool_assignments (
+                    assignment_id, pool_name, queue_sequence,
+                    orchestration_task_id, attempt_id, role_id, runtime_kind,
+                    status, controller_instance_id, result_json, failure_reason,
+                    created_at, started_at, finished_at
+                ) VALUES (?, ?, ?, ?, NULL, ?, ?, 'QUEUED', NULL, '{}', NULL,
+                          ?, NULL, NULL)
+                """,
+                (assignment_id, self.pool_name, queue_sequence, task_id,
+                 role_id, runtime_kind, now),
+            )
+            self._event(connection, assignment_id, "QUEUED", now)
+            changed = connection.execute(
+                """
+                UPDATE recovery_actions
+                SET status='DISPATCHED', target_assignment_id=?, dispatched_at=?
+                WHERE recovery_action_id=? AND status='PENDING'
+                """,
+                (assignment_id, now, recovery_action_id),
+            ).rowcount
+            if changed != 1:
+                connection.rollback()
+                return None
+            connection.execute(
+                "UPDATE orchestration_tasks SET status='READY', review_state='NONE', "
+                "recovery_retry_count=recovery_retry_count+1, failure_reason=NULL, "
+                "finished_at=NULL WHERE orchestration_task_id=?",
+                (task_id,),
+            )
+            connection.execute(
+                "UPDATE orchestration_plans SET status='RUNNING', last_error=NULL, "
+                "finished_at=NULL WHERE plan_id=? AND status='BLOCKED'",
+                (action["plan_id"],),
+            )
+            connection.execute(
+                """
+                INSERT INTO recovery_events (
+                    recovery_action_id,event_kind,task_id,source_attempt_id,
+                    source_review_id,source_decision_id,target_attempt_id,created_at
+                ) VALUES (?, 'recovery_dispatched', ?, ?, ?, ?, NULL, ?)
+                """,
+                (recovery_action_id, task_id, action["source_attempt_id"],
+                 action["source_review_id"], action["source_decision_id"], now),
+            )
+            connection.commit()
+        self.pump()
+        return assignment_id
+
     def _claim_next(self) -> WorkerAssignment | None:
         now = utc_now()
         with self._connection() as connection:
