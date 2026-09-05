@@ -287,6 +287,17 @@ class RecoveryCoordinator:
             ).fetchall()
             for action in abandoned:
                 connection.execute(
+                    """
+                    UPDATE orchestration_tasks
+                    SET status='BLOCKED', review_state='NEEDS_FIX',
+                        failure_reason='corrective assignment ended before attempt',
+                        finished_at=?
+                    WHERE orchestration_task_id=?
+                      AND status='READY' AND review_state='NONE'
+                    """,
+                    (utc_now(), action["task_id"]),
+                )
+                connection.execute(
                     "UPDATE recovery_actions SET status='CANCELLED',finished_at=? "
                     "WHERE recovery_action_id=? AND status='DISPATCHED'",
                     (utc_now(), action["recovery_action_id"]),

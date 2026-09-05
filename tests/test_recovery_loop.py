@@ -57,6 +57,9 @@ class RecoveryLoopTest(unittest.TestCase):
                   FROM roles WHERE role_id='orchestrator'
                 """
             )
+        supervisor = mock.patch.object(ORCH, "supervisor_is_healthy", return_value=True)
+        supervisor.start()
+        self.addCleanup(supervisor.stop)
         self.executor = graph.ManualExecutor()
         self.pool = WorkerPool(
             self.connect,
@@ -64,6 +67,7 @@ class RecoveryLoopTest(unittest.TestCase):
             controller_instance_id="graph-controller",
             max_concurrency=2,
             executor=self.executor,
+            recovery_eligible=ORCH.recovery_dispatch_eligible,
         )
         self.addCleanup(self.pool.shutdown)
         self.store = ReviewStore(self.connect)
@@ -316,6 +320,72 @@ class RecoveryLoopTest(unittest.TestCase):
         self.assertEqual(self.pool.reconcile(), 1)
         restarted.reconcile(self.pool)
         self.assertEqual(restarted.list(task_id=first[0]["orchestration_task_id"])[0]["status"], "CANCELLED")
+
+    def test_recovery_waits_for_execution_constraints_before_dispatch(self) -> None:
+        plan_id = self.create(diamond=True)
+        a = self.start(plan_id, "a")
+        self.finish(a, "A")
+        ORCH.refresh_plan_states(plan_id)
+        with self.connect() as connection:
+            project_b = connection.execute(
+                "SELECT project_id FROM orchestration_tasks WHERE plan_id=? AND task_key='b'",
+                (plan_id,),
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE orchestration_tasks SET project_id=? WHERE plan_id=? AND task_key='c'",
+                (project_b, plan_id),
+            )
+        b = self.start(plan_id, "b")
+        rb = self.finish(b, "B1")
+        assert rb is not None
+        self.judge(rb, "needs_fix")
+        c = self.start(plan_id, "c")
+
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 0)
+        action = self.recovery.list(task_id=b[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "PENDING")
+        self.assertEqual(action["recovery_retry_count"], 0)
+
+        rc = self.finish(c, "C1")
+        assert rc is not None
+        self.judge(rc, "pass")
+        self.assertTrue(self.store.accept(rc))
+        ORCH.refresh_plan_states(plan_id)
+
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=b[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "DISPATCHED")
+        self.assertEqual(action["recovery_retry_count"], 1)
+
+    def test_failed_pre_attempt_recovery_cannot_escape_to_normal_scheduler(self) -> None:
+        plan_id, first, _ = self.rejected()
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        with self.connect() as connection:
+            assignment = connection.execute(
+                "SELECT status FROM worker_pool_assignments WHERE assignment_id=?",
+                (action["target_assignment_id"],),
+            ).fetchone()
+        self.assertEqual(assignment["status"], "RUNNING")
+
+        self.executor.futures[-1].set_exception(RuntimeError("dispatch failed before reserve"))
+        self.assertEqual(self.recovery.finish_terminal_actions(), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "CANCELLED")
+        with self.connect() as connection:
+            task = connection.execute(
+                "SELECT status, review_state FROM orchestration_tasks "
+                "WHERE orchestration_task_id=?",
+                (first[0]["orchestration_task_id"],),
+            ).fetchone()
+        self.assertEqual((task["status"], task["review_state"]), ("BLOCKED", "NEEDS_FIX"))
+        self.assertNotIn(
+            first[0]["orchestration_task_id"],
+            ORCH.runnable_tasks(set(), capacity=16),
+        )
+        self.assertEqual(self.states(plan_id), {"b": "BLOCKED", "d": "PENDING"})
 
     def test_policy_bounds_hash_and_schema_guards(self) -> None:
         self.assertEqual(policy_authority(1), policy_authority(1))

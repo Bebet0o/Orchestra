@@ -1233,32 +1233,26 @@ def refresh_plan_states(plan_id: str) -> None:
         connection.commit()
 
 
-def reservation_ineligibility_reason(
+def execution_constraint_ineligibility_reason(
     connection: sqlite3.Connection,
     task: sqlite3.Row,
-    pool_assignment_id: str | None = None,
+    *,
+    allow_review_blocked_plan: bool = False,
+    check_pipeline_health: bool = False,
 ) -> str | None:
-    if task["status"] != "READY":
-        return f"Task cannot start from status {task['status']}"
-    corrective = False
-    if pool_assignment_id is not None:
-        corrective = bool(
-            connection.execute(
-                "SELECT 1 FROM recovery_actions WHERE task_id=? "
-                "AND target_assignment_id=? AND status='DISPATCHED'",
-                (task["orchestration_task_id"], pool_assignment_id),
-            ).fetchone()
-        )
-    if task["attempt_count"] >= task["max_attempts"] and not corrective:
-        return "Task attempt budget is exhausted"
-
     plan = connection.execute(
-        "SELECT status, max_parallel_tasks FROM orchestration_plans WHERE plan_id=?",
+        "SELECT status, max_parallel_tasks, last_error "
+        "FROM orchestration_plans WHERE plan_id=?",
         (task["plan_id"],),
     ).fetchone()
     if plan is None:
         return "Task orchestration plan disappeared before reservation"
-    if plan["status"] not in {"READY", "RUNNING"}:
+    plan_startable = plan["status"] in {"READY", "RUNNING"} or (
+        allow_review_blocked_plan
+        and plan["status"] == "BLOCKED"
+        and plan["last_error"] == "required task review"
+    )
+    if not plan_startable:
         return f"Plan cannot start work from status {plan['status']}"
 
     objectives = connection.execute(
@@ -1275,6 +1269,13 @@ def reservation_ineligibility_reason(
 
     if plan_has_active_human_gate(connection, task["plan_id"]):
         return "Plan is waiting for a human decision"
+
+    if (
+        check_pipeline_health
+        and task["kind"] == "PIPELINE"
+        and not supervisor_is_healthy()
+    ):
+        return "Pipeline supervisor is not healthy"
 
     running_for_plan = int(
         connection.execute(
@@ -1294,6 +1295,47 @@ def reservation_ineligibility_reason(
         return "Task project already has active work"
 
     return None
+
+
+def recovery_dispatch_eligible(
+    connection: sqlite3.Connection,
+    task_id: str,
+) -> bool:
+    task = connection.execute(
+        "SELECT * FROM orchestration_tasks WHERE orchestration_task_id = ?",
+        (task_id,),
+    ).fetchone()
+    if task is None:
+        return False
+    if task["status"] != "BLOCKED" or task["review_state"] != "NEEDS_FIX":
+        return False
+    return execution_constraint_ineligibility_reason(
+        connection,
+        task,
+        allow_review_blocked_plan=True,
+        check_pipeline_health=True,
+    ) is None
+
+
+def reservation_ineligibility_reason(
+    connection: sqlite3.Connection,
+    task: sqlite3.Row,
+    pool_assignment_id: str | None = None,
+) -> str | None:
+    if task["status"] != "READY":
+        return f"Task cannot start from status {task['status']}"
+    corrective = False
+    if pool_assignment_id is not None:
+        corrective = bool(
+            connection.execute(
+                "SELECT 1 FROM recovery_actions WHERE task_id=? "
+                "AND target_assignment_id=? AND status='DISPATCHED'",
+                (task["orchestration_task_id"], pool_assignment_id),
+            ).fetchone()
+        )
+    if task["attempt_count"] >= task["max_attempts"] and not corrective:
+        return "Task attempt budget is exhausted"
+    return execution_constraint_ineligibility_reason(connection, task)
 
 
 def reserve_attempt(
@@ -4462,6 +4504,7 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
         dispatch_worker,
         controller_instance_id=instance_id,
         max_concurrency=config["worker_pool_max_concurrency"],
+        recovery_eligible=recovery_dispatch_eligible,
     )
     recovery = RecoveryCoordinator(connect)
 
