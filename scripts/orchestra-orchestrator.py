@@ -26,6 +26,7 @@ from typing import Any, NoReturn
 from worker_pool import WorkerAssignment, WorkerPool
 from shared_context import ContextProjector, canonical_json as context_canonical_json
 import orchestra_review_assignment as ASSIGNMENTS
+from reviewer_judge import ReviewStore
 
 
 ROOT = Path(
@@ -540,6 +541,22 @@ def validate_plan(
         else:
             duration = None
 
+        review = raw.get("review", {"required": False})
+        if (not isinstance(review, dict) or set(review) - {"required", "role_id"}
+                or type(review.get("required")) is not bool):
+            fail(f"Task {key} review policy is invalid")
+        reviewer_role = review.get("role_id", "reviewer") if review["required"] else None
+        if review["required"]:
+            if not isinstance(reviewer_role, str):
+                fail(f"Task {key} reviewer role must be a string")
+            reviewer = roles.get(reviewer_role)
+            if (kind != "PIPELINE" or reviewer is None
+                    or reviewer["role_kind"] != "reviewer"
+                    or reviewer["workspace_mode"] != "read_only"
+                    or reviewer["may_commit"] or reviewer["may_push"]
+                    or reviewer["network_enabled"]):
+                fail(f"Task {key} requires an enabled read-only reviewer role")
+
         normalized.append(
             {
                 "key": key,
@@ -554,6 +571,7 @@ def validate_plan(
                 "priority": priority,
                 "max_attempts": max_attempts,
                 "duration_seconds": duration,
+                "review": {"required": review["required"], "role_id": reviewer_role},
             }
         )
 
@@ -714,11 +732,11 @@ def insert_plan(
                     heartbeat_at,
                     finished_at,
                     title,
-                    graph_position
+                    graph_position, review_required, reviewer_role_id
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, 0,
-                    '{}', NULL, ?, NULL, NULL, NULL, ?, ?
+                    '{}', NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -736,6 +754,8 @@ def insert_plan(
                     now,
                     task.get("title", task["key"]),
                     graph_position,
+                    int(task.get("review", {}).get("required", False)),
+                    task.get("review", {}).get("role_id"),
                 ),
             )
             add_graph_event(
@@ -990,7 +1010,7 @@ def refresh_plan_states(plan_id: str) -> None:
             for task in pending:
                 parents = connection.execute(
                     """
-                    SELECT parent.status
+                    SELECT parent.status, parent.review_required, parent.review_state
                     FROM orchestration_dependencies AS dependency
                     JOIN orchestration_tasks AS parent
                       ON parent.orchestration_task_id = dependency.depends_on_task_id
@@ -998,7 +1018,10 @@ def refresh_plan_states(plan_id: str) -> None:
                     """,
                     (task["orchestration_task_id"],),
                 ).fetchall()
-                parent_statuses = {row["status"] for row in parents}
+                parent_statuses = {
+                    "REVIEW_HELD" if row["review_required"] and row["review_state"] != "NONE"
+                    and row["status"] == "BLOCKED" else row["status"] for row in parents
+                }
 
                 if parent_statuses & {"FAILED", "BLOCKED", "CANCELLED"}:
                     new_status = "BLOCKED"
@@ -1114,6 +1137,14 @@ def refresh_plan_states(plan_id: str) -> None:
                 """,
                 (now, plan_id),
             )
+        elif connection.execute(
+            "SELECT 1 FROM orchestration_tasks WHERE plan_id=? AND review_required=1 "
+            "AND status='BLOCKED' AND review_state<>'NONE' LIMIT 1", (plan_id,),
+        ).fetchone() and not any(status in {"READY", "RUNNING"} for status in statuses):
+            connection.execute(
+                "UPDATE orchestration_plans SET status='BLOCKED',heartbeat_at=?,last_error='required task review' WHERE plan_id=?",
+                (now, plan_id),
+            )
         elif statuses and all(status == "COMPLETED" for status in statuses):
             connection.execute(
                 """
@@ -1165,7 +1196,7 @@ def refresh_plan_states(plan_id: str) -> None:
                 """
                 UPDATE orchestration_plans
                 SET status = CASE
-                        WHEN status = 'READY' THEN 'RUNNING'
+                        WHEN status = 'READY' OR (status = 'BLOCKED' AND last_error = 'required task review') THEN 'RUNNING'
                         ELSE status
                     END,
                     started_at = COALESCE(started_at, ?),
@@ -1575,6 +1606,32 @@ def finish_task_success(
     with connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         result_json = canonical_json(result)
+        current = connection.execute("SELECT * FROM orchestration_tasks WHERE orchestration_task_id=?",
+                                     (task["orchestration_task_id"],)).fetchone()
+        if current["review_required"]:
+            changed = connection.execute(
+                "UPDATE orchestration_attempts SET status='COMPLETED',result_json=?,heartbeat_at=?,finished_at=? "
+                "WHERE attempt_id=? AND orchestration_task_id=? AND status='RUNNING'",
+                (result_json, now, now, attempt_id, task["orchestration_task_id"]),
+            ).rowcount
+            if not changed:
+                connection.rollback()
+                return
+            connection.execute(
+                "UPDATE orchestration_tasks SET status='BLOCKED',review_state='PENDING',result_json=?,"
+                "failure_reason='required review pending',heartbeat_at=? WHERE orchestration_task_id=? AND status='RUNNING'",
+                (result_json, now, task["orchestration_task_id"]),
+            )
+            connection.execute("SAVEPOINT review_request")
+            try:
+                ReviewStore(connect).request(connection, task["orchestration_task_id"], attempt_id)
+            except Exception:
+                connection.execute("ROLLBACK TO review_request")
+                connection.execute("UPDATE orchestration_tasks SET review_state='FAILED',failure_reason='invalid review provenance' WHERE orchestration_task_id=?",
+                                   (task["orchestration_task_id"],))
+            connection.execute("RELEASE review_request")
+            connection.commit()
+            return
         human_gate = plan_has_active_human_gate(connection, task["plan_id"])
         authorized_integration = bool(
             result.get("kind") == "PIPELINE"
@@ -2662,6 +2719,10 @@ def execute_pipeline(
             [str(TRANSACTION), "submit", "--run", run_id],
             timeout=config["command_timeout_seconds"],
         )
+
+        if task["review_required"]:
+            # The new Judge owns acceptance; no legacy reviewer retry or recovery.
+            return {"kind": "PIPELINE", "run_id": run_id, "worker": worker, "submitted": submitted}
 
         reviewer, review_transport_failures, reviewer_cleanup = (
             launch_reviewer_with_transport_retry(
@@ -4143,6 +4204,7 @@ def task_graph_snapshot(plan_id: str) -> dict[str, Any]:
         "tasks": tasks,
         "dependencies": edges,
         "assignments": assignments,
+        "reviews": ReviewStore(connect).list(plan_id=plan_id),
     }
 
 
@@ -4159,6 +4221,100 @@ def active_plan_ids() -> list[str]:
                 """
             ).fetchall()
         ]
+
+
+def reconcile_interrupted_reviews(instance_id: str, timeout: int) -> None:
+    with connect() as connection:
+        interrupted = connection.execute(
+            "SELECT r.review_id, a.run_id FROM task_reviews r "
+            "JOIN orchestration_attempts a ON a.attempt_id=r.attempt_id WHERE r.status='RUNNING'"
+        ).fetchall()
+    ReviewStore(connect).reconcile()
+    for review in interrupted:
+        if review["run_id"] is None:
+            continue
+        evidence = latest_reviewer_evidence(review["run_id"])
+        cleanup_reviewer_resources(evidence, timeout=timeout)
+        with connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            assignments = connection.execute(
+                "SELECT assignment_id FROM reviewer_assignments WHERE run_id=? AND status IN ('ASSIGNED','CLAIMED')",
+                (review["run_id"],),
+            ).fetchall()
+            for assignment in assignments:
+                ASSIGNMENTS.fail_active_assignment(connection, assignment_id=assignment[0],
+                                                   actor_id=instance_id, failure_code="REVIEW_INTERRUPTED")
+            connection.execute(
+                "UPDATE tasks SET status='FAILED',finished_at=?,heartbeat_at=? WHERE run_id=? AND status='RUNNING' "
+                "AND task_id IN (SELECT task_id FROM reviewer_executions WHERE run_id=?)",
+                (utc_now(), utc_now(), review["run_id"], review["run_id"]),
+            )
+            connection.execute(
+                "UPDATE reviewer_executions SET finished_at=?,failure_reason='review interrupted by restart' "
+                "WHERE run_id=? AND finished_at IS NULL", (utc_now(), review["run_id"]),
+            )
+            connection.commit()
+
+
+def reconcile_required_reviews(instance_id: str, config: dict[str, Any]) -> None:
+    store = ReviewStore(connect)
+    for review in store.list(pending=True):
+        review_id = review["review_id"]
+        if not store.claim(review_id, instance_id):
+            continue
+        try:
+            with connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                attempt = connection.execute("SELECT * FROM orchestration_attempts WHERE attempt_id=?",
+                                             (review["attempt_id"],)).fetchone()
+                assignment = ASSIGNMENTS.create_assignment(
+                    connection, run_id=attempt["run_id"], orchestration_attempt_id=review["attempt_id"],
+                    assignment_number=1, role_id=review["role_id"], assigned_by=instance_id,
+                )
+                connection.commit()
+            instruction = ROOT / "state/orchestrator" / (review_id + ".txt")
+            instruction.parent.mkdir(parents=True, exist_ok=True)
+            instruction.write_text("Evaluate the durable task review subject.\n", encoding="utf-8")
+            instruction.chmod(0o600)
+            run_json([
+                str(REVIEWER), "launch", "--run", attempt["run_id"], "--role", review["role_id"],
+                "--assignment", assignment["assignment_id"], "--instruction-file", str(instruction),
+                "--marker", "ORCHESTRA_STRUCTURED_REVIEW_DONE", "--graph-review", review_id,
+                "--timeout", str(config["review_timeout_seconds"]),
+            ], timeout=config["review_timeout_seconds"] + 120)
+            if store.get(review_id)["status"] != "COMPLETED":
+                store.fail(review_id, "RUNTIME_FAILED")
+        except Exception:
+            store.fail(review_id, "RUNTIME_FAILED")
+    for review in store.acceptance_candidates():
+        accepted = review["disposition"] == "PASS" or (
+            review["disposition"] == "HUMAN_REVIEW" and review["human_status"] == "APPROVED"
+        )
+        if not accepted:
+            continue
+        with connect() as connection:
+            run = connection.execute(
+                "SELECT r.* FROM runs r JOIN orchestration_attempts a ON a.run_id=r.run_id WHERE a.attempt_id=?",
+                (review["attempt_id"],),
+            ).fetchone()
+        with connect() as connection:
+            if plan_has_active_human_gate(connection, review["plan_id"]):
+                continue
+        if run is not None and run["status"] == "REVIEWING":
+            if not store.claim_integration(review["review_id"]):
+                continue
+            # Existing integrator validates commit/snapshot and cancellation under its lock.
+            try:
+                integrated = run_json([str(INTEGRATOR), "apply", "--run", run["run_id"], "--owner", run["transaction_owner"]],
+                         timeout=config["command_timeout_seconds"])
+                if not integrated.get("integrated"):
+                    store.integration_failed(review["review_id"])
+                    continue
+            except Exception:
+                store.integration_failed(review["review_id"])
+                continue
+        store.accept(review["review_id"])
+        refresh_plan_states(review["plan_id"])
 
 
 def reconcile_task_graph() -> None:
@@ -4210,6 +4366,7 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
         thread_name_prefix="orchestra-controller-task",
     )
     controller_futures: dict[concurrent.futures.Future[None], str] = {}
+    review_future: concurrent.futures.Future[None] | None = None
     pool: WorkerPool
 
     def dispatch_worker(assignment: WorkerAssignment) -> None:
@@ -4239,6 +4396,7 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
     try:
         update_instance(instance_id, status="RUNNING")
         pool.reconcile()
+        reconcile_interrupted_reviews(instance_id, config["command_timeout_seconds"])
         reconcile_interrupted_tasks(instance_id)
         reconcile_task_graph()
         reconcile_interrupted_planner_executions()
@@ -4250,6 +4408,10 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
             cleanup_cancel_requested_human_runs(
                 config["command_timeout_seconds"]
             )
+            if review_future is None or review_future.done():
+                if review_future is not None:
+                    review_future.result()
+                review_future = controller_executor.submit(reconcile_required_reviews, instance_id, config)
             synchronize_objective_states()
 
             completed_planning = [

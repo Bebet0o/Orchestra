@@ -251,6 +251,14 @@ def command_resolve(arguments: argparse.Namespace) -> None:
             f"Decision {arguments.decision} is not allowed; "
             f"allowed={options}"
         )
+    from reviewer_judge import ReviewStore
+    with connect() as connection:
+        judge_gate = connection.execute("SELECT 1 FROM judge_decisions WHERE approval_id=?",
+                                        (arguments.approval,)).fetchone()
+    if judge_gate:
+        payload = ReviewStore(connect).resolve_human(arguments.approval, arguments.decision)
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return
     command = [
         str(RECOVERY),
         "recover",
