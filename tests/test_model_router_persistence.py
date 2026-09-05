@@ -486,6 +486,33 @@ class ModelRouterPersistenceTest(unittest.TestCase):
                     'reviewer_model_route_identity_immutable',
                 },
             )
+            delete_triggers = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' "
+                    "AND name LIKE '%model_route_execution_immutable_delete'"
+                )
+            }
+            self.assertEqual(
+                delete_triggers,
+                {
+                    'orchestrator_model_route_execution_immutable_delete',
+                    'worker_model_route_execution_immutable_delete',
+                    'reviewer_model_route_execution_immutable_delete',
+                },
+            )
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    "DELETE FROM orchestrator_executions "
+                    "WHERE execution_id='planner-execution-route'"
+                )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM orchestrator_executions "
+                    "WHERE execution_id='planner-execution-route'"
+                ).fetchone()[0],
+                1,
+            )
 
     def test_schema_31_preserves_historical_execution_rows_without_fabrication(self) -> None:
         temporary = tempfile.TemporaryDirectory()

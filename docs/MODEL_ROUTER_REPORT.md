@@ -70,7 +70,8 @@ created by that transaction is rolled back.
 The database rejects forged decisions, second matching rules when an earlier rule
 matches, false configured-model fallbacks, role/runtime mismatches and attempts to
 rewrite linked history. Once a decision is linked, the execution ID, role ID and
-runtime kind used by that provenance are also immutable.
+runtime kind used by that provenance are immutable and the linked execution row
+cannot be deleted, preventing orphaned routing history.
 
 ## Milestone commits before the completion documentation commit
 
@@ -116,7 +117,9 @@ The complete-suite run found two stale schema-30 expectations in historical test
 They were updated to schema 31. A final adversarial branch audit then found that an
 execution row could still mutate its execution/role/runtime identity after linking
 an immutable route decision; schema-31 guards and regression coverage now close that
-provenance drift path.
+provenance drift path. A subsequent deletion check also found that a linked
+execution row itself could still be removed, orphaning the immutable decision;
+linked Planner, Worker and Reviewer execution rows are now delete-protected.
 
 ## Intentional deferrals
 
@@ -137,6 +140,7 @@ MODEL_ROUTE_DECISION_DURABLE=YES
 MODEL_ROUTE_DECISION_IMMUTABLE=YES
 MODEL_ROUTE_EXECUTION_LINK_ATOMIC=YES
 MODEL_ROUTE_EXECUTION_IDENTITY_IMMUTABLE=YES
+MODEL_ROUTE_LINKED_EXECUTION_DELETE_PROTECTED=YES
 MODEL_ROUTE_FALSE_FALLBACK_REJECTED=YES
 MODEL_ROUTE_FORGED_PROVENANCE_REJECTED=YES
 NATIVE_PLANNER_MODEL_ROUTING=PASS

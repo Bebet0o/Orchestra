@@ -385,6 +385,30 @@ BEGIN
     SELECT RAISE(ABORT, 'reviewer model route execution identity is immutable');
 END;
 
+-- A linked execution is itself part of the durable routing provenance. Deleting
+-- it would orphan the immutable route decision while preserving only a textual
+-- execution identity, so linked execution rows are also non-deletable.
+CREATE TRIGGER orchestrator_model_route_execution_immutable_delete
+BEFORE DELETE ON orchestrator_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'planner model route execution is immutable');
+END;
+
+CREATE TRIGGER worker_model_route_execution_immutable_delete
+BEFORE DELETE ON worker_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'worker model route execution is immutable');
+END;
+
+CREATE TRIGGER reviewer_model_route_execution_immutable_delete
+BEFORE DELETE ON reviewer_executions
+WHEN OLD.model_route_decision_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'reviewer model route execution is immutable');
+END;
+
 INSERT INTO schema_migrations(version, applied_at)
 VALUES (31, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
