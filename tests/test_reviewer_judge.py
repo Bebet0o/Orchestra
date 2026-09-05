@@ -352,7 +352,7 @@ class ReviewerJudgeTest(unittest.TestCase):
     def test_migration_sequence_and_integrity(self):
         self.ready_review()
         with self.connect() as c:
-            self.assertEqual([r[0] for r in c.execute('SELECT version FROM schema_migrations ORDER BY version')],list(range(1,30)))
+            self.assertEqual([r[0] for r in c.execute('SELECT version FROM schema_migrations ORDER BY version')],list(range(1,31)))
             self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(c.execute('PRAGMA quick_check').fetchone()[0],'ok')
             self.assertEqual(c.execute('PRAGMA integrity_check').fetchone()[0],'ok')

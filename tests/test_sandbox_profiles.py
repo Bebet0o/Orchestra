@@ -100,7 +100,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
             connection.execute(
                 "SELECT version FROM schema_migrations"
             ).fetchall(),
-            [(version,) for version in range(1, 30)],
+            [(version,) for version in range(1, 31)],
         )
         connection.close()
 
