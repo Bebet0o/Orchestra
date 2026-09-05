@@ -14,7 +14,7 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigation principale">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">H</div>
+        <div class="brand-mark" aria-hidden="true">O</div>
         <div>
           <strong>Orchestra</strong>
           <span>Console</span>
@@ -32,7 +32,7 @@
       </nav>
       <div class="sidebar-foot">
         <span class="status-dot" aria-hidden="true"></span>
-        Dashboard opérationnel 2R
+        Multi-Agent Console 0.2-H
       </div>
     </aside>
 
@@ -47,8 +47,8 @@
 
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">Jalon 2R</p>
-          <h2 id="hero-title">L’état opérationnel essentiel, sans accès privilégié.</h2>
+          <p class="eyebrow">Orchestra v0.2</p>
+          <h2 id="hero-title">Piloter et comprendre l’orchestration multi-agent.</h2>
           <p id="page-description">
             Le navigateur lit uniquement des projections Controller authentifiées, bornées et expurgées.
             Aucune donnée n’est lue directement depuis SQLite ou un chemin hôte.
@@ -402,6 +402,76 @@
         </div>
       </section>
 
+      <section id="execution-panel" class="execution-panel" aria-labelledby="execution-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Multi-Agent Console</p>
+            <h2 id="execution-console-title">Plans, tâches et tentatives</h2>
+            <p id="execution-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+          </div>
+          <button id="execution-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+
+        <div class="execution-grid">
+          <section class="dashboard-card" aria-labelledby="execution-plan-list-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Autorité Controller</p>
+                <h3 id="execution-plan-list-title">Plans d’orchestration</h3>
+              </div>
+              <span id="execution-plan-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-plan-list" class="project-admin-list"></ul>
+            <p id="execution-coverage" class="coverage-note">Première page bornée du Controller.</p>
+          </section>
+
+          <section id="execution-detail-card" class="dashboard-card execution-detail-card" aria-labelledby="execution-detail-title" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Plan sélectionné</p>
+                <h3 id="execution-detail-title">Détail du plan</h3>
+              </div>
+              <span id="execution-detail-state" class="state-badge">inconnu</span>
+            </div>
+            <p id="execution-detail-meta" class="project-meta"></p>
+            <dl id="execution-detail-facts" class="objective-facts"></dl>
+          </section>
+
+          <section class="dashboard-card execution-wide" aria-labelledby="execution-task-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Task Graph</p>
+                <h3 id="execution-task-title">Tâches</h3>
+              </div>
+              <span id="execution-task-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-task-list" class="execution-task-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="execution-dependency-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Dépendances</p>
+                <h3 id="execution-dependency-title">Arêtes du graphe</h3>
+              </div>
+              <span id="execution-dependency-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-dependency-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="execution-attempt-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Exécutions</p>
+                <h3 id="execution-attempt-title">Tentatives</h3>
+              </div>
+              <span id="execution-attempt-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-attempt-list" class="operational-list compact-list"></ul>
+          </section>
+        </div>
+      </section>
+
       <section id="route-panel" class="route-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Espace fonctionnel</p>
@@ -413,7 +483,7 @@
 
       <footer>
         <span>Orchestra service v1</span>
-        <span>Console 2U · projets, Blueprints et objectifs bornés · aucune persistance navigateur</span>
+        <span>Console 0.2-H · projections Controller bornées · aucune persistance navigateur</span>
       </footer>
     </main>
   </div>

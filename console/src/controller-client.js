@@ -15,6 +15,7 @@ const ALLOWED_ENDPOINTS = Object.freeze({
 const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{1,62}$/;
 const SANDBOX_ID_PATTERN = /^sandbox-[0-9a-f]{32}$/;
 const OBJECTIVE_ID_PATTERN = /^objective-[0-9a-f]{32}$/;
+const PLAN_ID_PATTERN = /^plan-[0-9a-f]{32}$/;
 const OPERATION_ID_PATTERN = /^operation-[0-9a-f]{32}$/;
 const PROJECT_COMMANDS = new Set(["enable", "disable", "rescan", "archive"]);
 const OBJECTIVE_COMMANDS = new Set(["pause", "resume", "cancel"]);
@@ -74,6 +75,16 @@ function objectiveId(value) {
     throw new ControllerClientError("Identifiant objectif invalide.", {
       status: 400,
       code: "invalid_objective_id",
+    });
+  }
+  return value;
+}
+
+function planId(value) {
+  if (typeof value !== "string" || !PLAN_ID_PATTERN.test(value)) {
+    throw new ControllerClientError("Identifiant plan invalide.", {
+      status: 400,
+      code: "invalid_plan_id",
     });
   }
   return value;
@@ -431,6 +442,30 @@ export function createControllerClient() {
     },
     async plans() {
       return collection(await request("plans"));
+    },
+    async plan(identifier) {
+      return dataObject(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}`,
+      }));
+    },
+    async planTasks(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/tasks`,
+      }));
+    },
+    async planDependencies(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/dependencies`,
+      }));
+    },
+    async planAttempts(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/attempts`,
+      }));
     },
     async reviewerAssignments() {
       return collection(await request("reviewerAssignments"));

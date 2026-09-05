@@ -94,6 +94,14 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(200, {"data": {"id": "objective-" + "a" * 32, "title": "Objective Alpha", "description": "Bounded objective", "state": "paused", "raw_state": "PAUSED", "project_ids": ["alpha"], "priority": 100, "resource_revision": 3, "requested_transition": None, "planning_attempt_count": 1, "attempt_count": 1, "event_count": 2, "plan_id": None, "not_before": "2026-07-29T00:00:00.000Z", "max_parallel_tasks": 1, "has_error": False, "latest_operation_id": "operation-" + "a" * 32}})
         elif self.path == "/api/v1/operations/operation-" + "a" * 32:
             self._send_json(200, {"data": {"id": "operation-" + "a" * 32, "kind": "objective.pause", "state": "succeeded", "created_at": "2026-07-29T00:00:00.000Z", "finished_at": "2026-07-29T00:00:00.000Z", "target": {"type": "objective", "id": "objective-" + "a" * 32}, "result": {"state": "paused"}}})
+        elif self.path == "/api/v1/plans/plan-" + "a" * 32:
+            self._send_json(200, {"data": {"id": "plan-" + "a" * 32, "objective_id": "objective-" + "a" * 32, "project_ids": ["alpha"], "state": "running", "raw_state": "RUNNING", "source": "ai", "planner_role_id": "orchestrator", "max_parallel_tasks": 2, "plan_digest": "b" * 64, "task_counts": {"total": 1, "pending": 0, "ready": 0, "running": 1, "blocked": 0, "succeeded": 0, "failed": 0, "cancelled": 0}, "attempt_count": 1, "reviewer_assignment_count": 0, "created_at": "2026-09-05T00:00:00.000Z", "updated_at": "2026-09-05T00:00:01.000Z", "started_at": "2026-09-05T00:00:00.000Z", "finished_at": None, "definition_redacted": True, "error": None, "resource_revision": 1}})
+        elif self.path == "/api/v1/plans/plan-" + "a" * 32 + "/tasks":
+            self._send_json(200, {"data": [{"id": "orchestration-task-" + "a" * 32, "plan_id": "plan-" + "a" * 32, "title": "code", "task_key": "code", "kind": "pipeline", "project_id": "alpha", "role_id": "worker_code", "state": "running", "attempt_count": 1, "max_attempts": 2, "dependency_count": 0}], "meta": {"next_cursor": None}})
+        elif self.path == "/api/v1/plans/plan-" + "a" * 32 + "/dependencies":
+            self._send_json(200, {"data": [], "meta": {"next_cursor": None}})
+        elif self.path == "/api/v1/plans/plan-" + "a" * 32 + "/attempts":
+            self._send_json(200, {"data": [{"id": "orchestration-attempt-" + "a" * 32, "task_id": "orchestration-task-" + "a" * 32, "attempt_number": 1, "state": "running", "worker_execution_id": "execution-" + "a" * 32, "review_execution_id": None}], "meta": {"next_cursor": None}})
         elif self.path in {
             "/api/v1/projects",
             "/api/v1/blueprints",
@@ -279,6 +287,29 @@ class ConsoleControllerProxyTest(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(json.loads(payload)["data"], [])
                 self.assertEqual(self.controller.records[-1]["path"], path)
+
+    def test_multi_agent_plan_detail_gets_are_forwarded(self) -> None:
+        plan = "/api/v1/plans/plan-" + "a" * 32
+        for path in (plan, plan + "/tasks", plan + "/dependencies", plan + "/attempts"):
+            with self.subTest(path=path):
+                status, _, payload = self.request("GET", path)
+                self.assertEqual(status, 200)
+                self.assertIn("data", json.loads(payload))
+                self.assertEqual(self.controller.records[-1]["path"], path)
+
+        before = len(self.controller.records)
+        rejected = (
+            (plan + "/unknown", 404),
+            (plan + "/tasks?limit=200", 400),
+            ("/api/v1/plans/not-a-plan/tasks", 404),
+        )
+        for path, expected_status in rejected:
+            with self.subTest(rejected=path):
+                status, _, payload = self.request("GET", path)
+                self.assertEqual(status, expected_status)
+                problem = json.loads(payload)
+                self.assertTrue(str(problem.get("type", "")).startswith("urn:orchestra:console:"))
+        self.assertEqual(len(self.controller.records), before)
 
     def test_cross_origin_unsupported_routes_and_large_bodies_fail_before_upstream(self) -> None:
         before = len(self.controller.records)

@@ -70,6 +70,7 @@ PROJECT_ID_PATTERN = __import__("re").compile(r"^[a-z][a-z0-9-]{1,62}$")
 PROJECT_COMMANDS = frozenset({"enable", "disable", "rescan", "archive"})
 OBJECTIVE_COMMANDS = frozenset({"pause", "resume", "cancel"})
 OBJECTIVE_ID_PATTERN = __import__("re").compile(r"^objective-[0-9a-f]{32}$")
+PLAN_ID_PATTERN = __import__("re").compile(r"^plan-[0-9a-f]{32}$")
 OPERATION_ID_PATTERN = __import__("re").compile(r"^operation-[0-9a-f]{32}$")
 SANDBOX_ID_PATTERN = __import__("re").compile(r"^sandbox-[0-9a-f]{32}$")
 REVISION_PATTERN = __import__("re").compile(r"^[1-9][0-9]*$")
@@ -112,6 +113,17 @@ def _controller_route_exposed(method: str, path: str) -> bool:
             and not query
             and OPERATION_ID_PATTERN.fullmatch(operation_id) is not None
         )
+    plan_prefix = "/api/v1/plans/"
+    if route_path.startswith(plan_prefix):
+        if method != "GET" or query:
+            return False
+        suffix = route_path[len(plan_prefix):]
+        parts = suffix.split("/")
+        if len(parts) == 1:
+            return PLAN_ID_PATTERN.fullmatch(parts[0]) is not None
+        if len(parts) == 2 and parts[1] in {"tasks", "dependencies", "attempts"}:
+            return PLAN_ID_PATTERN.fullmatch(parts[0]) is not None
+        return False
     objective_prefix = "/api/v1/objectives/"
     if route_path.startswith(objective_prefix):
         suffix = route_path[len(objective_prefix):]

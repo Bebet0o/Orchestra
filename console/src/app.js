@@ -29,7 +29,7 @@ const routes = Object.freeze({
   "/executions": {
     key: "executions",
     title: "Exécutions",
-    message: "Les plans, tâches, workers et sandboxes détaillés seront affichés au jalon 2V.",
+    message: "Connectez-vous pour lire les plans, tâches, dépendances et tentatives multi-agent.",
   },
   "/reviews": {
     key: "reviews",
@@ -121,6 +121,23 @@ const objectiveDetailFacts = document.getElementById("objective-detail-facts");
 const objectiveOperation = document.getElementById("objective-operation");
 const objectiveCommandReason = document.getElementById("objective-command-reason");
 const objectiveCommandButtons = document.getElementById("objective-command-buttons");
+const executionPanel = document.getElementById("execution-panel");
+const executionRefresh = document.getElementById("execution-refresh");
+const executionStatus = document.getElementById("execution-status");
+const executionCoverage = document.getElementById("execution-coverage");
+const executionPlanCount = document.getElementById("execution-plan-count");
+const executionPlanList = document.getElementById("execution-plan-list");
+const executionDetailCard = document.getElementById("execution-detail-card");
+const executionDetailTitle = document.getElementById("execution-detail-title");
+const executionDetailState = document.getElementById("execution-detail-state");
+const executionDetailMeta = document.getElementById("execution-detail-meta");
+const executionDetailFacts = document.getElementById("execution-detail-facts");
+const executionTaskCount = document.getElementById("execution-task-count");
+const executionTaskList = document.getElementById("execution-task-list");
+const executionDependencyCount = document.getElementById("execution-dependency-count");
+const executionDependencyList = document.getElementById("execution-dependency-list");
+const executionAttemptCount = document.getElementById("execution-attempt-count");
+const executionAttemptList = document.getElementById("execution-attempt-list");
 
 const dashboardResources = Object.freeze([
   Object.freeze({ key: "projects", load: () => client.projects() }),
@@ -160,6 +177,10 @@ let objectiveGeneration = 0;
 let objectivesLoaded = false;
 let selectedObjectiveId = "";
 let selectedObjective = null;
+let executionLoading = false;
+let executionGeneration = 0;
+let executionsLoaded = false;
+let selectedPlanId = "";
 
 function canonicalPath(pathname) {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -198,11 +219,13 @@ function displayFunctionalPanel() {
   const projectsRoute = key === "projects";
   const blueprintsRoute = key === "blueprints";
   const objectivesRoute = key === "objectives";
+  const executionsRoute = key === "executions";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute);
+  executionPanel.hidden = !executionsRoute || !authenticated;
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -233,6 +256,9 @@ function render(pathname, focusMain = false) {
   if (route.key === "objectives" && authenticated && !objectivesLoaded) {
     void refreshObjectives();
   }
+  if (route.key === "executions" && authenticated && !executionsLoaded) {
+    void refreshExecutions();
+  }
 
   if (focusMain) {
     document.getElementById("main-content").focus({ preventScroll: true });
@@ -254,6 +280,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   clearProjectState();
   clearBlueprintState();
   clearObjectiveState();
+  clearExecutionState();
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
   sessionDetail.textContent = message;
@@ -292,6 +319,9 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "objectives") {
     void refreshObjectives();
   }
+  if (currentRoute().key === "executions") {
+    void refreshExecutions();
+  }
 }
 
 function showUnavailable(error) {
@@ -303,6 +333,7 @@ function showUnavailable(error) {
   clearProjectState();
   clearBlueprintState();
   clearObjectiveState();
+  clearExecutionState();
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
   const requestSuffix = error instanceof ControllerClientError && error.requestId
@@ -1426,6 +1457,261 @@ async function submitObjectiveCreate() {
   }
 }
 
+function clearExecutionState() {
+  executionGeneration += 1;
+  executionLoading = false;
+  executionsLoaded = false;
+  selectedPlanId = "";
+  executionRefresh.disabled = false;
+  executionPlanCount.textContent = "0";
+  executionTaskCount.textContent = "0";
+  executionDependencyCount.textContent = "0";
+  executionAttemptCount.textContent = "0";
+  executionPlanList.replaceChildren();
+  executionTaskList.replaceChildren();
+  executionDependencyList.replaceChildren();
+  executionAttemptList.replaceChildren();
+  executionDetailFacts.replaceChildren();
+  executionDetailCard.hidden = true;
+  executionCoverage.textContent = "Première page bornée du Controller.";
+}
+
+function setExecutionBusy(busy) {
+  executionLoading = busy;
+  executionRefresh.disabled = busy;
+  executionPlanList.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+function integerOrZero(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function renderExecutionPlanList(collection) {
+  executionPlanList.replaceChildren();
+  executionPlanCount.textContent = String(collection.items.length);
+  executionCoverage.textContent = collection.truncated
+    ? "Une page suivante existe : la liste des plans reste volontairement bornée."
+    : "La première page des plans est complète selon les métadonnées Controller.";
+  if (collection.items.length === 0) {
+    appendEmpty(executionPlanList, "Aucun plan d’orchestration visible.");
+    return;
+  }
+  for (const plan of collection.items) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    const state = document.createElement("span");
+    const identifier = safeId(plan, "plan");
+    const counts = plan && typeof plan.task_counts === "object" && plan.task_counts !== null
+      ? plan.task_counts
+      : {};
+    button.type = "button";
+    button.dataset.planId = identifier;
+    button.className = "project-list-button";
+    button.disabled = executionLoading;
+    if (identifier === selectedPlanId) {
+      button.setAttribute("aria-current", "true");
+    }
+    heading.textContent = safeText(plan.objective_id, identifier, 96);
+    detail.textContent = `${identifier} · ${integerOrZero(counts.total)} tâche(s) · ${integerOrZero(plan.attempt_count)} tentative(s)`;
+    state.className = "state-badge";
+    state.dataset.state = safeState(plan);
+    state.textContent = safeState(plan);
+    button.append(heading, detail, state);
+    item.append(button);
+    executionPlanList.append(item);
+  }
+}
+
+function appendExecutionFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  executionDetailFacts.append(wrapper);
+}
+
+function renderExecutionDetail(plan, tasks, dependencies, attempts) {
+  selectedPlanId = safeId(plan, "");
+  executionDetailCard.hidden = false;
+  executionDetailTitle.textContent = safeText(plan.objective_id, selectedPlanId || "Plan", 96);
+  const state = safeState(plan);
+  executionDetailState.dataset.state = state;
+  executionDetailState.textContent = state;
+  const projects = Array.isArray(plan.project_ids)
+    ? plan.project_ids.map((value) => safeText(value, "", 63)).filter(Boolean)
+    : [];
+  executionDetailMeta.textContent = `${selectedPlanId} · ${projects.length ? projects.join(", ") : "aucun projet public"}`;
+  executionDetailFacts.replaceChildren();
+  appendExecutionFact("Source", safeText(plan.source, "inconnue", 32));
+  appendExecutionFact("Planner", safeText(plan.planner_role_id, "inconnu", 63));
+  appendExecutionFact("Parallélisme", String(integerOrZero(plan.max_parallel_tasks)));
+  appendExecutionFact("Assignations reviewer", String(integerOrZero(plan.reviewer_assignment_count)));
+  appendExecutionFact("Digest du plan", safeText(plan.plan_digest, "indisponible", 64));
+
+  executionTaskList.replaceChildren();
+  executionTaskCount.textContent = String(tasks.items.length);
+  const taskTitles = new Map();
+  if (tasks.items.length === 0) {
+    appendEmpty(executionTaskList, "Aucune tâche publique pour ce plan.");
+  } else {
+    for (const task of tasks.items) {
+      const item = document.createElement("li");
+      const top = document.createElement("div");
+      const type = document.createElement("span");
+      const badge = document.createElement("span");
+      const heading = document.createElement("strong");
+      const detail = document.createElement("p");
+      const identifier = safeId(task, "tâche");
+      const title = safeText(task.title, safeText(task.task_key, identifier, 96), 200);
+      taskTitles.set(identifier, title);
+      top.className = "operational-item-heading";
+      type.className = "operational-type";
+      type.textContent = safeText(task.kind, "task", 32);
+      badge.className = "state-badge";
+      badge.dataset.state = safeState(task);
+      badge.textContent = safeState(task);
+      heading.textContent = title;
+      detail.textContent = `${safeText(task.role_id, "system", 63)} · ${integerOrZero(task.attempt_count)}/${integerOrZero(task.max_attempts)} tentative(s) · ${integerOrZero(task.dependency_count)} dépendance(s)`;
+      top.append(type, badge);
+      item.append(top, heading, detail);
+      executionTaskList.append(item);
+    }
+  }
+
+  executionDependencyList.replaceChildren();
+  executionDependencyCount.textContent = String(dependencies.items.length);
+  if (dependencies.items.length === 0) {
+    appendEmpty(executionDependencyList, "Aucune dépendance : tâches indépendantes ou plan vide.");
+  } else {
+    for (const dependency of dependencies.items) {
+      const parentId = safeText(dependency.depends_on_task_id, "parent inconnu", 96);
+      const taskId = safeText(dependency.task_id, "tâche inconnue", 96);
+      appendOperationalItem(executionDependencyList, {
+        label: "Succès requis",
+        title: `${taskTitles.get(parentId) || parentId} → ${taskTitles.get(taskId) || taskId}`,
+        state: "dependency",
+        detail: safeText(dependency.id, "Dépendance", 96),
+      });
+    }
+  }
+
+  executionAttemptList.replaceChildren();
+  executionAttemptCount.textContent = String(attempts.items.length);
+  if (attempts.items.length === 0) {
+    appendEmpty(executionAttemptList, "Aucune tentative enregistrée pour ce plan.");
+  } else {
+    for (const attempt of attempts.items) {
+      const taskId = safeText(attempt.task_id, "tâche inconnue", 96);
+      const worker = typeof attempt.worker_execution_id === "string"
+        ? `worker ${safeText(attempt.worker_execution_id, "inconnu", 80)}`
+        : "worker non lié";
+      const reviewer = typeof attempt.review_execution_id === "string"
+        ? `review ${safeText(attempt.review_execution_id, "inconnue", 80)}`
+        : "review non liée";
+      appendOperationalItem(executionAttemptList, {
+        label: `Tentative ${integerOrZero(attempt.attempt_number)}`,
+        title: taskTitles.get(taskId) || taskId,
+        state: safeState(attempt),
+        detail: `${worker} · ${reviewer}`,
+      });
+    }
+  }
+
+  const truncated = [tasks, dependencies, attempts].filter((collection) => collection.truncated);
+  executionCoverage.textContent = truncated.length
+    ? `${truncated.length} collection(s) du plan possèdent une page suivante ; aucun élément absent n’est extrapolé.`
+    : "Plan et premières pages de tâches, dépendances et tentatives complets selon le Controller.";
+}
+
+async function selectExecutionPlan(identifier) {
+  if (!authenticated || executionLoading) {
+    return;
+  }
+  setExecutionBusy(true);
+  executionStatus.textContent = `Lecture du plan ${safeText(identifier, "sélectionné", 96)}…`;
+  executionDetailCard.hidden = true;
+  executionTaskList.replaceChildren();
+  executionDependencyList.replaceChildren();
+  executionAttemptList.replaceChildren();
+  try {
+    const [plan, tasks, dependencies, attempts] = await Promise.all([
+      client.plan(identifier),
+      client.planTasks(identifier),
+      client.planDependencies(identifier),
+      client.planAttempts(identifier),
+    ]);
+    if (!authenticated) {
+      return;
+    }
+    renderExecutionDetail(plan, tasks, dependencies, attempts);
+    const collection = await client.plans();
+    renderExecutionPlanList(collection);
+    executionStatus.textContent = "Plan multi-agent chargé depuis les projections Controller expurgées.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les exécutions.");
+      return;
+    }
+    executionStatus.textContent = projectErrorMessage(error, "Lecture du plan impossible.");
+  } finally {
+    setExecutionBusy(false);
+  }
+}
+
+async function refreshExecutions() {
+  if (!authenticated || executionLoading) {
+    return;
+  }
+  const generation = ++executionGeneration;
+  setExecutionBusy(true);
+  executionStatus.textContent = "Lecture des plans d’orchestration…";
+  try {
+    const collection = await client.plans();
+    if (generation !== executionGeneration || !authenticated) {
+      return;
+    }
+    renderExecutionPlanList(collection);
+    executionsLoaded = true;
+    executionStatus.textContent = `${collection.items.length} plan(s) reçu(s) du Controller.`;
+    if (selectedPlanId && collection.items.some((item) => safeId(item, "") === selectedPlanId)) {
+      const [plan, tasks, dependencies, attempts] = await Promise.all([
+        client.plan(selectedPlanId),
+        client.planTasks(selectedPlanId),
+        client.planDependencies(selectedPlanId),
+        client.planAttempts(selectedPlanId),
+      ]);
+      if (generation === executionGeneration && authenticated) {
+        renderExecutionDetail(plan, tasks, dependencies, attempts);
+      }
+    } else {
+      selectedPlanId = "";
+      executionDetailCard.hidden = true;
+      executionTaskList.replaceChildren();
+      executionDependencyList.replaceChildren();
+      executionAttemptList.replaceChildren();
+      executionTaskCount.textContent = "0";
+      executionDependencyCount.textContent = "0";
+      executionAttemptCount.textContent = "0";
+    }
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les exécutions.");
+      return;
+    }
+    executionStatus.textContent = projectErrorMessage(error, "Plans d’orchestration indisponibles.");
+  } finally {
+    if (generation === executionGeneration) {
+      setExecutionBusy(false);
+    }
+  }
+}
+
 async function refreshSession() {
   setConnection("checking", "Vérification…", "Lecture de la session auprès du Controller.");
   try {
@@ -1653,6 +1939,18 @@ objectiveCommandButtons.addEventListener("click", (event) => {
     labels[command] || "Commande objectif",
     () => client.commandObjective(selectedObjectiveId, command, reason),
   );
+});
+
+executionRefresh.addEventListener("click", () => {
+  executionsLoaded = false;
+  void refreshExecutions();
+});
+
+executionPlanList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-plan-id]");
+  if (button) {
+    void selectExecutionPlan(button.dataset.planId || "");
+  }
 });
 
 window.addEventListener("popstate", () => render(window.location.pathname));
