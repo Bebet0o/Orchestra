@@ -369,10 +369,10 @@ class EventJournalAdversarialTest(unittest.TestCase):
                         "SELECT version FROM schema_migrations ORDER BY version"
                     )
                 ]
-                self.assertEqual(all_versions, list(range(1, 29)))
+                self.assertEqual(all_versions, list(range(1, 30)))
                 self.assertEqual(
                     verify.execute("PRAGMA user_version").fetchone()[0],
-                    28,
+                    29,
                 )
             finally:
                 verify.close()
