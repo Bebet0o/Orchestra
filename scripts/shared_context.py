@@ -453,18 +453,108 @@ class ContextProjector:
             connection.rollback()
         return projection
 
-    def for_reviewer(self, task_id: str) -> dict[str, Any]:
-        """Prepare the shared projection seam for the existing reviewer path.
+    def review_input(self, connection: Any, attempt_id: str) -> dict[str, Any]:
+        """Bind a completed result to what its worker actually saw.
 
-        Reviewer policy and execution remain deliberately deferred to 0.2-E.
+        No current-context projection or runtime history is consulted here.
+        The caller owns the transaction used to freeze this input.
         """
+        row = connection.execute(
+            """
+            SELECT a.*, t.project_id, t.plan_id, t.review_required,
+                   s.projection_json, s.projection_sha256, s.objective_id,
+                   s.assignment_id, s.consumer_kind,
+                   s.orchestration_task_id AS snapshot_task,
+                   s.attempt_id AS snapshot_attempt,
+                   w.orchestration_task_id AS assignment_task, w.attempt_id AS assignment_attempt
+            FROM orchestration_attempts a
+            JOIN orchestration_tasks t ON t.orchestration_task_id=a.orchestration_task_id
+            JOIN context_snapshots s ON s.context_snapshot_id=a.context_snapshot_id
+            JOIN worker_pool_assignments w ON w.assignment_id=s.assignment_id
+            WHERE a.attempt_id=?
+            """, (attempt_id,),
+        ).fetchone()
+        if row is None or row["status"] != "COMPLETED" or not row["review_required"]:
+            raise SharedContextError("Review requires a completed worker attempt and snapshot")
+        task_id = row["orchestration_task_id"]
+        if (row["consumer_kind"] != "WORKER" or row["snapshot_task"] != task_id
+                or row["assignment_task"] != task_id
+                or row["snapshot_attempt"] != attempt_id
+                or row["assignment_attempt"] != attempt_id):
+            raise SharedContextError("Worker snapshot ownership mismatch")
+        if row["objective_id"] is not None:
+            objective = connection.execute(
+                "SELECT plan_id, project_scope_json FROM objective_queue WHERE objective_id=?",
+                (row["objective_id"],),
+            ).fetchone()
+            if (objective is None or objective["plan_id"] != row["plan_id"]
+                    or row["project_id"] not in json.loads(objective["project_scope_json"])):
+                raise SharedContextError("Review objective ownership mismatch")
+        worker_context = json.loads(row["projection_json"])
+        if (content_sha256(worker_context) != row["projection_sha256"]
+                or worker_context["project"]["project_id"] != row["project_id"]
+                or worker_context["task"]["task_id"] != task_id
+                or worker_context["objective"]["objective_id"] != row["objective_id"]):
+            raise SharedContextError("Worker snapshot integrity mismatch")
+        result = json.loads(row["result_json"])
+        reference = "orchestration_attempt_result:" + attempt_id
+        if row["worker_execution_id"] is not None:
+            execution = connection.execute(
+                "SELECT * FROM worker_executions WHERE execution_id=?",
+                (row["worker_execution_id"],),
+            ).fetchone()
+            if (execution is None or execution["run_id"] != row["run_id"]
+                    or execution["role_id"] != worker_context["task"]["role_id"]
+                    or execution["context_snapshot_id"] != row["context_snapshot_id"]
+                    or execution["finished_at"] is None or execution["exit_code"] != 0):
+                raise SharedContextError("Worker result ownership mismatch")
+            run = connection.execute("SELECT project_id FROM runs WHERE run_id=?",
+                                     (row["run_id"],)).fetchone()
+            if run is None or run[0] != row["project_id"]:
+                raise SharedContextError("Worker run project mismatch")
+            result = json.loads(execution["result_json"])
+            reference = "worker_execution_result:" + row["worker_execution_id"]
+        source_ids = [reference, "context_snapshot:" + row["context_snapshot_id"]]
+        for item in worker_context["shared_context"]:
+            entry = connection.execute(
+                "SELECT project_id, objective_id, content FROM shared_context_entries WHERE context_id=?",
+                (item["context_id"],),
+            ).fetchone()
+            if (entry is None or entry["project_id"] != row["project_id"]
+                    or entry["objective_id"] not in (None, row["objective_id"])
+                    or entry["content"] != item["content"]):
+                raise SharedContextError("Review context source ownership mismatch")
+            source_ids.append("context_entry:" + item["context_id"])
+        for item in worker_context["dependency_results"]:
+            parent = connection.execute(
+                "SELECT project_id, plan_id FROM orchestration_tasks WHERE orchestration_task_id=?",
+                (item["task_id"],),
+            ).fetchone()
+            if parent is not None and parent[0] == row["project_id"] and parent[1] == row["plan_id"]:
+                source_ids.append(item["result_reference"])
+        projection = {
+            "context_schema_version": 1, "consumer": "REVIEWER",
+            "subject": {"project_id": row["project_id"], "objective_id": row["objective_id"],
+                        "plan_id": row["plan_id"], "task_id": task_id,
+                        "assignment_id": row["assignment_id"], "attempt_id": attempt_id,
+                        "worker_execution_id": row["worker_execution_id"]},
+            "objective": worker_context["objective"], "task": worker_context["task"],
+            "worker_context_snapshot": {"context_snapshot_id": row["context_snapshot_id"],
+                                        "sha256": row["projection_sha256"]},
+            "worker_result": {"reference": reference, "sha256": content_sha256(result)},
+            "source_ids": sorted(source_ids),
+        }
+        # Mandatory evidence is never silently truncated.
+        if len(canonical_json({"input": projection, "worker_context": worker_context,
+                               "worker_result": result}).encode()) > 240_000:
+            raise SharedContextError("Review evidence exceeds 240000 bytes")
+        return projection
+
+    def for_reviewer(self, task_id: str) -> dict[str, Any]:
+        """Compatibility projection preview; execution uses review_input instead."""
         with self._connection() as connection:
             connection.execute("BEGIN")
-            projection = self._task_projection(
-                connection, task_id, consumer="REVIEWER"
-            )
-            connection.rollback()
-        return projection
+            return self._task_projection(connection, task_id, consumer="REVIEWER")
 
     def _planner_projection(self, connection: Any, objective_id: str) -> dict[str, Any]:
         objective = connection.execute(
