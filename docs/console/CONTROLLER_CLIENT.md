@@ -19,7 +19,7 @@ The Console service exposes a deliberately narrow same-origin gateway for:
 Milestone 2R additionally exposes six exact query-free GET collections for the
 operational dashboard: projects, objectives, reviews, recoveries, plans, and
 reviewer assignments. Later slices add the bounded project, Blueprint,
-objective, multi-agent plan, and review-detail reads required by the current
+objective, multi-agent plan, review-detail, and exact system health/status reads required by the current
 Console. The only query-bearing HTTP Console route is the bounded Blueprint
 comparison with positive integer `from` and `to` values.
 

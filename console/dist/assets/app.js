@@ -44,7 +44,7 @@ const routes = Object.freeze({
   "/administration": {
     key: "administration",
     title: "Administration",
-    message: "Les diagnostics bornés seront ajoutés progressivement sans exposer de secrets.",
+    message: "Connectez-vous pour lire la santé et les diagnostics système bornés du Controller.",
   },
 });
 
@@ -163,6 +163,15 @@ const eventList = document.getElementById("event-list");
 const eventCoverage = document.getElementById("event-coverage");
 const eventConnectionState = document.getElementById("event-connection-state");
 const eventFacts = document.getElementById("event-facts");
+const administrationPanel = document.getElementById("administration-panel");
+const administrationRefresh = document.getElementById("administration-refresh");
+const administrationStatus = document.getElementById("administration-status");
+const administrationHealthState = document.getElementById("administration-health-state");
+const administrationHealthFacts = document.getElementById("administration-health-facts");
+const administrationComponentCount = document.getElementById("administration-component-count");
+const administrationComponentList = document.getElementById("administration-component-list");
+const administrationCapabilityCount = document.getElementById("administration-capability-count");
+const administrationCapabilityList = document.getElementById("administration-capability-list");
 
 const dashboardResources = Object.freeze([
   Object.freeze({ key: "projects", load: () => client.projects() }),
@@ -217,6 +226,9 @@ let eventReconnectAttempts = 0;
 let eventLastSequence = 0;
 let eventLatestSequence = 0;
 let eventMessages = [];
+let administrationLoading = false;
+let administrationLoaded = false;
+let administrationGeneration = 0;
 
 function canonicalPath(pathname) {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -258,6 +270,7 @@ function displayFunctionalPanel() {
   const executionsRoute = key === "executions";
   const reviewsRoute = key === "reviews";
   const eventsRoute = key === "events";
+  const administrationRoute = key === "administration";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
@@ -265,7 +278,8 @@ function displayFunctionalPanel() {
   executionPanel.hidden = !executionsRoute || !authenticated;
   reviewPanel.hidden = !reviewsRoute || !authenticated;
   eventPanel.hidden = !eventsRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute);
+  administrationPanel.hidden = !administrationRoute || !authenticated;
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute || administrationRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -302,6 +316,9 @@ function render(pathname, focusMain = false) {
   if (route.key === "reviews" && authenticated && !reviewsLoaded) {
     void refreshReviews();
   }
+  if (route.key === "administration" && authenticated && !administrationLoaded) {
+    void refreshAdministration();
+  }
   if (route.key === "events" && authenticated && eventStream === null) {
     connectEvents();
   } else if (route.key !== "events") {
@@ -331,6 +348,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   clearExecutionState();
   clearReviewState();
   disconnectEvents(true);
+  clearAdministrationState();
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
   sessionDetail.textContent = message;
@@ -378,6 +396,9 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "events") {
     connectEvents();
   }
+  if (currentRoute().key === "administration") {
+    void refreshAdministration();
+  }
 }
 
 function showUnavailable(error) {
@@ -392,6 +413,7 @@ function showUnavailable(error) {
   clearExecutionState();
   clearReviewState();
   disconnectEvents(true);
+  clearAdministrationState();
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
   const requestSuffix = error instanceof ControllerClientError && error.requestId
@@ -2178,6 +2200,113 @@ function connectEvents() {
   }
 }
 
+
+function clearAdministrationState() {
+  administrationGeneration += 1;
+  administrationLoading = false;
+  administrationLoaded = false;
+  administrationRefresh.disabled = false;
+  administrationHealthState.dataset.state = "unknown";
+  administrationHealthState.textContent = "inconnu";
+  administrationHealthFacts.replaceChildren();
+  administrationComponentList.replaceChildren();
+  administrationCapabilityList.replaceChildren();
+  administrationComponentCount.textContent = "0";
+  administrationCapabilityCount.textContent = "0";
+  administrationStatus.textContent = "Aucun diagnostic lancé.";
+}
+
+function appendAdministrationFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  administrationHealthFacts.append(wrapper);
+}
+
+function renderAdministration(health, status) {
+  const overall = safeText(status.status, safeText(health.status, "unknown", 40), 40).toLowerCase();
+  administrationHealthState.dataset.state = overall;
+  administrationHealthState.textContent = overall;
+  administrationHealthFacts.replaceChildren();
+  appendAdministrationFact("Health endpoint", safeText(health.status, "inconnu", 40));
+  appendAdministrationFact("System status", safeText(status.status, "inconnu", 40));
+  appendAdministrationFact("Autorité", "Controller / projections publiques");
+  appendAdministrationFact("Mode", "lecture seule");
+
+  const components = Array.isArray(status.components) ? status.components.slice(0, 32) : [];
+  administrationComponentList.replaceChildren();
+  administrationComponentCount.textContent = String(components.length);
+  if (components.length === 0) {
+    appendEmpty(administrationComponentList, "Aucun composant déclaré.");
+  } else {
+    for (const component of components) {
+      appendOperationalItem(administrationComponentList, {
+        label: "Composant",
+        title: safeText(component && component.name, "inconnu", 80),
+        state: safeText(component && component.status, "unknown", 40).toLowerCase(),
+        detail: "État déclaré par le Controller ; aucune sonde navigateur directe.",
+      });
+    }
+  }
+
+  const capabilities = status && typeof status.capabilities === "object" && status.capabilities !== null && !Array.isArray(status.capabilities)
+    ? Object.entries(status.capabilities).slice(0, 64)
+    : [];
+  administrationCapabilityList.replaceChildren();
+  administrationCapabilityCount.textContent = String(capabilities.length);
+  if (capabilities.length === 0) {
+    appendEmpty(administrationCapabilityList, "Aucune capacité système déclarée.");
+  } else {
+    for (const [name, value] of capabilities) {
+      const rendered = typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : "projection structurée";
+      appendOperationalItem(administrationCapabilityList, {
+        label: "Capacité",
+        title: safeText(name, "inconnue", 96),
+        state: "metadata",
+        detail: safeText(rendered, "projection structurée", 120),
+      });
+    }
+  }
+}
+
+async function refreshAdministration() {
+  if (!authenticated || administrationLoading) {
+    return;
+  }
+  const generation = ++administrationGeneration;
+  administrationLoading = true;
+  administrationRefresh.disabled = true;
+  administrationStatus.textContent = "Lecture de la santé et du statut système Controller…";
+  try {
+    const [health, status] = await Promise.all([
+      client.systemHealth(),
+      client.systemStatus(),
+    ]);
+    if (generation !== administrationGeneration || !authenticated) {
+      return;
+    }
+    renderAdministration(health, status);
+    administrationLoaded = true;
+    administrationStatus.textContent = "Diagnostics bornés chargés depuis le Controller.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter l’administration.");
+      return;
+    }
+    administrationStatus.textContent = projectErrorMessage(error, "Diagnostics système indisponibles.");
+  } finally {
+    if (generation === administrationGeneration) {
+      administrationLoading = false;
+      administrationRefresh.disabled = false;
+    }
+  }
+}
+
 async function refreshSession() {
   setConnection("checking", "Vérification…", "Lecture de la session auprès du Controller.");
   try {
@@ -2435,6 +2564,11 @@ eventReconnect.addEventListener("click", () => {
   disconnectEvents(false);
   eventReconnectAttempts = 0;
   connectEvents();
+});
+
+administrationRefresh.addEventListener("click", () => {
+  administrationLoaded = false;
+  void refreshAdministration();
 });
 
 window.addEventListener("popstate", () => render(window.location.pathname));

@@ -4,6 +4,8 @@ const ALLOWED_ENDPOINTS = Object.freeze({
   csrf: Object.freeze({ method: "POST", path: "/api/v1/auth/csrf" }),
   logout: Object.freeze({ method: "POST", path: "/api/v1/auth/logout" }),
   capabilities: Object.freeze({ method: "GET", path: "/api/v1/system/capabilities" }),
+  systemHealth: Object.freeze({ method: "GET", path: "/api/v1/system/health" }),
+  systemStatus: Object.freeze({ method: "GET", path: "/api/v1/system/status" }),
   projects: Object.freeze({ method: "GET", path: "/api/v1/projects" }),
   objectives: Object.freeze({ method: "GET", path: "/api/v1/objectives" }),
   reviews: Object.freeze({ method: "GET", path: "/api/v1/reviews" }),
@@ -346,6 +348,12 @@ export function createControllerClient() {
     },
     async capabilities() {
       return dataObject(await request("capabilities"));
+    },
+    async systemHealth() {
+      return dataObject(await request("systemHealth"));
+    },
+    async systemStatus() {
+      return dataObject(await request("systemStatus"));
     },
 
     async blueprints() {

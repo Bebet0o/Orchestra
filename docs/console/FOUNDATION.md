@@ -81,7 +81,7 @@ python3 scripts/orchestra-console-probe.py   --base-url http://127.0.0.1:8788
 
 The Console implements the bounded dashboard, project lifecycle, Blueprint
 lifecycle, objective lifecycle, multi-agent plan/task/attempt views, Reviewer /
-Judge / Recovery projections, and the replayable Controller event stream. The
+Judge / Recovery projections, the replayable Controller event stream, and bounded administration diagnostics from Controller health/status projections. The
 WebSocket connection is same-origin through one exact `/api/v1/events` relay;
 the Console translates the trusted Origin, forwards only the authenticated
 session cookie required by the Controller handshake, rejects query strings,
@@ -90,7 +90,7 @@ browser memory. A replay gap triggers an HTTP snapshot refresh before reconnect.
 
 The Console still does not build or activate images, bind secrets, delete
 Blueprint revisions, expose unsupported objective commands, expose raw review
-evidence, provide a generic API/WebSocket proxy, persist event cursors in the
+evidence, provide privileged administration actions, expose raw logs/configuration, provide a generic API/WebSocket proxy, persist event cursors in the
 browser, install service workers, or queue commands offline.
 
 Milestone 0.2-H adds these multi-agent observation surfaces without a database

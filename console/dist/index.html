@@ -577,6 +577,50 @@
         </div>
       </section>
 
+      <section id="administration-panel" class="administration-panel" aria-labelledby="administration-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Bounded Diagnostics</p>
+            <h2 id="administration-console-title">Administration et santé système</h2>
+            <p id="administration-status" class="dashboard-status" aria-live="polite">Aucun diagnostic lancé.</p>
+          </div>
+          <button id="administration-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+        <div class="administration-grid">
+          <section class="dashboard-card" aria-labelledby="administration-health-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Readiness</p>
+                <h3 id="administration-health-title">Santé Controller</h3>
+              </div>
+              <span id="administration-health-state" class="state-badge">inconnu</span>
+            </div>
+            <dl id="administration-health-facts" class="objective-facts"></dl>
+          </section>
+          <section class="dashboard-card" aria-labelledby="administration-components-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Composants</p>
+                <h3 id="administration-components-title">État déclaré</h3>
+              </div>
+              <span id="administration-component-count" class="count-badge">0</span>
+            </div>
+            <ul id="administration-component-list" class="operational-list compact-list"></ul>
+          </section>
+          <section class="dashboard-card administration-wide" aria-labelledby="administration-capabilities-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controller</p>
+                <h3 id="administration-capabilities-title">Capacités système</h3>
+              </div>
+              <span id="administration-capability-count" class="count-badge">0</span>
+            </div>
+            <ul id="administration-capability-list" class="operational-list administration-capability-list"></ul>
+            <p class="coverage-note">Diagnostic en lecture seule : aucune donnée brute, aucun log et aucune mutation système exposés.</p>
+          </section>
+        </div>
+      </section>
+
       <section id="route-panel" class="route-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Espace fonctionnel</p>

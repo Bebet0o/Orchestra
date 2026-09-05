@@ -78,6 +78,10 @@ class FakeControllerHandler(http.server.BaseHTTPRequestHandler):
                 "browser_session_lifecycle": True,
                 "blueprint_versions": ["v1"],
             }}})
+        elif self.path == "/api/v1/system/health":
+            self._send_json(200, {"data": {"status": "ok"}})
+        elif self.path == "/api/v1/system/status":
+            self._send_json(200, {"data": {"status": "healthy", "components": [{"name": "orchestra-controller", "status": "healthy"}, {"name": "sqlite", "status": "healthy"}, {"name": "hermes-agent", "status": "unknown"}], "capabilities": {"api_version": "v1", "schema_version": 31}}})
         elif self.path == "/api/v1/projects/alpha":
             self._send_json(200, {"data": {"id": "alpha", "name": "Alpha", "state": "disabled", "resource_revision": 1}}, etag='"1"')
         elif self.path == "/api/v1/blueprints/template":
@@ -261,6 +265,21 @@ class ConsoleControllerProxyTest(unittest.TestCase):
         self.assertEqual(request_headers["idempotency-key"], "console-login-0001")
         self.assertNotIn("referer", request_headers)
         self.assertEqual(record["body"], body)
+
+    def test_system_health_and_status_gets_are_forwarded(self) -> None:
+        for path in ("/api/v1/system/health", "/api/v1/system/status"):
+            with self.subTest(path=path):
+                status, _, payload = self.request("GET", path)
+                self.assertEqual(status, 200)
+                self.assertIn("data", json.loads(payload))
+                self.assertEqual(self.controller.records[-1]["path"], path)
+
+        before = len(self.controller.records)
+        for path in ("/api/v1/system/health?verbose=1", "/api/v1/system/status?details=1", "/api/v1/system/logs"):
+            with self.subTest(rejected=path):
+                status, _, _ = self.request("GET", path)
+                self.assertIn(status, {400, 404})
+        self.assertEqual(len(self.controller.records), before)
 
     def test_session_and_capabilities_gets_are_forwarded(self) -> None:
         status, raw_headers, _ = self.request("GET", "/api/v1/auth/session")

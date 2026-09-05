@@ -58,6 +58,8 @@ CONTROLLER_ROUTES = frozenset(
         ("POST", "/api/v1/auth/csrf"),
         ("POST", "/api/v1/auth/logout"),
         ("GET", "/api/v1/system/capabilities"),
+        ("GET", "/api/v1/system/health"),
+        ("GET", "/api/v1/system/status"),
         ("GET", "/api/v1/projects"),
         ("POST", "/api/v1/projects"),
         ("GET", "/api/v1/blueprints"),

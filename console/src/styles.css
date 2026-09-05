@@ -344,3 +344,14 @@ summary { cursor: pointer; color: var(--accent); font-weight: 700; }
 .state-badge[data-state="connected"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
 .state-badge[data-state="degraded"], .state-badge[data-state="reconnecting"] { border-color: rgba(255, 213, 128, 0.30); color: #ffe6b5; background: rgba(180, 126, 61, 0.10); }
 @media (max-width: 920px) { .event-grid { grid-template-columns: 1fr; } }
+
+
+/* v0.2-H bounded administration diagnostics */
+.administration-panel { margin-top: 1rem; }
+.administration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; align-items: start; }
+.administration-wide { grid-column: 1 / -1; }
+.administration-capability-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.state-badge[data-state="healthy"], .state-badge[data-state="ok"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="unknown"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
+.state-badge[data-state="unavailable"] { border-color: rgba(255, 128, 128, 0.28); color: #ffd7d7; background: rgba(180, 61, 61, 0.10); }
+@media (max-width: 920px) { .administration-grid, .administration-capability-list { grid-template-columns: 1fr; } .administration-wide { grid-column: auto; } }
