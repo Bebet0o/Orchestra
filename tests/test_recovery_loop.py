@@ -21,7 +21,7 @@ from agent_runtime import (
 )
 from model_provider import FakeModelProvider, FakeModelProviderOutcome
 from recovery_coordinator import RecoveryCoordinator, RecoveryError, policy_authority
-from reviewer_judge import ReviewStore
+from reviewer_judge import MAX_OUTPUT_BYTES, ReviewStore
 from shared_context import ContextProjector, canonical_json, content_sha256
 from worker_pool import WorkerPool
 
@@ -78,7 +78,9 @@ class RecoveryLoopTest(unittest.TestCase):
             read_only=True,
         )
 
-    def create(self, *, retries: int = 1, diamond: bool = False) -> str:
+    def create(
+        self, *, retries: int = 1, diamond: bool = False, max_context: bool = False
+    ) -> str:
         shape = (
             [("a", []), ("b", ["a"]), ("c", ["a"]), ("d", ["b", "c"])]
             if diamond
@@ -88,7 +90,13 @@ class RecoveryLoopTest(unittest.TestCase):
         for task in tasks:
             if task["key"] in {"b", "c"}:
                 task["review"] = {"required": True}
-        plan = ORCH.validate_plan(self.plan(tasks), allow_test_actions=False)
+        raw_plan = self.plan(tasks)
+        if max_context:
+            raw_plan["objective"] = "O" * 16_384
+            for task in raw_plan["tasks"]:
+                if task["key"] == "b":
+                    task["instruction"] = "I" * 32_768
+        plan = ORCH.validate_plan(raw_plan, allow_test_actions=False)
         plan_id = ORCH.insert_plan(
             plan,
             source="AI",
@@ -386,6 +394,58 @@ class RecoveryLoopTest(unittest.TestCase):
             ORCH.runnable_tasks(set(), capacity=16),
         )
         self.assertEqual(self.states(plan_id), {"b": "BLOCKED", "d": "PENDING"})
+
+    def test_large_valid_review_is_bounded_without_recovery_crash_loop(self) -> None:
+        plan_id = self.create(max_context=True)
+        first = self.start(plan_id, "b")
+        review_id = self.finish(first, "R1")
+        assert review_id is not None
+
+        required_changes = [f"{index:02d}:" + ("x" * 1_940) for index in range(32)]
+        value = reviewer_tests.payload(
+            "needs_fix",
+            summary="s" * 4_000,
+            findings=[],
+            required_changes=required_changes,
+        )
+        # Reduce only as much as needed to stay inside the existing reviewer
+        # contract while remaining close enough to exercise wrapper overflow.
+        while len(reviewer_tests.output(value).encode("utf-8")) > MAX_OUTPUT_BYTES:
+            required_changes[-1] = required_changes[-1][:-64]
+            value["required_changes"] = required_changes
+        self.assertGreater(len(canonical_json(value).encode("utf-8")), 60_000)
+        self.assertLessEqual(len(reviewer_tests.output(value).encode("utf-8")), MAX_OUTPUT_BYTES)
+        self.assertTrue(self.store.claim(review_id, "large-review"))
+        self.store.complete(review_id, value)
+
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        reason = action["reason"]
+        self.assertLessEqual(len(canonical_json(reason).encode("utf-8")), 65_536)
+        self.assertTrue(reason["bounding"]["truncated"])
+        self.assertGreater(len(reason["required_changes"]), 0)
+
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        attempt, _, task = ORCH.reserve_attempt(
+            first[0]["orchestration_task_id"],
+            instance_id="graph-controller",
+            pool_assignment_id=action["target_assignment_id"],
+        )
+        self.pool.bind_attempt(action["target_assignment_id"], attempt)
+        self.recovery.link_attempt(
+            assignment_id=action["target_assignment_id"], attempt_id=attempt
+        )
+        snapshot = self.projector.freeze_task(
+            task_id=task["orchestration_task_id"],
+            assignment_id=action["target_assignment_id"],
+            attempt_id=attempt,
+        )
+        projection = snapshot["projection"]
+        self.assertLessEqual(len(canonical_json(projection).encode("utf-8")), 65_536)
+        self.assertTrue(projection["recovery"]["projection_bounding"]["truncated"])
+        self.assertGreater(len(projection["recovery"]["required_changes"]), 0)
+        self.assertEqual(projection["recovery"]["reason_sha256"], action["reason_sha256"])
 
     def test_policy_bounds_hash_and_schema_guards(self) -> None:
         self.assertEqual(policy_authority(1), policy_authority(1))

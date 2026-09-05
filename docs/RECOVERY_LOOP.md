@@ -67,16 +67,26 @@ than creating another approval subsystem.
 
 The frozen recovery reason contains the previous attempt identity, previous
 result reference and SHA-256, triggering review identity and SHA-256, Judge
-decision and disposition, review summary, findings, and required changes.
+decision and disposition, review summary, findings, and required changes. A
+review that is valid at the reviewer's 64 KiB boundary can become larger after
+recovery provenance is added, so RecoveryCoordinator deterministically bounds
+the derived reason to the database authority while retaining the source review
+hash. Required changes are retained before findings, and explicit bounding
+metadata records any omission instead of letting reconciliation fail repeatedly.
 
 `ContextProjector` adds this task-local overlay only while freezing the target
-corrective attempt. The snapshot stores its `recovery_action_id`; unrelated
-tasks and global project/objective context are unchanged. Every corrective
-attempt receives a new context snapshot. Previous attempt results, worker
-executions, worker snapshots, review inputs, structured reviews, and Judge
-decisions remain protected by immutable history tables and triggers. The task
-row remains a current-result projection and may advance only from a linked
-corrective attempt.
+corrective attempt. The runtime context keeps its existing 64 KiB contract. If
+the durable recovery reason plus the mandatory objective/task context would
+exceed that contract, the runtime overlay is bounded a second time: immutable
+provenance and the reason hash are always retained, then required changes,
+summary, and findings are admitted in deterministic priority order. The
+projection records the omitted counts and whether the summary was truncated.
+The snapshot stores its `recovery_action_id`; unrelated tasks and global
+project/objective context are unchanged. Every corrective attempt receives a
+new context snapshot. Previous attempt results, worker executions, worker
+snapshots, review inputs, structured reviews, and Judge decisions remain
+protected by immutable history tables and triggers. The task row remains a
+current-result projection and may advance only from a linked corrective attempt.
 
 Pipeline attempts continue to use independent transaction worktrees and
 runtime sandboxes. Recovery does not share writable sandboxes across attempts.

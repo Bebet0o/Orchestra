@@ -12,6 +12,7 @@ from shared_context import canonical_json, content_sha256, utc_now
 
 RECOVERY_POLICY_VERSION = 1
 MAX_RECOVERY_RETRIES = 3
+MAX_RECOVERY_REASON_BYTES = 65_536
 
 
 class RecoveryError(RuntimeError):
@@ -83,7 +84,7 @@ class RecoveryCoordinator:
     @staticmethod
     def _reason(review: Any) -> dict[str, Any]:
         structured = json.loads(review["canonical_json"])
-        return {
+        provenance = {
             "schema_version": 1,
             "source_attempt_id": review["attempt_id"],
             "previous_result": {
@@ -98,10 +99,49 @@ class RecoveryCoordinator:
                 "decision_id": review["decision_id"],
                 "disposition": "NEEDS_FIX",
             },
+        }
+        reason = {
+            **provenance,
             "summary": structured["summary"],
             "findings": structured["findings"],
             "required_changes": structured["required_changes"],
         }
+        if len(canonical_json(reason).encode("utf-8")) <= MAX_RECOVERY_REASON_BYTES:
+            return reason
+
+        # A review can be valid at the 64 KiB reviewer boundary while the
+        # recovery provenance wrapper pushes the derived reason above the DB
+        # limit. Preserve immutable source hashes and deterministically retain
+        # the most actionable prefix instead of crashing reconciliation.
+        bounded = {
+            **provenance,
+            "summary": structured["summary"],
+            "findings": [],
+            "required_changes": [],
+            "bounding": {
+                "truncated": True,
+                "source_review_bytes": len(review["canonical_json"].encode("utf-8")),
+                "omitted_findings": len(structured["findings"]),
+                "omitted_required_changes": len(structured["required_changes"]),
+            },
+        }
+        for change in structured["required_changes"]:
+            bounded["required_changes"].append(change)
+            bounded["bounding"]["omitted_required_changes"] -= 1
+            if len(canonical_json(bounded).encode("utf-8")) > MAX_RECOVERY_REASON_BYTES:
+                bounded["required_changes"].pop()
+                bounded["bounding"]["omitted_required_changes"] += 1
+                break
+        for finding in structured["findings"]:
+            bounded["findings"].append(finding)
+            bounded["bounding"]["omitted_findings"] -= 1
+            if len(canonical_json(bounded).encode("utf-8")) > MAX_RECOVERY_REASON_BYTES:
+                bounded["findings"].pop()
+                bounded["bounding"]["omitted_findings"] += 1
+                break
+        if len(canonical_json(bounded).encode("utf-8")) > MAX_RECOVERY_REASON_BYTES:
+            raise RecoveryError("Recovery provenance exceeds durable byte limit")
+        return bounded
 
     def request_eligible(self) -> int:
         """Create one action or one exhaustion record for each new decision."""
@@ -133,8 +173,8 @@ class RecoveryCoordinator:
             for review in reviews:
                 reason = self._reason(review)
                 reason_text = canonical_json(reason)
-                if len(reason_text.encode("utf-8")) > 65_536:
-                    raise RecoveryError("Recovery reason exceeds 64 KiB")
+                if len(reason_text.encode("utf-8")) > MAX_RECOVERY_REASON_BYTES:
+                    raise RecoveryError("Recovery reason exceeds durable byte limit")
                 action_id = "recovery-action-" + uuid.uuid4().hex
                 retry_count = int(review["recovery_retry_count"])
                 maximum = int(review["recovery_max_retries"])
