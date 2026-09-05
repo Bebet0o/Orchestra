@@ -94,13 +94,13 @@ class SandboxProfileStoreTest(unittest.TestCase):
         connection = sqlite3.connect(self.database)
         self.assertEqual(
             connection.execute("PRAGMA user_version").fetchone()[0],
-            30,
+            31,
         )
         self.assertEqual(
             connection.execute(
                 "SELECT version FROM schema_migrations"
             ).fetchall(),
-            [(version,) for version in range(1, 31)],
+            [(version,) for version in range(1, 32)],
         )
         connection.close()
 
