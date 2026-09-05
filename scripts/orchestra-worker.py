@@ -28,9 +28,11 @@ from agent_runtime import (
     record_runtime_failure,
 )
 from runtime_control import (
+    persist_model_route,
     persist_runtime_event,
+    prepare_model_route,
     require_runtime_state,
-    runtime_from_role,
+    runtime_from_prepared_route,
     runtime_kind_of,
 )
 from environment_resolution import (
@@ -1267,14 +1269,30 @@ def command_launch(
         role = load_role(connection, arguments.role)
         run = load_run(connection, arguments.run)
 
+    orchestration_task_id: str | None = None
+    orchestration_task_kind: str | None = None
+    with connect() as connection:
+        subject = connection.execute(
+            """
+            SELECT task.orchestration_task_id, task.kind
+            FROM orchestration_attempts attempt
+            JOIN orchestration_tasks task
+              ON task.orchestration_task_id=attempt.orchestration_task_id
+            WHERE attempt.run_id=?
+            ORDER BY attempt.attempt_number DESC
+            LIMIT 1
+            """,
+            (run["run_id"],),
+        ).fetchone()
+    if subject is not None:
+        orchestration_task_id = str(subject[0])
+        orchestration_task_kind = str(subject[1])
+
     if runtime is None:
-        runtime_kind, runtime = runtime_from_role(
-            ROOT,
-            role,
-            required_role=RuntimeRole.WORKER,
-        )
+        runtime_kind_value = str(role["runtime_kind"])
     else:
         runtime_kind = runtime_kind_of(runtime)
+        runtime_kind_value = runtime_kind.value
 
     repository, worktree = verify_worktree(run)
     references_before = git_references(repository)
@@ -1319,7 +1337,7 @@ def command_launch(
         output_path=output_path,
         cpu_limit=cpu_limit,
         memory_mb=memory_mb,
-        runtime_kind=runtime_kind.value,
+        runtime_kind=runtime_kind_value,
         context_snapshot_id=context_snapshot_id,
     )
 
@@ -1335,6 +1353,28 @@ def command_launch(
     )
 
     try:
+        if runtime is None:
+            prepared_route = prepare_model_route(
+                ROOT,
+                role,
+                required_role=RuntimeRole.WORKER,
+                runtime_request_id=runtime_request_id,
+                task_kind=orchestration_task_kind,
+            )
+            persist_model_route(
+                connect,
+                prepared_route,
+                execution_kind="WORKER",
+                execution_id=execution_id,
+                orchestration_task_id=orchestration_task_id,
+            )
+            runtime_kind, runtime = runtime_from_prepared_route(
+                ROOT,
+                role,
+                prepared_route,
+                required_role=RuntimeRole.WORKER,
+            )
+
         clone = prepare_worker_clone(
             repository=repository,
             run=run,

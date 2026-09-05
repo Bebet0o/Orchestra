@@ -644,7 +644,7 @@ class RecoveryLoopTest(unittest.TestCase):
     def test_migration_30_and_task_graph_edges_are_stable(self) -> None:
         plan_id = self.create(diamond=True)
         with self.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 30)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 31)
             before = connection.execute("SELECT orchestration_task_id,depends_on_task_id FROM orchestration_dependencies WHERE plan_id=? ORDER BY 1,2", (plan_id,)).fetchall()
         a = self.start(plan_id, "a")
         self.finish(a, "A")

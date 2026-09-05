@@ -212,8 +212,11 @@ For NativeRuntime, the factory constructs the existing OpenAI-compatible
 provider from `ORCHESTRA_NATIVE_ENDPOINT_URL` and the optional
 `ORCHESTRA_NATIVE_API_KEY`. The endpoint is required only when a native role is
 selected. Tests inject `FakeModelProvider` through the provider abstraction;
-no controller path switches on a concrete provider implementation. There is no
-model router, fallback, retry, worker pool, or multi-model policy here.
+no controller path switches on a concrete provider implementation. This
+AgentRuntime milestone originally had no model router. Milestone 0.2-G now adds
+a deterministic routing authority above this factory while preserving the same
+runtime boundary. It still adds no provider probing, retry, load balancing, or
+LLM-selected routing.
 
 `AgentRuntime` is the application boundary for an AI task. `HermesRuntime`
 executes it through external Hermes Agent, while `NativeRuntime` executes it
@@ -224,5 +227,6 @@ mount the host Docker socket, or replace that service.
 
 ## Future direction
 
-Native worker pooling, richer liveness and cancellation, recovery loops, and
-model routing remain later roadmap work.
+Native worker pooling, Reviewer/Judge, bounded recovery, and deterministic
+model routing are now implemented by later v0.2 milestones. Richer liveness and
+cancellation remain future contract work.

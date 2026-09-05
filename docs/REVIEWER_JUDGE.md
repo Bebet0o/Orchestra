@@ -15,9 +15,11 @@ A task in a declarative or generated schema-1 plan may specify:
 The default is `required: false`. Existing PIPELINE Git review/integration remains
 unchanged for that default. Required review is supported for PIPELINE tasks and
 uses one enabled reviewer role with read-only workspace, no network, commit or
-push authority. The existing role's `runtime_kind`, profile and model select
-HermesRuntime or NativeRuntime. These identifiers are frozen when review is
-requested. Changes before dispatch fail closed. There is no dynamic model router.
+push authority. The existing role's `runtime_kind`, profile and configured model select the
+runtime authority. These identifiers are frozen when review is requested and
+changes before dispatch fail closed. Milestone 0.2-G later adds deterministic
+per-execution model routing for NativeRuntime from that frozen role snapshot;
+HermesRuntime remains profile-managed.
 
 For required tasks, worker submission ends the worker attempt successfully and
 releases its pool slot. The task is `BLOCKED` with `review_state=PENDING`; the
@@ -165,6 +167,7 @@ Hermes tests use deterministic process transport and verify its command mapping;
 Native tests execute NativeRuntime with FakeModelProvider. These are not live
 provider or Docker end-to-end runs.
 
-Automatic repair, reassignment, replanning, fix tasks, dependency changes,
-reviewer consensus, model routing and Console visualization remain deferred to
-0.2-F, 0.2-G and 0.2-H. No release, tag or publication workflow is created.
+Bounded corrective recovery was delivered by 0.2-F and deterministic model
+routing by 0.2-G. Reassignment, replanning, dependency rewrites, reviewer
+consensus and the richer multi-agent Console remain outside this milestone. No
+release, tag or publication workflow is created here.
