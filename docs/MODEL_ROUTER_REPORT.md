@@ -73,7 +73,7 @@ rewrite linked history. Once a decision is linked, the execution ID, role ID and
 runtime kind used by that provenance are immutable and the linked execution row
 cannot be deleted, preventing orphaned routing history.
 
-## Milestone commits before the completion documentation commit
+## Milestone commit history before final publication preparation
 
 | Commit | Tree | Subject |
 | --- | --- | --- |
@@ -82,9 +82,12 @@ cannot be deleted, preventing orphaned routing history.
 | `d2a5655d9f585eb78056742e35a0108307363d62` | `e4ebd98bde1743d4a56c88321666f2828ea9cee4` | `feat: load model router policy configuration` |
 | `47d9700865af66333f03762091150de6597e7e7c` | `bd63cc1b29ffc8998d5a23001ac585891cb49854` | `feat: route production agent model selection` |
 | `3cffbe445c315904cbf3808e29e3d4682fc1eb5f` | `ad0bfd8300599a8274d9f85f443d1f5ebf2a987e` | `test: cover model router runtime dispatch` |
+| `7e6869b661a4c792bc3cbb1a00fe55b8e2ec0708` | `d0090d754c8f5e2e6c22986193c64dde28289131` | `docs: close model router milestone` |
+| `f676e8ba1a83c4e4559556b1dd3781a9778465ff` | `75c8fc7d585195c9b386969c797ab24724fd1f9c` | `fix: freeze linked model route execution identity` |
+| `39c9da1b5eb5ff7b459e8f9527ba7bafbbcebb05` | `069354ebb1514a16e724eb409e8f46424cf4a0d6` | `fix: preserve linked model route executions` |
 
-The final documentation commit/tree is reported in the completion response; a
-commit cannot include its own content-derived identity.
+The final publication-preparation documentation commit/tree is reported in the
+completion response; a commit cannot include its own content-derived identity.
 
 ## Validation contract
 
