@@ -11,8 +11,8 @@ real software projects.
 - 0.2-D Shared project context — CLOSED
 - 0.2-E Reviewer and Judge — CLOSED ([lifecycle and provenance](docs/REVIEWER_JUDGE.md))
 - 0.2-F Recovery loop — CLOSED ([lifecycle and provenance](docs/RECOVERY_LOOP.md))
-- 0.2-G Model router
-- 0.2-H Multi-agent Console
+- 0.2-G Model router — CLOSED ([routing and provenance](docs/MODEL_ROUTER.md))
+- 0.2-H Multi-agent Console — CLOSED ([completion report](docs/MULTI_AGENT_CONSOLE_REPORT.md))
 
 ## v0.3.0 — Durable Project Intelligence
 

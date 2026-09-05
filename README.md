@@ -65,14 +65,19 @@ Implemented foundations include:
 - Blueprint v1 parsing, canonicalization, persistence, immutable revision
   history, API/CLI/Console lifecycle operations, schema migration 22 to 23,
   the Blueprint namespace migration, runtime selection, worker-pool schema 26,
-  planner task-graph schema 27, and durable shared-context schema 28;
+  planner task-graph schema 27, durable shared-context schema 28,
+  Reviewer/Judge schema 29, bounded Recovery Loop schema 30, and deterministic
+  Model Router schema 31;
+- Controller-backed multi-agent Console surfaces for executions, reviews,
+  recovery state, replayable events, and bounded administration diagnostics;
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-Foundation-only or planned work includes richer model routing, stronger judge
-workflows, automatic context intelligence, and broader Console operations.
-Existing components should not be read as a claim that these capabilities are
-complete.
+The v0.2.0 Native Multi-Agent Execution line is complete through milestone
+0.2-H. Foundation-only or planned work includes the v0.3 Durable Project
+Intelligence scope: automatic context intelligence, artifact management,
+structured project memory, and improved scheduling. Existing components should
+not be read as a claim that those v0.3 capabilities are already complete.
 
 ## Architecture
 

@@ -17,6 +17,11 @@ release is published.
   sandbox materialization, and shared worker/reviewer preparation.
 - A trusted two-phase worker publication and acceptance process with exact
   candidate binding and fresh anonymous digest-pull verification.
+- Native Multi-Agent Execution through milestones 0.2-A to 0.2-H: activated
+  NativeRuntime dispatch, a durable bounded worker pool, Planner task graphs,
+  immutable shared-context snapshots, Reviewer/Judge decisions, bounded
+  corrective Recovery Loop, deterministic durable Model Router decisions, and
+  Controller-backed multi-agent Console views with replayable events.
 - Orchestra Blueprint v1 parsing, validation, canonicalization, fingerprinting,
   persistence, immutable revisions, lifecycle operations, and current
   API/CLI/Console/documentation surfaces.
