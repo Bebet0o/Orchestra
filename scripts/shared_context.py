@@ -311,6 +311,95 @@ class ContextProjector:
         finally:
             connection.close()
 
+    def _bound_recovery_for_projection(
+        self,
+        core: dict[str, Any],
+        omitted_initial: int,
+    ) -> dict[str, Any]:
+        recovery = core.get("recovery")
+        if not isinstance(recovery, dict):
+            return core
+
+        bounding = {
+            "max_bytes": self.max_projection_bytes,
+            "budget_exhausted": False,
+            "omitted_count": omitted_initial,
+        }
+
+        def fits(candidate: dict[str, Any]) -> bool:
+            mandatory = {
+                **{key: value for key, value in core.items() if key != "recovery"},
+                "recovery": candidate,
+                "dependency_results": [],
+                "shared_context": [],
+                "bounding": bounding,
+            }
+            return len(canonical_json(mandatory).encode("utf-8")) <= self.max_projection_bytes
+
+        if fits(recovery):
+            return core
+
+        fixed_keys = (
+            "recovery_action_id", "recovery_sequence", "reason_sha256",
+            "schema_version", "source_attempt_id", "previous_result",
+            "source_review", "judge",
+        )
+        compact = {key: recovery[key] for key in fixed_keys if key in recovery}
+        source_bounding = recovery.get("bounding")
+        if isinstance(source_bounding, dict):
+            compact["bounding"] = source_bounding
+        compact.update({
+            "summary": "",
+            "findings": [],
+            "required_changes": [],
+            "projection_bounding": {
+                "truncated": True,
+                "source_reason_bytes": len(canonical_json(recovery).encode("utf-8")),
+                "summary_truncated": bool(recovery.get("summary")),
+                "omitted_findings": len(recovery.get("findings", [])),
+                "omitted_required_changes": len(recovery.get("required_changes", [])),
+            },
+        })
+        if not fits(compact):
+            raise SharedContextError("Recovery provenance exceeds projection byte limit")
+
+        # Required changes are the corrective worker's primary instructions,
+        # so retain them before summary/findings when the 64 KiB runtime
+        # context budget is tight. Preserve list order deterministically.
+        for change in recovery.get("required_changes", []):
+            compact["required_changes"].append(change)
+            compact["projection_bounding"]["omitted_required_changes"] -= 1
+            if not fits(compact):
+                compact["required_changes"].pop()
+                compact["projection_bounding"]["omitted_required_changes"] += 1
+                break
+
+        summary = recovery.get("summary", "")
+        if isinstance(summary, str) and summary:
+            low, high = 0, len(summary.encode("utf-8"))
+            best = ""
+            while low <= high:
+                middle = (low + high) // 2
+                excerpt = summary.encode("utf-8")[:middle].decode("utf-8", errors="ignore")
+                compact["summary"] = excerpt
+                if fits(compact):
+                    best = excerpt
+                    low = middle + 1
+                else:
+                    high = middle - 1
+            compact["summary"] = best
+            compact["projection_bounding"]["summary_truncated"] = best != summary
+
+        for finding in recovery.get("findings", []):
+            compact["findings"].append(finding)
+            compact["projection_bounding"]["omitted_findings"] -= 1
+            if not fits(compact):
+                compact["findings"].pop()
+                compact["projection_bounding"]["omitted_findings"] += 1
+                break
+
+        return {**core, "recovery": compact}
+
     def _bound(
         self,
         core: dict[str, Any],
@@ -318,6 +407,7 @@ class ContextProjector:
         entries: list[dict[str, Any]],
         omitted_initial: int,
     ) -> dict[str, Any]:
+        core = self._bound_recovery_for_projection(core, omitted_initial)
         projection = {
             **core,
             "dependency_results": list(dependencies),

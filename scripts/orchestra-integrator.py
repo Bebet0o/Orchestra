@@ -664,6 +664,11 @@ def run_plan_has_active_human_gate(
               ON gate_task.orchestration_task_id = gate_attempt.orchestration_task_id
             WHERE gate_task.plan_id = ?
               AND approval.status = 'PENDING'
+              AND NOT EXISTS (
+                  SELECT 1 FROM recovery_actions AS recovery
+                  WHERE recovery.approval_id = approval.approval_id
+                    AND recovery.status = 'EXHAUSTED'
+              )
         )
         """,
         (rows[0]["plan_id"],),

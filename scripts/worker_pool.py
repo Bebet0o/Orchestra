@@ -40,6 +40,7 @@ class WorkerPool:
         max_concurrency: int = 1,
         pool_name: str = "default",
         executor: concurrent.futures.Executor | None = None,
+        recovery_eligible: Callable[[Any, str], bool] | None = None,
     ) -> None:
         if not callable(connection_factory) or not callable(dispatch):
             raise TypeError("Worker pool dependencies must be callable")
@@ -56,6 +57,9 @@ class WorkerPool:
         self.controller_instance_id = controller_instance_id
         self.max_concurrency = max_concurrency
         self.pool_name = pool_name
+        if recovery_eligible is not None and not callable(recovery_eligible):
+            raise TypeError("Worker pool recovery eligibility must be callable")
+        self._recovery_eligible = recovery_eligible
         self._executor = executor or concurrent.futures.ThreadPoolExecutor(
             max_workers=max_concurrency,
             thread_name_prefix="orchestra-worker-slot",
@@ -180,6 +184,12 @@ class WorkerPool:
                 or action["runtime_kind"] != runtime_kind
                 or int(action["recovery_retry_count"]) >= int(action["recovery_max_retries"])
                 or int(action["recovery_retry_count"]) + 1 != int(action["recovery_sequence"])
+            ):
+                connection.rollback()
+                return None
+            if (
+                self._recovery_eligible is not None
+                and not self._recovery_eligible(connection, task_id)
             ):
                 connection.rollback()
                 return None

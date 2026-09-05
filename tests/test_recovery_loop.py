@@ -21,7 +21,7 @@ from agent_runtime import (
 )
 from model_provider import FakeModelProvider, FakeModelProviderOutcome
 from recovery_coordinator import RecoveryCoordinator, RecoveryError, policy_authority
-from reviewer_judge import ReviewStore
+from reviewer_judge import MAX_OUTPUT_BYTES, ReviewStore
 from shared_context import ContextProjector, canonical_json, content_sha256
 from worker_pool import WorkerPool
 
@@ -57,6 +57,9 @@ class RecoveryLoopTest(unittest.TestCase):
                   FROM roles WHERE role_id='orchestrator'
                 """
             )
+        supervisor = mock.patch.object(ORCH, "supervisor_is_healthy", return_value=True)
+        supervisor.start()
+        self.addCleanup(supervisor.stop)
         self.executor = graph.ManualExecutor()
         self.pool = WorkerPool(
             self.connect,
@@ -64,6 +67,7 @@ class RecoveryLoopTest(unittest.TestCase):
             controller_instance_id="graph-controller",
             max_concurrency=2,
             executor=self.executor,
+            recovery_eligible=ORCH.recovery_dispatch_eligible,
         )
         self.addCleanup(self.pool.shutdown)
         self.store = ReviewStore(self.connect)
@@ -74,7 +78,9 @@ class RecoveryLoopTest(unittest.TestCase):
             read_only=True,
         )
 
-    def create(self, *, retries: int = 1, diamond: bool = False) -> str:
+    def create(
+        self, *, retries: int = 1, diamond: bool = False, max_context: bool = False
+    ) -> str:
         shape = (
             [("a", []), ("b", ["a"]), ("c", ["a"]), ("d", ["b", "c"])]
             if diamond
@@ -84,7 +90,13 @@ class RecoveryLoopTest(unittest.TestCase):
         for task in tasks:
             if task["key"] in {"b", "c"}:
                 task["review"] = {"required": True}
-        plan = ORCH.validate_plan(self.plan(tasks), allow_test_actions=False)
+        raw_plan = self.plan(tasks)
+        if max_context:
+            raw_plan["objective"] = "O" * 16_384
+            for task in raw_plan["tasks"]:
+                if task["key"] == "b":
+                    task["instruction"] = "I" * 32_768
+        plan = ORCH.validate_plan(raw_plan, allow_test_actions=False)
         plan_id = ORCH.insert_plan(
             plan,
             source="AI",
@@ -317,6 +329,124 @@ class RecoveryLoopTest(unittest.TestCase):
         restarted.reconcile(self.pool)
         self.assertEqual(restarted.list(task_id=first[0]["orchestration_task_id"])[0]["status"], "CANCELLED")
 
+    def test_recovery_waits_for_execution_constraints_before_dispatch(self) -> None:
+        plan_id = self.create(diamond=True)
+        a = self.start(plan_id, "a")
+        self.finish(a, "A")
+        ORCH.refresh_plan_states(plan_id)
+        with self.connect() as connection:
+            project_b = connection.execute(
+                "SELECT project_id FROM orchestration_tasks WHERE plan_id=? AND task_key='b'",
+                (plan_id,),
+            ).fetchone()[0]
+            connection.execute(
+                "UPDATE orchestration_tasks SET project_id=? WHERE plan_id=? AND task_key='c'",
+                (project_b, plan_id),
+            )
+        b = self.start(plan_id, "b")
+        rb = self.finish(b, "B1")
+        assert rb is not None
+        self.judge(rb, "needs_fix")
+        c = self.start(plan_id, "c")
+
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 0)
+        action = self.recovery.list(task_id=b[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "PENDING")
+        self.assertEqual(action["recovery_retry_count"], 0)
+
+        rc = self.finish(c, "C1")
+        assert rc is not None
+        self.judge(rc, "pass")
+        self.assertTrue(self.store.accept(rc))
+        ORCH.refresh_plan_states(plan_id)
+
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=b[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "DISPATCHED")
+        self.assertEqual(action["recovery_retry_count"], 1)
+
+    def test_failed_pre_attempt_recovery_cannot_escape_to_normal_scheduler(self) -> None:
+        plan_id, first, _ = self.rejected()
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        with self.connect() as connection:
+            assignment = connection.execute(
+                "SELECT status FROM worker_pool_assignments WHERE assignment_id=?",
+                (action["target_assignment_id"],),
+            ).fetchone()
+        self.assertEqual(assignment["status"], "RUNNING")
+
+        self.executor.futures[-1].set_exception(RuntimeError("dispatch failed before reserve"))
+        self.assertEqual(self.recovery.finish_terminal_actions(), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        self.assertEqual(action["status"], "CANCELLED")
+        with self.connect() as connection:
+            task = connection.execute(
+                "SELECT status, review_state FROM orchestration_tasks "
+                "WHERE orchestration_task_id=?",
+                (first[0]["orchestration_task_id"],),
+            ).fetchone()
+        self.assertEqual((task["status"], task["review_state"]), ("BLOCKED", "NEEDS_FIX"))
+        self.assertNotIn(
+            first[0]["orchestration_task_id"],
+            ORCH.runnable_tasks(set(), capacity=16),
+        )
+        self.assertEqual(self.states(plan_id), {"b": "BLOCKED", "d": "PENDING"})
+
+    def test_large_valid_review_is_bounded_without_recovery_crash_loop(self) -> None:
+        plan_id = self.create(max_context=True)
+        first = self.start(plan_id, "b")
+        review_id = self.finish(first, "R1")
+        assert review_id is not None
+
+        required_changes = [f"{index:02d}:" + ("x" * 1_940) for index in range(32)]
+        value = reviewer_tests.payload(
+            "needs_fix",
+            summary="s" * 4_000,
+            findings=[],
+            required_changes=required_changes,
+        )
+        # Reduce only as much as needed to stay inside the existing reviewer
+        # contract while remaining close enough to exercise wrapper overflow.
+        while len(reviewer_tests.output(value).encode("utf-8")) > MAX_OUTPUT_BYTES:
+            required_changes[-1] = required_changes[-1][:-64]
+            value["required_changes"] = required_changes
+        self.assertGreater(len(canonical_json(value).encode("utf-8")), 60_000)
+        self.assertLessEqual(len(reviewer_tests.output(value).encode("utf-8")), MAX_OUTPUT_BYTES)
+        self.assertTrue(self.store.claim(review_id, "large-review"))
+        self.store.complete(review_id, value)
+
+        self.assertEqual(self.recovery.request_eligible(), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        reason = action["reason"]
+        self.assertLessEqual(len(canonical_json(reason).encode("utf-8")), 65_536)
+        self.assertTrue(reason["bounding"]["truncated"])
+        self.assertGreater(len(reason["required_changes"]), 0)
+
+        self.assertEqual(self.recovery.dispatch_pending(self.pool), 1)
+        action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
+        attempt, _, task = ORCH.reserve_attempt(
+            first[0]["orchestration_task_id"],
+            instance_id="graph-controller",
+            pool_assignment_id=action["target_assignment_id"],
+        )
+        self.pool.bind_attempt(action["target_assignment_id"], attempt)
+        self.recovery.link_attempt(
+            assignment_id=action["target_assignment_id"], attempt_id=attempt
+        )
+        snapshot = self.projector.freeze_task(
+            task_id=task["orchestration_task_id"],
+            assignment_id=action["target_assignment_id"],
+            attempt_id=attempt,
+        )
+        projection = snapshot["projection"]
+        self.assertLessEqual(len(canonical_json(projection).encode("utf-8")), 65_536)
+        self.assertTrue(projection["recovery"]["projection_bounding"]["truncated"])
+        self.assertGreater(len(projection["recovery"]["required_changes"]), 0)
+        self.assertEqual(projection["recovery"]["reason_sha256"], action["reason_sha256"])
+
     def test_policy_bounds_hash_and_schema_guards(self) -> None:
         self.assertEqual(policy_authority(1), policy_authority(1))
         for invalid in (-1, 4, True):
@@ -453,8 +583,11 @@ class RecoveryLoopTest(unittest.TestCase):
                 self.assertEqual(runtime.execute(request).output, "corrected")
             self.assertEqual(execute.call_args.args[0].context["recovery"]["required_changes"], ["fix X"])
 
-    def test_exhaustion_reuses_existing_human_approval_authority(self) -> None:
-        plan_id = self.create(retries=0)
+    def test_exhaustion_acknowledgement_is_task_local_not_plan_gate(self) -> None:
+        plan_id = self.create(retries=0, diamond=True)
+        a = self.start(plan_id, "a")
+        self.finish(a, "A")
+        ORCH.refresh_plan_states(plan_id)
         first = self.start(plan_id, "b")
         with self.connect() as connection:
             connection.execute(
@@ -471,9 +604,29 @@ class RecoveryLoopTest(unittest.TestCase):
         self.recovery.reconcile(self.pool)
         action = self.recovery.list(task_id=first[0]["orchestration_task_id"])[0]
         self.assertEqual((action["status"], action["escalation_status"]), ("EXHAUSTED", "PENDING"))
+        with self.connect() as connection:
+            self.assertFalse(ORCH.plan_has_active_human_gate(connection, plan_id))
+        with self.connect() as connection:
+            task_ids = {
+                row["task_key"]: row["orchestration_task_id"]
+                for row in connection.execute(
+                    "SELECT task_key, orchestration_task_id FROM orchestration_tasks WHERE plan_id=?",
+                    (plan_id,),
+                )
+            }
+        runnable = set(ORCH.runnable_tasks(set(), capacity=16))
+        self.assertIn(task_ids["c"], runnable)
+        self.assertNotIn(task_ids["b"], runnable)
+        self.assertEqual(
+            self.states(plan_id),
+            {"a": "COMPLETED", "b": "BLOCKED", "c": "READY", "d": "PENDING"},
+        )
+        # Stronger than scheduler visibility: the independent task can reserve
+        # an actual attempt while the exhaustion acknowledgement is pending.
+        c = self.start(plan_id, "c")
+        self.assertEqual(c[0]["task_key"], "c")
         resolved = self.recovery.resolve_exhaustion(action["approval_id"], "ACKNOWLEDGE")
         self.assertEqual(resolved["escalation_status"], "APPROVED")
-        self.assertEqual(self.states(plan_id), {"b": "BLOCKED", "d": "PENDING"})
 
     def test_configuration_default_and_bounds(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
