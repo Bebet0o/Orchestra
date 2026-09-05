@@ -14,7 +14,7 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigation principale">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">H</div>
+        <div class="brand-mark" aria-hidden="true">O</div>
         <div>
           <strong>Orchestra</strong>
           <span>Console</span>
@@ -32,7 +32,7 @@
       </nav>
       <div class="sidebar-foot">
         <span class="status-dot" aria-hidden="true"></span>
-        Dashboard opérationnel 2R
+        Multi-Agent Console 0.2-H
       </div>
     </aside>
 
@@ -47,8 +47,8 @@
 
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">Jalon 2R</p>
-          <h2 id="hero-title">L’état opérationnel essentiel, sans accès privilégié.</h2>
+          <p class="eyebrow">Orchestra v0.2</p>
+          <h2 id="hero-title">Piloter et comprendre l’orchestration multi-agent.</h2>
           <p id="page-description">
             Le navigateur lit uniquement des projections Controller authentifiées, bornées et expurgées.
             Aucune donnée n’est lue directement depuis SQLite ou un chemin hôte.
@@ -402,6 +402,225 @@
         </div>
       </section>
 
+      <section id="execution-panel" class="execution-panel" aria-labelledby="execution-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Multi-Agent Console</p>
+            <h2 id="execution-console-title">Plans, tâches et tentatives</h2>
+            <p id="execution-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+          </div>
+          <button id="execution-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+
+        <div class="execution-grid">
+          <section class="dashboard-card" aria-labelledby="execution-plan-list-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Autorité Controller</p>
+                <h3 id="execution-plan-list-title">Plans d’orchestration</h3>
+              </div>
+              <span id="execution-plan-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-plan-list" class="project-admin-list"></ul>
+            <p id="execution-coverage" class="coverage-note">Première page bornée du Controller.</p>
+          </section>
+
+          <section id="execution-detail-card" class="dashboard-card execution-detail-card" aria-labelledby="execution-detail-title" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Plan sélectionné</p>
+                <h3 id="execution-detail-title">Détail du plan</h3>
+              </div>
+              <span id="execution-detail-state" class="state-badge">inconnu</span>
+            </div>
+            <p id="execution-detail-meta" class="project-meta"></p>
+            <dl id="execution-detail-facts" class="objective-facts"></dl>
+          </section>
+
+          <section class="dashboard-card execution-wide" aria-labelledby="execution-task-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Task Graph</p>
+                <h3 id="execution-task-title">Tâches</h3>
+              </div>
+              <span id="execution-task-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-task-list" class="execution-task-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="execution-dependency-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Dépendances</p>
+                <h3 id="execution-dependency-title">Arêtes du graphe</h3>
+              </div>
+              <span id="execution-dependency-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-dependency-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="execution-attempt-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Exécutions</p>
+                <h3 id="execution-attempt-title">Tentatives</h3>
+              </div>
+              <span id="execution-attempt-count" class="count-badge">0</span>
+            </div>
+            <ul id="execution-attempt-list" class="operational-list compact-list"></ul>
+          </section>
+        </div>
+      </section>
+
+
+      <section id="review-panel" class="review-panel" aria-labelledby="review-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Reviewer / Judge / Recovery</p>
+            <h2 id="review-console-title">Reviews et récupération</h2>
+            <p id="review-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+          </div>
+          <button id="review-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+
+        <div class="review-grid">
+          <section class="dashboard-card" aria-labelledby="review-list-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Judge</p>
+                <h3 id="review-list-title">Reviews</h3>
+              </div>
+              <span id="review-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-list" class="project-admin-list"></ul>
+            <p id="review-coverage" class="coverage-note">Premières pages bornées du Controller.</p>
+          </section>
+
+          <section id="review-detail-card" class="dashboard-card review-detail-card" aria-labelledby="review-detail-title" hidden>
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Review sélectionnée</p>
+                <h3 id="review-detail-title">Détail de la review</h3>
+              </div>
+              <span id="review-detail-state" class="state-badge">inconnu</span>
+            </div>
+            <p id="review-detail-meta" class="project-meta"></p>
+            <dl id="review-detail-facts" class="objective-facts"></dl>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="review-evidence-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Preuves expurgées</p>
+                <h3 id="review-evidence-title">Métadonnées de preuve</h3>
+              </div>
+              <span id="review-evidence-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-evidence-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card" aria-labelledby="review-assignment-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Reviewer pool</p>
+                <h3 id="review-assignment-title">Assignations reviewer</h3>
+              </div>
+              <span id="review-assignment-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-assignment-list" class="operational-list compact-list"></ul>
+          </section>
+
+          <section class="dashboard-card review-wide" aria-labelledby="review-recovery-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Recovery Loop</p>
+                <h3 id="review-recovery-title">Décisions et issues Recovery</h3>
+              </div>
+              <span id="review-recovery-count" class="count-badge">0</span>
+            </div>
+            <ul id="review-recovery-list" class="operational-list review-recovery-list"></ul>
+          </section>
+        </div>
+      </section>
+
+      <section id="event-panel" class="event-panel" aria-labelledby="event-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Replayable Event Stream</p>
+            <h2 id="event-console-title">Événements temps réel</h2>
+            <p id="event-status" class="dashboard-status" aria-live="polite">Flux non connecté.</p>
+          </div>
+          <button id="event-reconnect" class="secondary-button" type="button">Reconnecter</button>
+        </div>
+        <div class="event-grid">
+          <section class="dashboard-card" aria-labelledby="event-stream-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controller autoritaire</p>
+                <h3 id="event-stream-title">Flux borné en mémoire</h3>
+              </div>
+              <span id="event-count" class="count-badge">0</span>
+            </div>
+            <ul id="event-list" class="operational-list event-list"></ul>
+            <p id="event-coverage" class="coverage-note">Maximum 100 événements affichés, sans persistance navigateur.</p>
+          </section>
+          <section class="dashboard-card" aria-labelledby="event-state-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Réconciliation</p>
+                <h3 id="event-state-title">État du flux</h3>
+              </div>
+              <span id="event-connection-state" class="state-badge">hors ligne</span>
+            </div>
+            <dl id="event-facts" class="objective-facts"></dl>
+          </section>
+        </div>
+      </section>
+
+      <section id="administration-panel" class="administration-panel" aria-labelledby="administration-console-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.2-H · Bounded Diagnostics</p>
+            <h2 id="administration-console-title">Administration et santé système</h2>
+            <p id="administration-status" class="dashboard-status" aria-live="polite">Aucun diagnostic lancé.</p>
+          </div>
+          <button id="administration-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+        <div class="administration-grid">
+          <section class="dashboard-card" aria-labelledby="administration-health-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Readiness</p>
+                <h3 id="administration-health-title">Santé Controller</h3>
+              </div>
+              <span id="administration-health-state" class="state-badge">inconnu</span>
+            </div>
+            <dl id="administration-health-facts" class="objective-facts"></dl>
+          </section>
+          <section class="dashboard-card" aria-labelledby="administration-components-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Composants</p>
+                <h3 id="administration-components-title">État déclaré</h3>
+              </div>
+              <span id="administration-component-count" class="count-badge">0</span>
+            </div>
+            <ul id="administration-component-list" class="operational-list compact-list"></ul>
+          </section>
+          <section class="dashboard-card administration-wide" aria-labelledby="administration-capabilities-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controller</p>
+                <h3 id="administration-capabilities-title">Capacités système</h3>
+              </div>
+              <span id="administration-capability-count" class="count-badge">0</span>
+            </div>
+            <ul id="administration-capability-list" class="operational-list administration-capability-list"></ul>
+            <p class="coverage-note">Diagnostic en lecture seule : aucune donnée brute, aucun log et aucune mutation système exposés.</p>
+          </section>
+        </div>
+      </section>
+
       <section id="route-panel" class="route-panel" aria-live="polite">
         <div>
           <p class="eyebrow">Espace fonctionnel</p>
@@ -413,7 +632,7 @@
 
       <footer>
         <span>Orchestra service v1</span>
-        <span>Console 2U · projets, Blueprints et objectifs bornés · aucune persistance navigateur</span>
+        <span>Console 0.2-H · projections Controller bornées · aucune persistance navigateur</span>
       </footer>
     </main>
   </div>

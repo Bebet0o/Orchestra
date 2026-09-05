@@ -4,6 +4,8 @@ const ALLOWED_ENDPOINTS = Object.freeze({
   csrf: Object.freeze({ method: "POST", path: "/api/v1/auth/csrf" }),
   logout: Object.freeze({ method: "POST", path: "/api/v1/auth/logout" }),
   capabilities: Object.freeze({ method: "GET", path: "/api/v1/system/capabilities" }),
+  systemHealth: Object.freeze({ method: "GET", path: "/api/v1/system/health" }),
+  systemStatus: Object.freeze({ method: "GET", path: "/api/v1/system/status" }),
   projects: Object.freeze({ method: "GET", path: "/api/v1/projects" }),
   objectives: Object.freeze({ method: "GET", path: "/api/v1/objectives" }),
   reviews: Object.freeze({ method: "GET", path: "/api/v1/reviews" }),
@@ -15,6 +17,8 @@ const ALLOWED_ENDPOINTS = Object.freeze({
 const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{1,62}$/;
 const SANDBOX_ID_PATTERN = /^sandbox-[0-9a-f]{32}$/;
 const OBJECTIVE_ID_PATTERN = /^objective-[0-9a-f]{32}$/;
+const PLAN_ID_PATTERN = /^plan-[0-9a-f]{32}$/;
+const REVIEW_ID_PATTERN = /^review-[0-9a-f]{32}$/;
 const OPERATION_ID_PATTERN = /^operation-[0-9a-f]{32}$/;
 const PROJECT_COMMANDS = new Set(["enable", "disable", "rescan", "archive"]);
 const OBJECTIVE_COMMANDS = new Set(["pause", "resume", "cancel"]);
@@ -74,6 +78,26 @@ function objectiveId(value) {
     throw new ControllerClientError("Identifiant objectif invalide.", {
       status: 400,
       code: "invalid_objective_id",
+    });
+  }
+  return value;
+}
+
+function planId(value) {
+  if (typeof value !== "string" || !PLAN_ID_PATTERN.test(value)) {
+    throw new ControllerClientError("Identifiant plan invalide.", {
+      status: 400,
+      code: "invalid_plan_id",
+    });
+  }
+  return value;
+}
+
+function reviewId(value) {
+  if (typeof value !== "string" || !REVIEW_ID_PATTERN.test(value)) {
+    throw new ControllerClientError("Identifiant review invalide.", {
+      status: 400,
+      code: "invalid_review_id",
     });
   }
   return value;
@@ -253,6 +277,58 @@ async function csrfToken() {
   return csrf.token;
 }
 
+function eventTopics(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
+    throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
+  }
+  const allowed = new Set(["all", "system", "projects", "objectives", "tasks", "runs", "reviews", "recoveries", "sandboxes", "backups", "notifications", "confirmations", "audit"]);
+  if (new Set(value).size !== value.length || value.some((topic) => typeof topic !== "string" || !allowed.has(topic)) || (value.includes("all") && value.length !== 1)) {
+    throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
+  }
+  return value.slice();
+}
+
+function eventSequence(value) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ControllerClientError("Séquence événementielle invalide.", { status: 400, code: "invalid_event_sequence" });
+  }
+  return value;
+}
+
+function openEventStream({ afterSequence = 0, topics = ["all"], onMessage, onState } = {}) {
+  const sequence = eventSequence(afterSequence);
+  const selectedTopics = eventTopics(topics);
+  if (typeof onMessage !== "function" || typeof onState !== "function") {
+    throw new ControllerClientError("Callbacks événementiels invalides.", { status: 400, code: "invalid_event_callbacks" });
+  }
+  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${scheme}//${window.location.host}/api/v1/events`);
+  let opened = false;
+  socket.addEventListener("open", () => {
+    opened = true;
+    socket.send(JSON.stringify({ type: "subscribe", after_sequence: sequence, topics: selectedTopics }));
+    onState("connected");
+  });
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data !== "string" || event.data.length > 256 * 1024) {
+      socket.close(1008, "invalid event payload");
+      return;
+    }
+    try {
+      const payload = JSON.parse(event.data);
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new TypeError("payload");
+      }
+      onMessage(payload);
+    } catch {
+      socket.close(1008, "invalid event payload");
+    }
+  });
+  socket.addEventListener("error", () => onState("error"));
+  socket.addEventListener("close", () => onState(opened ? "closed" : "unavailable"));
+  return Object.freeze({ close: () => socket.close(1000, "console navigation") });
+}
+
 export function createControllerClient() {
   return Object.freeze({
     async session() {
@@ -272,6 +348,12 @@ export function createControllerClient() {
     },
     async capabilities() {
       return dataObject(await request("capabilities"));
+    },
+    async systemHealth() {
+      return dataObject(await request("systemHealth"));
+    },
+    async systemStatus() {
+      return dataObject(await request("systemStatus"));
     },
 
     async blueprints() {
@@ -426,14 +508,53 @@ export function createControllerClient() {
     async reviews() {
       return collection(await request("reviews"));
     },
+    async review(identifier) {
+      return dataObject(await request({
+        method: "GET",
+        path: `/api/v1/reviews/${reviewId(identifier)}`,
+      }));
+    },
+    async reviewEvidence(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/reviews/${reviewId(identifier)}/evidence`,
+      }));
+    },
     async recoveries() {
       return collection(await request("recoveries"));
     },
     async plans() {
       return collection(await request("plans"));
     },
+    async plan(identifier) {
+      return dataObject(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}`,
+      }));
+    },
+    async planTasks(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/tasks`,
+      }));
+    },
+    async planDependencies(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/dependencies`,
+      }));
+    },
+    async planAttempts(identifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/plans/${planId(identifier)}/attempts`,
+      }));
+    },
     async reviewerAssignments() {
       return collection(await request("reviewerAssignments"));
+    },
+    events(options) {
+      return openEventStream(options);
     },
     async logout() {
       const csrf = await csrfToken();

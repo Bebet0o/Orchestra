@@ -29,22 +29,22 @@ const routes = Object.freeze({
   "/executions": {
     key: "executions",
     title: "Exécutions",
-    message: "Les plans, tâches, workers et sandboxes détaillés seront affichés au jalon 2V.",
+    message: "Connectez-vous pour lire les plans, tâches, dépendances et tentatives multi-agent.",
   },
   "/reviews": {
     key: "reviews",
     title: "Reviews",
-    message: "Les décisions humaines et Recovery seront disponibles au jalon 2W.",
+    message: "Connectez-vous pour lire les reviews, preuves expurgées, assignations reviewer et Recovery.",
   },
   "/events": {
     key: "events",
     title: "Événements",
-    message: "Le flux temps réel et la réconciliation seront activés au jalon 2X.",
+    message: "Connectez-vous pour suivre le flux Controller replayable et son état de réconciliation.",
   },
   "/administration": {
     key: "administration",
     title: "Administration",
-    message: "Les diagnostics bornés seront ajoutés progressivement sans exposer de secrets.",
+    message: "Connectez-vous pour lire la santé et les diagnostics système bornés du Controller.",
   },
 });
 
@@ -121,6 +121,57 @@ const objectiveDetailFacts = document.getElementById("objective-detail-facts");
 const objectiveOperation = document.getElementById("objective-operation");
 const objectiveCommandReason = document.getElementById("objective-command-reason");
 const objectiveCommandButtons = document.getElementById("objective-command-buttons");
+const executionPanel = document.getElementById("execution-panel");
+const executionRefresh = document.getElementById("execution-refresh");
+const executionStatus = document.getElementById("execution-status");
+const executionCoverage = document.getElementById("execution-coverage");
+const executionPlanCount = document.getElementById("execution-plan-count");
+const executionPlanList = document.getElementById("execution-plan-list");
+const executionDetailCard = document.getElementById("execution-detail-card");
+const executionDetailTitle = document.getElementById("execution-detail-title");
+const executionDetailState = document.getElementById("execution-detail-state");
+const executionDetailMeta = document.getElementById("execution-detail-meta");
+const executionDetailFacts = document.getElementById("execution-detail-facts");
+const executionTaskCount = document.getElementById("execution-task-count");
+const executionTaskList = document.getElementById("execution-task-list");
+const executionDependencyCount = document.getElementById("execution-dependency-count");
+const executionDependencyList = document.getElementById("execution-dependency-list");
+const executionAttemptCount = document.getElementById("execution-attempt-count");
+const executionAttemptList = document.getElementById("execution-attempt-list");
+const reviewPanel = document.getElementById("review-panel");
+const reviewRefresh = document.getElementById("review-refresh");
+const reviewStatus = document.getElementById("review-status");
+const reviewCoverage = document.getElementById("review-coverage");
+const reviewCount = document.getElementById("review-count");
+const reviewList = document.getElementById("review-list");
+const reviewDetailCard = document.getElementById("review-detail-card");
+const reviewDetailTitle = document.getElementById("review-detail-title");
+const reviewDetailState = document.getElementById("review-detail-state");
+const reviewDetailMeta = document.getElementById("review-detail-meta");
+const reviewDetailFacts = document.getElementById("review-detail-facts");
+const reviewEvidenceCount = document.getElementById("review-evidence-count");
+const reviewEvidenceList = document.getElementById("review-evidence-list");
+const reviewAssignmentCount = document.getElementById("review-assignment-count");
+const reviewAssignmentList = document.getElementById("review-assignment-list");
+const reviewRecoveryCount = document.getElementById("review-recovery-count");
+const reviewRecoveryList = document.getElementById("review-recovery-list");
+const eventPanel = document.getElementById("event-panel");
+const eventReconnect = document.getElementById("event-reconnect");
+const eventStatus = document.getElementById("event-status");
+const eventCount = document.getElementById("event-count");
+const eventList = document.getElementById("event-list");
+const eventCoverage = document.getElementById("event-coverage");
+const eventConnectionState = document.getElementById("event-connection-state");
+const eventFacts = document.getElementById("event-facts");
+const administrationPanel = document.getElementById("administration-panel");
+const administrationRefresh = document.getElementById("administration-refresh");
+const administrationStatus = document.getElementById("administration-status");
+const administrationHealthState = document.getElementById("administration-health-state");
+const administrationHealthFacts = document.getElementById("administration-health-facts");
+const administrationComponentCount = document.getElementById("administration-component-count");
+const administrationComponentList = document.getElementById("administration-component-list");
+const administrationCapabilityCount = document.getElementById("administration-capability-count");
+const administrationCapabilityList = document.getElementById("administration-capability-list");
 
 const dashboardResources = Object.freeze([
   Object.freeze({ key: "projects", load: () => client.projects() }),
@@ -160,6 +211,27 @@ let objectiveGeneration = 0;
 let objectivesLoaded = false;
 let selectedObjectiveId = "";
 let selectedObjective = null;
+let executionLoading = false;
+let executionGeneration = 0;
+let executionsLoaded = false;
+let selectedPlanId = "";
+let reviewLoading = false;
+let reviewGeneration = 0;
+let reviewsLoaded = false;
+let selectedReviewId = "";
+let eventStream = null;
+let eventStreamGeneration = 0;
+let eventReconnectTimer = 0;
+let eventReconnectAttempts = 0;
+let eventLastSequence = 0;
+let eventLatestSequence = 0;
+let eventMessages = [];
+let eventReplayTargetSequence = null;
+let eventReplayReconciling = false;
+let eventReplayBlocked = false;
+let administrationLoading = false;
+let administrationLoaded = false;
+let administrationGeneration = 0;
 
 function canonicalPath(pathname) {
   if (pathname.length > 1 && pathname.endsWith("/")) {
@@ -198,11 +270,19 @@ function displayFunctionalPanel() {
   const projectsRoute = key === "projects";
   const blueprintsRoute = key === "blueprints";
   const objectivesRoute = key === "objectives";
+  const executionsRoute = key === "executions";
+  const reviewsRoute = key === "reviews";
+  const eventsRoute = key === "events";
+  const administrationRoute = key === "administration";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute);
+  executionPanel.hidden = !executionsRoute || !authenticated;
+  reviewPanel.hidden = !reviewsRoute || !authenticated;
+  eventPanel.hidden = !eventsRoute || !authenticated;
+  administrationPanel.hidden = !administrationRoute || !authenticated;
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute || administrationRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -233,6 +313,20 @@ function render(pathname, focusMain = false) {
   if (route.key === "objectives" && authenticated && !objectivesLoaded) {
     void refreshObjectives();
   }
+  if (route.key === "executions" && authenticated && !executionsLoaded) {
+    void refreshExecutions();
+  }
+  if (route.key === "reviews" && authenticated && !reviewsLoaded) {
+    void refreshReviews();
+  }
+  if (route.key === "administration" && authenticated && !administrationLoaded) {
+    void refreshAdministration();
+  }
+  if (route.key === "events" && authenticated && eventStream === null) {
+    connectEvents();
+  } else if (route.key !== "events") {
+    disconnectEvents(false);
+  }
 
   if (focusMain) {
     document.getElementById("main-content").focus({ preventScroll: true });
@@ -254,6 +348,10 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   clearProjectState();
   clearBlueprintState();
   clearObjectiveState();
+  clearExecutionState();
+  clearReviewState();
+  disconnectEvents(true);
+  clearAdministrationState();
   sessionPanel.dataset.state = "signed-out";
   sessionStatus.textContent = "Session fermée";
   sessionDetail.textContent = message;
@@ -292,6 +390,18 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "objectives") {
     void refreshObjectives();
   }
+  if (currentRoute().key === "executions") {
+    void refreshExecutions();
+  }
+  if (currentRoute().key === "reviews") {
+    void refreshReviews();
+  }
+  if (currentRoute().key === "events") {
+    connectEvents();
+  }
+  if (currentRoute().key === "administration") {
+    void refreshAdministration();
+  }
 }
 
 function showUnavailable(error) {
@@ -303,6 +413,10 @@ function showUnavailable(error) {
   clearProjectState();
   clearBlueprintState();
   clearObjectiveState();
+  clearExecutionState();
+  clearReviewState();
+  disconnectEvents(true);
+  clearAdministrationState();
   sessionPanel.dataset.state = "unavailable";
   sessionStatus.textContent = "Controller indisponible";
   const requestSuffix = error instanceof ControllerClientError && error.requestId
@@ -1426,6 +1540,860 @@ async function submitObjectiveCreate() {
   }
 }
 
+function clearExecutionState() {
+  executionGeneration += 1;
+  executionLoading = false;
+  executionsLoaded = false;
+  selectedPlanId = "";
+  executionRefresh.disabled = false;
+  executionPlanCount.textContent = "0";
+  executionTaskCount.textContent = "0";
+  executionDependencyCount.textContent = "0";
+  executionAttemptCount.textContent = "0";
+  executionPlanList.replaceChildren();
+  executionTaskList.replaceChildren();
+  executionDependencyList.replaceChildren();
+  executionAttemptList.replaceChildren();
+  executionDetailFacts.replaceChildren();
+  executionDetailCard.hidden = true;
+  executionCoverage.textContent = "Première page bornée du Controller.";
+}
+
+function setExecutionBusy(busy) {
+  executionLoading = busy;
+  executionRefresh.disabled = busy;
+  executionPlanList.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+function integerOrZero(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function renderExecutionPlanList(collection) {
+  executionPlanList.replaceChildren();
+  executionPlanCount.textContent = String(collection.items.length);
+  executionCoverage.textContent = collection.truncated
+    ? "Une page suivante existe : la liste des plans reste volontairement bornée."
+    : "La première page des plans est complète selon les métadonnées Controller.";
+  if (collection.items.length === 0) {
+    appendEmpty(executionPlanList, "Aucun plan d’orchestration visible.");
+    return;
+  }
+  for (const plan of collection.items) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    const state = document.createElement("span");
+    const identifier = safeId(plan, "plan");
+    const counts = plan && typeof plan.task_counts === "object" && plan.task_counts !== null
+      ? plan.task_counts
+      : {};
+    button.type = "button";
+    button.dataset.planId = identifier;
+    button.className = "project-list-button";
+    button.disabled = executionLoading;
+    if (identifier === selectedPlanId) {
+      button.setAttribute("aria-current", "true");
+    }
+    heading.textContent = safeText(plan.objective_id, identifier, 96);
+    detail.textContent = `${identifier} · ${integerOrZero(counts.total)} tâche(s) · ${integerOrZero(plan.attempt_count)} tentative(s)`;
+    state.className = "state-badge";
+    state.dataset.state = safeState(plan);
+    state.textContent = safeState(plan);
+    button.append(heading, detail, state);
+    item.append(button);
+    executionPlanList.append(item);
+  }
+}
+
+function appendExecutionFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  executionDetailFacts.append(wrapper);
+}
+
+function renderExecutionDetail(plan, tasks, dependencies, attempts) {
+  selectedPlanId = safeId(plan, "");
+  executionDetailCard.hidden = false;
+  executionDetailTitle.textContent = safeText(plan.objective_id, selectedPlanId || "Plan", 96);
+  const state = safeState(plan);
+  executionDetailState.dataset.state = state;
+  executionDetailState.textContent = state;
+  const projects = Array.isArray(plan.project_ids)
+    ? plan.project_ids.map((value) => safeText(value, "", 63)).filter(Boolean)
+    : [];
+  executionDetailMeta.textContent = `${selectedPlanId} · ${projects.length ? projects.join(", ") : "aucun projet public"}`;
+  executionDetailFacts.replaceChildren();
+  appendExecutionFact("Source", safeText(plan.source, "inconnue", 32));
+  appendExecutionFact("Planner", safeText(plan.planner_role_id, "inconnu", 63));
+  appendExecutionFact("Parallélisme", String(integerOrZero(plan.max_parallel_tasks)));
+  appendExecutionFact("Assignations reviewer", String(integerOrZero(plan.reviewer_assignment_count)));
+  appendExecutionFact("Digest du plan", safeText(plan.plan_digest, "indisponible", 64));
+
+  executionTaskList.replaceChildren();
+  executionTaskCount.textContent = String(tasks.items.length);
+  const taskTitles = new Map();
+  if (tasks.items.length === 0) {
+    appendEmpty(executionTaskList, "Aucune tâche publique pour ce plan.");
+  } else {
+    for (const task of tasks.items) {
+      const item = document.createElement("li");
+      const top = document.createElement("div");
+      const type = document.createElement("span");
+      const badge = document.createElement("span");
+      const heading = document.createElement("strong");
+      const detail = document.createElement("p");
+      const identifier = safeId(task, "tâche");
+      const title = safeText(task.title, safeText(task.task_key, identifier, 96), 200);
+      taskTitles.set(identifier, title);
+      top.className = "operational-item-heading";
+      type.className = "operational-type";
+      type.textContent = safeText(task.kind, "task", 32);
+      badge.className = "state-badge";
+      badge.dataset.state = safeState(task);
+      badge.textContent = safeState(task);
+      heading.textContent = title;
+      detail.textContent = `${safeText(task.role_id, "system", 63)} · ${integerOrZero(task.attempt_count)}/${integerOrZero(task.max_attempts)} tentative(s) · ${integerOrZero(task.dependency_count)} dépendance(s)`;
+      top.append(type, badge);
+      item.append(top, heading, detail);
+      executionTaskList.append(item);
+    }
+  }
+
+  executionDependencyList.replaceChildren();
+  executionDependencyCount.textContent = String(dependencies.items.length);
+  if (dependencies.items.length === 0) {
+    appendEmpty(executionDependencyList, "Aucune dépendance : tâches indépendantes ou plan vide.");
+  } else {
+    for (const dependency of dependencies.items) {
+      const parentId = safeText(dependency.depends_on_task_id, "parent inconnu", 96);
+      const taskId = safeText(dependency.task_id, "tâche inconnue", 96);
+      appendOperationalItem(executionDependencyList, {
+        label: "Succès requis",
+        title: `${taskTitles.get(parentId) || parentId} → ${taskTitles.get(taskId) || taskId}`,
+        state: "dependency",
+        detail: safeText(dependency.id, "Dépendance", 96),
+      });
+    }
+  }
+
+  executionAttemptList.replaceChildren();
+  executionAttemptCount.textContent = String(attempts.items.length);
+  if (attempts.items.length === 0) {
+    appendEmpty(executionAttemptList, "Aucune tentative enregistrée pour ce plan.");
+  } else {
+    for (const attempt of attempts.items) {
+      const taskId = safeText(attempt.task_id, "tâche inconnue", 96);
+      const worker = typeof attempt.worker_execution_id === "string"
+        ? `worker ${safeText(attempt.worker_execution_id, "inconnu", 80)}`
+        : "worker non lié";
+      const reviewer = typeof attempt.review_execution_id === "string"
+        ? `review ${safeText(attempt.review_execution_id, "inconnue", 80)}`
+        : "review non liée";
+      appendOperationalItem(executionAttemptList, {
+        label: `Tentative ${integerOrZero(attempt.attempt_number)}`,
+        title: taskTitles.get(taskId) || taskId,
+        state: safeState(attempt),
+        detail: `${worker} · ${reviewer}`,
+      });
+    }
+  }
+
+  const truncated = [tasks, dependencies, attempts].filter((collection) => collection.truncated);
+  executionCoverage.textContent = truncated.length
+    ? `${truncated.length} collection(s) du plan possèdent une page suivante ; aucun élément absent n’est extrapolé.`
+    : "Plan et premières pages de tâches, dépendances et tentatives complets selon le Controller.";
+}
+
+async function selectExecutionPlan(identifier) {
+  if (!authenticated || executionLoading) {
+    return;
+  }
+  setExecutionBusy(true);
+  executionStatus.textContent = `Lecture du plan ${safeText(identifier, "sélectionné", 96)}…`;
+  executionDetailCard.hidden = true;
+  executionTaskList.replaceChildren();
+  executionDependencyList.replaceChildren();
+  executionAttemptList.replaceChildren();
+  try {
+    const [plan, tasks, dependencies, attempts] = await Promise.all([
+      client.plan(identifier),
+      client.planTasks(identifier),
+      client.planDependencies(identifier),
+      client.planAttempts(identifier),
+    ]);
+    if (!authenticated) {
+      return;
+    }
+    renderExecutionDetail(plan, tasks, dependencies, attempts);
+    const collection = await client.plans();
+    renderExecutionPlanList(collection);
+    executionStatus.textContent = "Plan multi-agent chargé depuis les projections Controller expurgées.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les exécutions.");
+      return;
+    }
+    executionStatus.textContent = projectErrorMessage(error, "Lecture du plan impossible.");
+  } finally {
+    setExecutionBusy(false);
+  }
+}
+
+async function refreshExecutions() {
+  if (!authenticated || executionLoading) {
+    return;
+  }
+  const generation = ++executionGeneration;
+  setExecutionBusy(true);
+  executionStatus.textContent = "Lecture des plans d’orchestration…";
+  try {
+    const collection = await client.plans();
+    if (generation !== executionGeneration || !authenticated) {
+      return;
+    }
+    renderExecutionPlanList(collection);
+    executionsLoaded = true;
+    executionStatus.textContent = `${collection.items.length} plan(s) reçu(s) du Controller.`;
+    if (selectedPlanId && collection.items.some((item) => safeId(item, "") === selectedPlanId)) {
+      const [plan, tasks, dependencies, attempts] = await Promise.all([
+        client.plan(selectedPlanId),
+        client.planTasks(selectedPlanId),
+        client.planDependencies(selectedPlanId),
+        client.planAttempts(selectedPlanId),
+      ]);
+      if (generation === executionGeneration && authenticated) {
+        renderExecutionDetail(plan, tasks, dependencies, attempts);
+      }
+    } else {
+      selectedPlanId = "";
+      executionDetailCard.hidden = true;
+      executionTaskList.replaceChildren();
+      executionDependencyList.replaceChildren();
+      executionAttemptList.replaceChildren();
+      executionTaskCount.textContent = "0";
+      executionDependencyCount.textContent = "0";
+      executionAttemptCount.textContent = "0";
+    }
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les exécutions.");
+      return;
+    }
+    executionStatus.textContent = projectErrorMessage(error, "Plans d’orchestration indisponibles.");
+  } finally {
+    if (generation === executionGeneration) {
+      setExecutionBusy(false);
+    }
+  }
+}
+
+function clearReviewState() {
+  reviewGeneration += 1;
+  reviewLoading = false;
+  reviewsLoaded = false;
+  selectedReviewId = "";
+  reviewRefresh.disabled = false;
+  reviewCount.textContent = "0";
+  reviewEvidenceCount.textContent = "0";
+  reviewAssignmentCount.textContent = "0";
+  reviewRecoveryCount.textContent = "0";
+  reviewList.replaceChildren();
+  reviewEvidenceList.replaceChildren();
+  reviewAssignmentList.replaceChildren();
+  reviewRecoveryList.replaceChildren();
+  reviewDetailFacts.replaceChildren();
+  reviewDetailCard.hidden = true;
+  reviewCoverage.textContent = "Premières pages bornées du Controller.";
+}
+
+function setReviewBusy(busy) {
+  reviewLoading = busy;
+  reviewRefresh.disabled = busy;
+  reviewList.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+function renderReviewList(collection) {
+  reviewList.replaceChildren();
+  reviewCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewList, "Aucune review visible.");
+    return;
+  }
+  for (const review of collection.items) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    const state = document.createElement("span");
+    const identifier = safeId(review, "review");
+    button.type = "button";
+    button.dataset.reviewId = identifier;
+    button.className = "project-list-button";
+    button.disabled = reviewLoading;
+    if (identifier === selectedReviewId) {
+      button.setAttribute("aria-current", "true");
+    }
+    heading.textContent = safeText(review.summary, identifier, 180);
+    detail.textContent = `${identifier} · ${safeText(review.verdict, "verdict inconnu", 32)} · ${safeText(review.project_id, "projet inconnu", 63)}`;
+    state.className = "state-badge";
+    state.dataset.state = safeState(review);
+    state.textContent = safeState(review);
+    button.append(heading, detail, state);
+    item.append(button);
+    reviewList.append(item);
+  }
+}
+
+function appendReviewFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  reviewDetailFacts.append(wrapper);
+}
+
+function renderReviewDetail(review, evidence) {
+  selectedReviewId = safeId(review, "");
+  reviewDetailCard.hidden = false;
+  reviewDetailTitle.textContent = safeText(review.summary, selectedReviewId || "Review", 180);
+  const state = safeState(review);
+  reviewDetailState.dataset.state = state;
+  reviewDetailState.textContent = state;
+  reviewDetailMeta.textContent = `${selectedReviewId} · ${safeText(review.project_id, "projet inconnu", 63)} · ${safeText(review.run_id, "run inconnu", 96)}`;
+  reviewDetailFacts.replaceChildren();
+  appendReviewFact("Verdict", safeText(review.verdict, "inconnu", 32));
+  appendReviewFact("Décision", safeText(review.decision, "non liée", 32));
+
+  const reviewer = review && typeof review.reviewer === "object" && review.reviewer !== null
+    ? review.reviewer
+    : null;
+  appendReviewFact(
+    "Reviewer",
+    reviewer
+      ? `${safeText(reviewer.role_id, "rôle inconnu", 63)} · ${safeText(reviewer.source_profile, "profil inconnu", 63)}`
+      : "Aucune exécution reviewer liée",
+  );
+  appendReviewFact(
+    "Isolation reviewer",
+    reviewer
+      ? `${safeText(reviewer.workspace_mode, "inconnue", 32)} · réseau ${reviewer.network_enabled === false ? "désactivé" : "état inconnu"}`
+      : "Non applicable",
+  );
+
+  const integration = review && typeof review.integration === "object" && review.integration !== null
+    ? review.integration
+    : null;
+  appendReviewFact(
+    "Intégration",
+    integration
+      ? `${safeText(integration.status, "inconnue", 32)} · ${safeText(integration.id, "id inconnu", 96)}`
+      : "Aucune intégration liée",
+  );
+  appendReviewFact(
+    "Snapshot",
+    integration
+      ? `vérifié ${integration.snapshot_verified === true ? "oui" : "non"} · review courante ${integration.review_current === true ? "oui" : "non"}`
+      : "Non applicable",
+  );
+
+  reviewEvidenceList.replaceChildren();
+  reviewEvidenceCount.textContent = String(evidence.items.length);
+  if (evidence.items.length === 0) {
+    appendEmpty(reviewEvidenceList, "Aucune métadonnée de preuve publique pour cette review.");
+  } else {
+    for (const entry of evidence.items) {
+      appendOperationalItem(reviewEvidenceList, {
+        label: safeText(entry.kind, "preuve", 64),
+        title: safeText(entry.name, safeId(entry, "preuve"), 96),
+        state: entry.raw_content_available === true ? "available" : "metadata",
+        detail: `${safeId(entry, "preuve")} · SHA-256 ${safeText(entry.sha256, "indisponible", 64)} · contenu brut non exposé`,
+      });
+    }
+  }
+}
+
+function renderReviewAssignments(collection) {
+  reviewAssignmentList.replaceChildren();
+  reviewAssignmentCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewAssignmentList, "Aucune assignation reviewer visible.");
+    return;
+  }
+  for (const assignment of collection.items) {
+    const reviewLink = typeof assignment.review_id === "string"
+      ? ` · review ${safeText(assignment.review_id, "inconnue", 96)}`
+      : " · review non liée";
+    appendOperationalItem(reviewAssignmentList, {
+      label: `Assignation ${integerOrZero(assignment.assignment_number)}`,
+      title: safeText(assignment.role_id, safeId(assignment, "reviewer"), 63),
+      state: safeState(assignment),
+      detail: `${safeText(assignment.task_id, "tâche inconnue", 96)} · ${safeText(assignment.run_id, "run inconnu", 96)}${reviewLink}`,
+    });
+  }
+}
+
+function renderRecoveries(collection) {
+  reviewRecoveryList.replaceChildren();
+  reviewRecoveryCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(reviewRecoveryList, "Aucune exécution Recovery visible.");
+    return;
+  }
+  for (const recovery of collection.items) {
+    const actions = recovery && typeof recovery.actions === "object" && recovery.actions !== null
+      ? recovery.actions
+      : {};
+    appendOperationalItem(reviewRecoveryList, {
+      label: "Recovery",
+      title: safeText(recovery.project_id, safeId(recovery, "recovery"), 63),
+      state: safeState(recovery),
+      detail: `${safeText(recovery.decision, "décision inconnue", 32)} · ${safeText(recovery.outcome, "issue inconnue", 32)} · ${integerOrZero(actions.count)} action(s) expurgée(s)`,
+    });
+  }
+}
+
+function updateReviewCoverage(reviews, assignments, recoveries) {
+  const truncated = [reviews, assignments, recoveries].filter((collection) => collection.truncated).length;
+  reviewCoverage.textContent = truncated
+    ? `${truncated} collection(s) possèdent une page suivante ; la Console n’extrapole aucun élément absent.`
+    : "Reviews, assignations reviewer et Recovery complets pour leurs premières pages selon le Controller.";
+}
+
+async function selectReview(identifier) {
+  if (!authenticated || reviewLoading) {
+    return;
+  }
+  setReviewBusy(true);
+  reviewStatus.textContent = `Lecture de la review ${safeText(identifier, "sélectionnée", 96)}…`;
+  reviewDetailCard.hidden = true;
+  reviewEvidenceList.replaceChildren();
+  reviewEvidenceCount.textContent = "0";
+  try {
+    const [review, evidence, reviews] = await Promise.all([
+      client.review(identifier),
+      client.reviewEvidence(identifier),
+      client.reviews(),
+    ]);
+    if (!authenticated) {
+      return;
+    }
+    renderReviewDetail(review, evidence);
+    renderReviewList(reviews);
+    reviewStatus.textContent = "Review et métadonnées de preuve chargées depuis les projections Controller expurgées.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les reviews.");
+      return;
+    }
+    reviewStatus.textContent = projectErrorMessage(error, "Lecture de la review impossible.");
+  } finally {
+    setReviewBusy(false);
+  }
+}
+
+async function refreshReviews() {
+  if (!authenticated || reviewLoading) {
+    return;
+  }
+  const generation = ++reviewGeneration;
+  setReviewBusy(true);
+  reviewStatus.textContent = "Lecture des reviews, assignations reviewer et Recovery…";
+  try {
+    const [reviews, assignments, recoveries] = await Promise.all([
+      client.reviews(),
+      client.reviewerAssignments(),
+      client.recoveries(),
+    ]);
+    if (generation !== reviewGeneration || !authenticated) {
+      return;
+    }
+    renderReviewList(reviews);
+    renderReviewAssignments(assignments);
+    renderRecoveries(recoveries);
+    updateReviewCoverage(reviews, assignments, recoveries);
+    reviewsLoaded = true;
+    reviewStatus.textContent = `${reviews.items.length} review(s), ${assignments.items.length} assignation(s), ${recoveries.items.length} Recovery reçu(s).`;
+    if (selectedReviewId && reviews.items.some((item) => safeId(item, "") === selectedReviewId)) {
+      const [review, evidence] = await Promise.all([
+        client.review(selectedReviewId),
+        client.reviewEvidence(selectedReviewId),
+      ]);
+      if (generation === reviewGeneration && authenticated) {
+        renderReviewDetail(review, evidence);
+      }
+    } else {
+      selectedReviewId = "";
+      reviewDetailCard.hidden = true;
+      reviewDetailFacts.replaceChildren();
+      reviewEvidenceList.replaceChildren();
+      reviewEvidenceCount.textContent = "0";
+    }
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter les reviews.");
+      return;
+    }
+    reviewStatus.textContent = projectErrorMessage(error, "Reviews et Recovery indisponibles.");
+  } finally {
+    if (generation === reviewGeneration) {
+      setReviewBusy(false);
+    }
+  }
+}
+
+function renderEventFacts() {
+  eventFacts.replaceChildren();
+  const facts = [
+    ["Dernière séquence reçue", String(eventLastSequence)],
+    ["Séquence Controller annoncée", String(eventLatestSequence)],
+    ["Tentatives de reconnexion", String(eventReconnectAttempts)],
+    ["Persistance navigateur", "désactivée"],
+  ];
+  for (const [label, value] of facts) {
+    const wrapper = document.createElement("div");
+    const term = document.createElement("dt");
+    const detail = document.createElement("dd");
+    term.textContent = label;
+    detail.textContent = value;
+    wrapper.append(term, detail);
+    eventFacts.append(wrapper);
+  }
+}
+
+function renderEventMessages() {
+  eventList.replaceChildren();
+  eventCount.textContent = String(eventMessages.length);
+  if (eventMessages.length === 0) {
+    appendEmpty(eventList, "Aucun événement reçu dans cette session navigateur.");
+    return;
+  }
+  for (const payload of eventMessages.slice().reverse()) {
+    const aggregate = payload && typeof payload.aggregate === "object" && payload.aggregate !== null ? payload.aggregate : {};
+    appendOperationalItem(eventList, {
+      label: safeText(payload.type, "event", 64),
+      title: safeText(aggregate.id, safeText(payload.id, "événement", 96), 96),
+      state: safeText(aggregate.type, "event", 40).toLowerCase(),
+      detail: `séquence ${Number.isSafeInteger(payload.sequence) ? payload.sequence : "?"} · ${safeText(payload.occurred_at, "horodatage indisponible", 64)}`,
+    });
+  }
+}
+
+function setEventConnection(state, message) {
+  eventConnectionState.dataset.state = state;
+  eventConnectionState.textContent = state;
+  eventStatus.textContent = message;
+  renderEventFacts();
+}
+
+function disconnectEvents(reset) {
+  if (eventReconnectTimer) {
+    globalThis.clearTimeout(eventReconnectTimer);
+    eventReconnectTimer = 0;
+  }
+  if (eventStream !== null) {
+    const stream = eventStream;
+    eventStream = null;
+    eventStreamGeneration += 1;
+    stream.close();
+  }
+  if (reset) {
+    eventReconnectAttempts = 0;
+    eventLastSequence = 0;
+    eventLatestSequence = 0;
+    eventMessages = [];
+    eventReplayTargetSequence = null;
+    eventReplayReconciling = false;
+    eventReplayBlocked = false;
+    renderEventMessages();
+    setEventConnection("offline", "Flux non connecté.");
+  }
+}
+
+function scheduleEventReconnect() {
+  if (!authenticated || currentRoute().key !== "events" || eventReconnectTimer || eventReplayReconciling || eventReplayBlocked || eventReplayTargetSequence !== null) {
+    return;
+  }
+  eventReconnectAttempts += 1;
+  const delay = Math.min(1000 * (2 ** Math.min(eventReconnectAttempts - 1, 4)), 15000);
+  setEventConnection("reconnecting", `Flux interrompu. Reconnexion bornée dans ${Math.ceil(delay / 1000)} s.`);
+  eventReconnectTimer = globalThis.setTimeout(() => {
+    eventReconnectTimer = 0;
+    connectEvents();
+  }, delay);
+}
+
+function handleEventPayload(payload) {
+  if (payload.type === "subscribed") {
+    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
+    eventReconnectAttempts = 0;
+    setEventConnection("connected", "Flux replayable connecté au Controller.");
+    return;
+  }
+  if (payload.type === "heartbeat") {
+    eventLatestSequence = Number.isSafeInteger(payload.latest_sequence) ? payload.latest_sequence : eventLatestSequence;
+    renderEventFacts();
+    return;
+  }
+  if (payload.type === "replay_unavailable") {
+    if (!Number.isSafeInteger(payload.latest_sequence) || payload.latest_sequence < 0) {
+      eventReplayTargetSequence = null;
+      eventReplayBlocked = true;
+      setEventConnection("degraded", "Replay indisponible sans séquence Controller valide ; reconnexion bloquée.");
+      return;
+    }
+    eventReplayBlocked = false;
+    eventLatestSequence = payload.latest_sequence;
+    eventReplayTargetSequence = payload.latest_sequence;
+    eventMessages = [];
+    renderEventMessages();
+    setEventConnection("degraded", "Replay trop ancien : snapshot HTTP requis avant reprise du flux.");
+    void reconcileEventReplay();
+    return;
+  }
+  if (Number.isSafeInteger(payload.sequence) && payload.sequence > eventLastSequence) {
+    eventLastSequence = payload.sequence;
+    eventLatestSequence = Math.max(eventLatestSequence, payload.sequence);
+    eventMessages.push(payload);
+    if (eventMessages.length > 100) {
+      eventMessages = eventMessages.slice(-100);
+    }
+    renderEventMessages();
+    renderEventFacts();
+  }
+}
+
+
+async function refreshEventReconciliationSnapshot() {
+  if (!authenticated) {
+    return false;
+  }
+  dashboardLoaded = false;
+  dashboardLoading = true;
+  dashboardRefresh.disabled = true;
+  dashboardStatus.textContent = "Réconciliation du snapshot Controller après trou de replay…";
+  const generation = ++dashboardGeneration;
+  try {
+    const settled = await Promise.allSettled(dashboardResources.map((resource) => resource.load()));
+    if (generation !== dashboardGeneration || !authenticated) {
+      return false;
+    }
+    const collections = {};
+    const errors = [];
+    settled.forEach((result, index) => {
+      const resource = dashboardResources[index];
+      if (result.status === "fulfilled") {
+        collections[resource.key] = result.value;
+      } else {
+        errors.push(result.reason);
+      }
+    });
+    const sessionError = errors.find((error) => error instanceof ControllerClientError && error.status === 401);
+    if (sessionError) {
+      showSignedOut("Session expirée pendant la réconciliation du flux événementiel.");
+      return false;
+    }
+    if (errors.length !== 0 || Object.keys(collections).length !== dashboardResources.length) {
+      dashboardStatus.textContent = "Snapshot de réconciliation incomplet ; reprise du flux bloquée.";
+      dashboardCoverage.textContent = "Toutes les projections HTTP requises doivent réussir avant de reprendre le flux événementiel.";
+      return false;
+    }
+    renderDashboard(collections, []);
+    dashboardLoaded = true;
+    return true;
+  } finally {
+    if (generation === dashboardGeneration) {
+      dashboardLoading = false;
+      dashboardRefresh.disabled = false;
+    }
+  }
+}
+
+async function reconcileEventReplay() {
+  if (!authenticated || currentRoute().key !== "events" || eventReplayReconciling || eventReplayTargetSequence === null) {
+    return;
+  }
+  const targetSequence = eventReplayTargetSequence;
+  eventReplayReconciling = true;
+  setEventConnection("degraded", `Réconciliation HTTP en cours avant reprise à la séquence ${targetSequence}.`);
+  let reconnect = false;
+  try {
+    const snapshotReady = await refreshEventReconciliationSnapshot();
+    if (!snapshotReady || !authenticated || currentRoute().key !== "events" || eventReplayTargetSequence !== targetSequence) {
+      if (authenticated && currentRoute().key === "events" && eventReplayTargetSequence === targetSequence) {
+        setEventConnection("degraded", "Snapshot HTTP incomplet : reconnexion bloquée jusqu’à une nouvelle tentative.");
+      }
+      return;
+    }
+    eventLastSequence = targetSequence;
+    eventLatestSequence = Math.max(eventLatestSequence, targetSequence);
+    eventReplayTargetSequence = null;
+    eventReplayBlocked = false;
+    eventReconnectAttempts = 0;
+    reconnect = true;
+    setEventConnection("reconnecting", `Snapshot synchronisé ; reprise après la séquence ${targetSequence}.`);
+  } finally {
+    eventReplayReconciling = false;
+    if (reconnect && eventStream === null && authenticated && currentRoute().key === "events") {
+      connectEvents();
+    }
+  }
+}
+
+function connectEvents() {
+  if (!authenticated || currentRoute().key !== "events" || eventStream !== null || eventReplayReconciling || eventReplayBlocked || eventReplayTargetSequence !== null) {
+    return;
+  }
+  setEventConnection("connecting", "Connexion au flux événementiel Controller…");
+  try {
+    const generation = ++eventStreamGeneration;
+    eventStream = client.events({
+      afterSequence: eventLastSequence,
+      topics: ["all"],
+      onMessage: handleEventPayload,
+      onState: (state) => {
+        if (generation !== eventStreamGeneration) {
+          return;
+        }
+        if (state === "connected") {
+          setEventConnection("connected", "Abonnement événementiel en cours de négociation…");
+          return;
+        }
+        if (state === "error") {
+          setEventConnection("degraded", "Erreur du flux temps réel ; les lectures HTTP restent disponibles.");
+          return;
+        }
+        eventStream = null;
+        if (authenticated && currentRoute().key === "events" && !eventReplayReconciling && !eventReplayBlocked && eventReplayTargetSequence === null) {
+          scheduleEventReconnect();
+        }
+      },
+    });
+  } catch (error) {
+    eventStream = null;
+    eventStatus.textContent = projectErrorMessage(error, "Flux événementiel indisponible.");
+    scheduleEventReconnect();
+  }
+}
+
+
+function clearAdministrationState() {
+  administrationGeneration += 1;
+  administrationLoading = false;
+  administrationLoaded = false;
+  administrationRefresh.disabled = false;
+  administrationHealthState.dataset.state = "unknown";
+  administrationHealthState.textContent = "inconnu";
+  administrationHealthFacts.replaceChildren();
+  administrationComponentList.replaceChildren();
+  administrationCapabilityList.replaceChildren();
+  administrationComponentCount.textContent = "0";
+  administrationCapabilityCount.textContent = "0";
+  administrationStatus.textContent = "Aucun diagnostic lancé.";
+}
+
+function appendAdministrationFact(label, value) {
+  const wrapper = document.createElement("div");
+  const term = document.createElement("dt");
+  const detail = document.createElement("dd");
+  term.textContent = label;
+  detail.textContent = value;
+  wrapper.append(term, detail);
+  administrationHealthFacts.append(wrapper);
+}
+
+function renderAdministration(health, status) {
+  const overall = safeText(status.status, safeText(health.status, "unknown", 40), 40).toLowerCase();
+  administrationHealthState.dataset.state = overall;
+  administrationHealthState.textContent = overall;
+  administrationHealthFacts.replaceChildren();
+  appendAdministrationFact("Health endpoint", safeText(health.status, "inconnu", 40));
+  appendAdministrationFact("System status", safeText(status.status, "inconnu", 40));
+  appendAdministrationFact("Autorité", "Controller / projections publiques");
+  appendAdministrationFact("Mode", "lecture seule");
+
+  const components = Array.isArray(status.components) ? status.components.slice(0, 32) : [];
+  administrationComponentList.replaceChildren();
+  administrationComponentCount.textContent = String(components.length);
+  if (components.length === 0) {
+    appendEmpty(administrationComponentList, "Aucun composant déclaré.");
+  } else {
+    for (const component of components) {
+      appendOperationalItem(administrationComponentList, {
+        label: "Composant",
+        title: safeText(component && component.name, "inconnu", 80),
+        state: safeText(component && component.status, "unknown", 40).toLowerCase(),
+        detail: "État déclaré par le Controller ; aucune sonde navigateur directe.",
+      });
+    }
+  }
+
+  const capabilities = status && typeof status.capabilities === "object" && status.capabilities !== null && !Array.isArray(status.capabilities)
+    ? Object.entries(status.capabilities).slice(0, 64)
+    : [];
+  administrationCapabilityList.replaceChildren();
+  administrationCapabilityCount.textContent = String(capabilities.length);
+  if (capabilities.length === 0) {
+    appendEmpty(administrationCapabilityList, "Aucune capacité système déclarée.");
+  } else {
+    for (const [name, value] of capabilities) {
+      const rendered = typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : "projection structurée";
+      appendOperationalItem(administrationCapabilityList, {
+        label: "Capacité",
+        title: safeText(name, "inconnue", 96),
+        state: "metadata",
+        detail: safeText(rendered, "projection structurée", 120),
+      });
+    }
+  }
+}
+
+async function refreshAdministration() {
+  if (!authenticated || administrationLoading) {
+    return;
+  }
+  const generation = ++administrationGeneration;
+  administrationLoading = true;
+  administrationRefresh.disabled = true;
+  administrationStatus.textContent = "Lecture de la santé et du statut système Controller…";
+  try {
+    const [health, status] = await Promise.all([
+      client.systemHealth(),
+      client.systemStatus(),
+    ]);
+    if (generation !== administrationGeneration || !authenticated) {
+      return;
+    }
+    renderAdministration(health, status);
+    administrationLoaded = true;
+    administrationStatus.textContent = "Diagnostics bornés chargés depuis le Controller.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter l’administration.");
+      return;
+    }
+    administrationStatus.textContent = projectErrorMessage(error, "Diagnostics système indisponibles.");
+  } finally {
+    if (generation === administrationGeneration) {
+      administrationLoading = false;
+      administrationRefresh.disabled = false;
+    }
+  }
+}
+
 async function refreshSession() {
   setConnection("checking", "Vérification…", "Lecture de la session auprès du Controller.");
   try {
@@ -1653,6 +2621,49 @@ objectiveCommandButtons.addEventListener("click", (event) => {
     labels[command] || "Commande objectif",
     () => client.commandObjective(selectedObjectiveId, command, reason),
   );
+});
+
+executionRefresh.addEventListener("click", () => {
+  executionsLoaded = false;
+  void refreshExecutions();
+});
+
+executionPlanList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-plan-id]");
+  if (button) {
+    void selectExecutionPlan(button.dataset.planId || "");
+  }
+});
+
+reviewRefresh.addEventListener("click", () => {
+  reviewsLoaded = false;
+  void refreshReviews();
+});
+
+reviewList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-review-id]");
+  if (button) {
+    void selectReview(button.dataset.reviewId || "");
+  }
+});
+
+eventReconnect.addEventListener("click", () => {
+  disconnectEvents(false);
+  eventReconnectAttempts = 0;
+  if (eventReplayBlocked) {
+    setEventConnection("degraded", "Reconnexion bloquée : rechargez la session après une réponse de replay invalide.");
+    return;
+  }
+  if (eventReplayTargetSequence !== null) {
+    void reconcileEventReplay();
+    return;
+  }
+  connectEvents();
+});
+
+administrationRefresh.addEventListener("click", () => {
+  administrationLoaded = false;
+  void refreshAdministration();
 });
 
 window.addEventListener("popstate", () => render(window.location.pathname));

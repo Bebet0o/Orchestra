@@ -303,3 +303,55 @@ summary { cursor: pointer; color: var(--accent); font-weight: 700; }
   .objective-detail-card, .objective-form-wide { grid-column: auto; }
   .objective-facts { grid-template-columns: 1fr; }
 }
+
+
+/* v0.2-H Multi-Agent execution console */
+.execution-panel { margin-top: 1rem; }
+.execution-grid { display: grid; grid-template-columns: minmax(18rem, 0.72fr) minmax(24rem, 1.28fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.execution-detail-card { min-height: 15rem; }
+.execution-wide { grid-column: 1 / -1; }
+.execution-task-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.execution-task-list li { min-width: 0; padding: 0.9rem; border: 1px solid rgba(155, 176, 216, 0.13); border-radius: 0.8rem; background: rgba(7, 11, 19, 0.42); }
+.execution-task-list strong { display: block; margin-top: 0.45rem; overflow-wrap: anywhere; }
+.execution-task-list p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: anywhere; }
+.state-badge[data-state="ready"], .state-badge[data-state="succeeded"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="pending"], .state-badge[data-state="paused"] { border-color: rgba(255, 213, 128, 0.30); color: #ffe6b5; background: rgba(180, 126, 61, 0.10); }
+.state-badge[data-state="dependency"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
+@media (max-width: 920px) {
+  .execution-grid, .execution-task-list { grid-template-columns: 1fr; }
+  .execution-wide { grid-column: auto; }
+}
+
+
+/* v0.2-H Reviewer / Judge / Recovery console */
+.review-panel { margin-top: 1rem; }
+.review-grid { display: grid; grid-template-columns: minmax(18rem, 0.72fr) minmax(24rem, 1.28fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.review-detail-card { min-height: 15rem; }
+.review-wide { grid-column: 1 / -1; }
+.review-recovery-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.state-badge[data-state="approved"], .state-badge[data-state="resumed"], .state-badge[data-state="assessed"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="rolled_back"], .state-badge[data-state="metadata"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
+@media (max-width: 920px) {
+  .review-grid, .review-recovery-list { grid-template-columns: 1fr; }
+  .review-wide { grid-column: auto; }
+}
+
+
+/* v0.2-H replayable event stream */
+.event-panel { margin-top: 1rem; }
+.event-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(18rem, 0.55fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.event-list { max-height: 38rem; overflow: auto; }
+.state-badge[data-state="connected"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="degraded"], .state-badge[data-state="reconnecting"] { border-color: rgba(255, 213, 128, 0.30); color: #ffe6b5; background: rgba(180, 126, 61, 0.10); }
+@media (max-width: 920px) { .event-grid { grid-template-columns: 1fr; } }
+
+
+/* v0.2-H bounded administration diagnostics */
+.administration-panel { margin-top: 1rem; }
+.administration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; align-items: start; }
+.administration-wide { grid-column: 1 / -1; }
+.administration-capability-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.state-badge[data-state="healthy"], .state-badge[data-state="ok"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="unknown"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
+.state-badge[data-state="unavailable"] { border-color: rgba(255, 128, 128, 0.28); color: #ffd7d7; background: rgba(180, 61, 61, 0.10); }
+@media (max-width: 920px) { .administration-grid, .administration-capability-list { grid-template-columns: 1fr; } .administration-wide { grid-column: auto; } }

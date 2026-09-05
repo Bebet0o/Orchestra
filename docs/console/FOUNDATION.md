@@ -77,16 +77,21 @@ curl --fail http://127.0.0.1:8788/health
 python3 scripts/orchestra-console-probe.py   --base-url http://127.0.0.1:8788
 ```
 
-## Current non-goals
+## Current scope and non-goals
 
 The Console implements the bounded dashboard, project lifecycle, Blueprint
-lifecycle, and objective lifecycle. It does not build or activate
-images, bind secrets, delete revisions, expose objective task details or
-unsupported objective commands, implement execution views, human review
-actions, WebSocket events, browser persistence, service workers, or offline
-command queues.
+lifecycle, objective lifecycle, multi-agent plan/task/attempt views, Reviewer /
+Judge / Recovery projections, the replayable Controller event stream, and bounded administration diagnostics from Controller health/status projections. The
+WebSocket connection is same-origin through one exact `/api/v1/events` relay;
+the Console translates the trusted Origin, forwards only the authenticated
+session cookie required by the Controller handshake, rejects query strings,
+subprotocols and extensions, and keeps at most 100 rendered events in volatile
+browser memory. A replay gap triggers an HTTP snapshot refresh before reconnect.
 
+The Console still does not build or activate images, bind secrets, delete
+Blueprint revisions, expose unsupported objective commands, expose raw review
+evidence, provide privileged administration actions, expose raw logs/configuration, provide a generic API/WebSocket proxy, persist event cursors in the
+browser, install service workers, or queue commands offline.
 
-Milestone 2U replaces the objective placeholder with a bounded lifecycle page.
-It reuses the secure Controller command foundation, adds no migration, and does
-not expand into task/run detail or realtime reconciliation.
+Milestone 0.2-H adds these multi-agent observation surfaces without a database
+migration and preserves the Controller as the sole authority for domain state.

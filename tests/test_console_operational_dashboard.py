@@ -90,9 +90,10 @@ class ConsoleOperationalDashboardSourceTest(unittest.TestCase):
             "localStorage",
             "sessionStorage",
             "indexedDB",
-            "WebSocket(",
         ):
             self.assertNotIn(forbidden, client)
+        self.assertEqual(client.count("new WebSocket("), 1)
+        self.assertIn("/api/v1/events", client)
 
     def test_committed_distribution_contains_same_dashboard_sources(self) -> None:
         mapping = {
