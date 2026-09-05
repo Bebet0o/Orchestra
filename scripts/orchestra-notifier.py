@@ -8,6 +8,7 @@ import os
 import signal
 import socket
 import sqlite3
+from sqlite_lifecycle import ClosingConnection
 import sys
 import time
 import tomllib
@@ -84,7 +85,7 @@ def canonical_json(value: Any) -> str:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE, timeout=30)
+    connection = sqlite3.connect(DATABASE, timeout=30, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 20000")

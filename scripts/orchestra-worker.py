@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sqlite3
+from sqlite_lifecycle import ClosingConnection
 import subprocess
 import sys
 import time
@@ -141,6 +142,7 @@ def persist_transcript(path: Path, output: str) -> None:
 def connect() -> sqlite3.Connection:
     connection = sqlite3.connect(
         DATABASE,
+        factory=ClosingConnection,
         timeout=10,
     )
     connection.row_factory = sqlite3.Row

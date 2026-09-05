@@ -9,6 +9,7 @@ import os
 import shutil
 import socket
 import sqlite3
+from sqlite_lifecycle import ClosingConnection
 import subprocess
 import sys
 import tomllib
@@ -55,6 +56,7 @@ def fail(message: str) -> NoReturn:
 def connect() -> sqlite3.Connection:
     connection = sqlite3.connect(
         DATABASE,
+        factory=ClosingConnection,
         timeout=10,
     )
 

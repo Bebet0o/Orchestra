@@ -33,6 +33,7 @@ rsync -a \
 cp -a "${REPO}/migrations/." "${TEST_REPO}/migrations/"
 cp -a \
     "${REPO}/scripts/orchestra-db.py" \
+    "${REPO}/scripts/sqlite_lifecycle.py" \
     "${REPO}/scripts/orchestra-registry.py" \
     "${TEST_REPO}/scripts/"
 

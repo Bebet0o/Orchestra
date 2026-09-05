@@ -7,6 +7,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from sqlite_lifecycle import ClosingConnection
+
 
 ROOT = Path(
     os.environ.get(
@@ -25,6 +27,7 @@ def connect() -> sqlite3.Connection:
 
     connection = sqlite3.connect(
         DATABASE,
+        factory=ClosingConnection,
         timeout=10,
     )
 

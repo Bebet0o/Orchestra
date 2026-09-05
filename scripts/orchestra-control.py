@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import sqlite3
+from sqlite_lifecycle import ClosingConnection
 import subprocess
 import sys
 import tempfile
@@ -29,7 +30,7 @@ def fail(message: str) -> NoReturn:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE, timeout=30)
+    connection = sqlite3.connect(DATABASE, timeout=30, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 20000")

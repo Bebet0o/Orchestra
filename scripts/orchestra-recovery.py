@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import sqlite3
+from sqlite_lifecycle import ClosingConnection
 import subprocess
 import sys
 import tomllib
@@ -98,7 +99,7 @@ def age_seconds(value: str | None) -> float | None:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE, timeout=15)
+    connection = sqlite3.connect(DATABASE, timeout=15, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 10000")
