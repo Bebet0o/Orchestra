@@ -351,7 +351,12 @@ class ContextProjector:
         return projection
 
     def _task_projection(
-        self, connection: Any, task_id: str, *, consumer: str = "TASK"
+        self,
+        connection: Any,
+        task_id: str,
+        *,
+        consumer: str = "TASK",
+        recovery_attempt_id: str | None = None,
     ) -> dict[str, Any]:
         row = connection.execute(
             """
@@ -444,6 +449,28 @@ class ContextProjector:
                 "role_id": row["role_id"],
             },
         }
+        recovery = None
+        if recovery_attempt_id is not None:
+            recovery = connection.execute(
+                """
+                SELECT recovery_action_id, recovery_sequence, reason_json,
+                       reason_sha256
+                FROM recovery_actions
+                WHERE task_id = ? AND target_attempt_id = ?
+                  AND status = 'ATTEMPT_CREATED'
+                """,
+                (task_id, recovery_attempt_id),
+            ).fetchone()
+        if recovery is not None:
+            reason = json.loads(recovery["reason_json"])
+            if content_sha256(reason) != recovery["reason_sha256"]:
+                raise SharedContextError("Recovery reason integrity mismatch")
+            core["recovery"] = {
+                "recovery_action_id": recovery["recovery_action_id"],
+                "recovery_sequence": recovery["recovery_sequence"],
+                "reason_sha256": recovery["reason_sha256"],
+                **reason,
+            }
         return self._bound(core, dependencies, entries, omitted)
 
     def for_task(self, task_id: str) -> dict[str, Any]:
@@ -758,7 +785,14 @@ class ContextProjector:
             if link is None:
                 connection.rollback()
                 raise SharedContextError("Context snapshot execution linkage is invalid")
-            projection = self._task_projection(connection, task_id)
+            projection = self._task_projection(
+                connection,
+                task_id,
+                recovery_attempt_id=attempt_id,
+            )
+            recovery_action_id = projection.get("recovery", {}).get(
+                "recovery_action_id"
+            )
             snapshot_id = "context-snapshot-" + uuid.uuid4().hex
             projection_text = canonical_json(projection)
             digest = hashlib.sha256(projection_text.encode("utf-8")).hexdigest()
@@ -774,7 +808,8 @@ class ContextProjector:
                     attempt_id, context_schema_version, projection_json,
                     projection_sha256, source_item_count, omitted_count,
                     budget_exhausted, created_at
-                ) VALUES (?, 'WORKER', ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+                    , recovery_action_id
+                ) VALUES (?, 'WORKER', ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot_id,
@@ -788,6 +823,7 @@ class ContextProjector:
                     projection["bounding"]["omitted_count"],
                     int(projection["bounding"]["budget_exhausted"]),
                     now,
+                    recovery_action_id,
                 ),
             )
             position = 0

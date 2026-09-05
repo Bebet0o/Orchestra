@@ -27,6 +27,7 @@ from worker_pool import WorkerAssignment, WorkerPool
 from shared_context import ContextProjector, canonical_json as context_canonical_json
 import orchestra_review_assignment as ASSIGNMENTS
 from reviewer_judge import ReviewStore
+from recovery_coordinator import RecoveryCoordinator, policy_authority
 
 
 ROOT = Path(
@@ -229,8 +230,11 @@ def load_config() -> dict[str, int]:
 
     section = document.get("orchestrator") or {}
     pool_section = document.get("worker_pool") or {}
+    recovery_section = document.get("recovery") or {}
     if not isinstance(pool_section, dict):
         fail("worker_pool configuration must be a table")
+    if not isinstance(recovery_section, dict):
+        fail("recovery configuration must be a table")
     pool_max_concurrency = int(
         os.environ.get(
             "ORCHESTRA_WORKER_POOL_MAX_CONCURRENCY",
@@ -282,6 +286,12 @@ def load_config() -> dict[str, int]:
         "heartbeat_seconds": int(
             section.get("heartbeat_seconds", 5)
         ),
+        "recovery_max_retries": int(
+            os.environ.get(
+                "ORCHESTRA_RECOVERY_MAX_RETRIES",
+                recovery_section.get("max_retries", 0),
+            )
+        ),
     }
 
     bounds = {
@@ -297,6 +307,7 @@ def load_config() -> dict[str, int]:
         "review_retry_backoff_seconds": (1, 120),
         "command_timeout_seconds": (30, 1800),
         "heartbeat_seconds": (1, 30),
+        "recovery_max_retries": (0, 3),
     }
 
     for key, (minimum, maximum) in bounds.items():
@@ -655,11 +666,16 @@ def insert_plan(
     *,
     source: str,
     initial_status: str,
+    recovery_max_retries: int = 0,
 ) -> str:
     if source not in {"AI", "DECLARATIVE", "TEST"}:
         fail(f"Invalid plan source: {source}")
     if initial_status not in {"DRAFT", "READY"}:
         fail(f"Invalid initial plan status: {initial_status}")
+    try:
+        _, recovery_policy_sha256 = policy_authority(recovery_max_retries)
+    except Exception as error:
+        fail(str(error))
 
     plan_id = "plan-" + uuid.uuid4().hex
     now = utc_now()
@@ -732,11 +748,13 @@ def insert_plan(
                     heartbeat_at,
                     finished_at,
                     title,
-                    graph_position, review_required, reviewer_role_id
+                    graph_position, review_required, reviewer_role_id,
+                    recovery_max_retries, recovery_retry_count,
+                    recovery_policy_sha256
                 )
                 VALUES (
                     ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, 0,
-                    '{}', NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?
+                    '{}', NULL, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, 0, ?
                 )
                 """,
                 (
@@ -756,6 +774,12 @@ def insert_plan(
                     graph_position,
                     int(task.get("review", {}).get("required", False)),
                     task.get("review", {}).get("role_id"),
+                    recovery_max_retries,
+                    (
+                        recovery_policy_sha256
+                        if task.get("review", {}).get("required", False)
+                        else None
+                    ),
                 ),
             )
             add_graph_event(
@@ -1212,10 +1236,20 @@ def refresh_plan_states(plan_id: str) -> None:
 def reservation_ineligibility_reason(
     connection: sqlite3.Connection,
     task: sqlite3.Row,
+    pool_assignment_id: str | None = None,
 ) -> str | None:
     if task["status"] != "READY":
         return f"Task cannot start from status {task['status']}"
-    if task["attempt_count"] >= task["max_attempts"]:
+    corrective = False
+    if pool_assignment_id is not None:
+        corrective = bool(
+            connection.execute(
+                "SELECT 1 FROM recovery_actions WHERE task_id=? "
+                "AND target_assignment_id=? AND status='DISPATCHED'",
+                (task["orchestration_task_id"], pool_assignment_id),
+            ).fetchone()
+        )
+    if task["attempt_count"] >= task["max_attempts"] and not corrective:
         return "Task attempt budget is exhausted"
 
     plan = connection.execute(
@@ -1266,6 +1300,7 @@ def reserve_attempt(
     task_id: str,
     *,
     instance_id: str,
+    pool_assignment_id: str | None = None,
 ) -> tuple[str, int, sqlite3.Row]:
     now = utc_now()
 
@@ -1282,6 +1317,7 @@ def reserve_attempt(
         ineligibility_reason = reservation_ineligibility_reason(
             connection,
             task,
+            pool_assignment_id,
         )
         if ineligibility_reason is not None:
             connection.rollback()
@@ -2146,7 +2182,16 @@ def finish_task_failure(
             (error, now, now, attempt_id),
         )
 
-        retry = int(current["attempt_count"]) < int(current["max_attempts"])
+        corrective = bool(
+            connection.execute(
+                "SELECT 1 FROM recovery_actions WHERE target_attempt_id=?",
+                (attempt_id,),
+            ).fetchone()
+        )
+        retry = (
+            int(current["attempt_count"]) < int(current["max_attempts"])
+            and not corrective
+        )
         next_status = "READY" if retry else "FAILED"
         connection.execute(
             """
@@ -2891,11 +2936,16 @@ def execute_task(
     attempt_id, _, task = reserve_attempt(
         task_id,
         instance_id=instance_id,
+        pool_assignment_id=pool_assignment_id,
     )
     if pool_assignment_id is not None:
         if pool is None:
             fail("Worker pool assignment has no pool authority")
         pool.bind_attempt(pool_assignment_id, attempt_id)
+        RecoveryCoordinator(connect).link_attempt(
+            assignment_id=pool_assignment_id,
+            attempt_id=attempt_id,
+        )
     heartbeat_stop = threading.Event()
     heartbeat_thread = threading.Thread(
         target=heartbeat_attempt,
@@ -3021,6 +3071,26 @@ def reconcile_interrupted_tasks(instance_id: str) -> None:
                 )
                 continue
 
+            corrective = bool(
+                connection.execute(
+                    """
+                    SELECT 1 FROM recovery_actions action
+                    LEFT JOIN worker_pool_assignments assignment
+                      ON assignment.assignment_id=action.target_assignment_id
+                    WHERE action.task_id=?
+                      AND action.status IN ('DISPATCHED','ATTEMPT_CREATED')
+                      AND (action.target_attempt_id=? OR
+                           (action.target_attempt_id IS NULL AND
+                            assignment.orchestration_task_id=?))
+                    """,
+                    (
+                        task["orchestration_task_id"],
+                        task["attempt_id"],
+                        task["orchestration_task_id"],
+                    ),
+                ).fetchone()
+            )
+
             if task["kind"] != "PIPELINE":
                 connection.execute(
                     """
@@ -3034,7 +3104,7 @@ def reconcile_interrupted_tasks(instance_id: str) -> None:
                     """,
                     (now, now, task["attempt_id"]),
                 )
-                retry = task["attempt_count"] < task["max_attempts"]
+                retry = task["attempt_count"] < task["max_attempts"] and not corrective
                 connection.execute(
                     """
                     UPDATE orchestration_tasks
@@ -3066,7 +3136,7 @@ def reconcile_interrupted_tasks(instance_id: str) -> None:
                     """,
                     (now, now, task["attempt_id"]),
                 )
-                retry = task["attempt_count"] < task["max_attempts"]
+                retry = task["attempt_count"] < task["max_attempts"] and not corrective
                 connection.execute(
                     """
                     UPDATE orchestration_tasks
@@ -3100,7 +3170,7 @@ def reconcile_interrupted_tasks(instance_id: str) -> None:
                     """,
                     (now, now, task["attempt_id"]),
                 )
-                retry = task["attempt_count"] < task["max_attempts"]
+                retry = task["attempt_count"] < task["max_attempts"] and not corrective
                 connection.execute(
                     """
                     UPDATE orchestration_tasks
@@ -4205,6 +4275,7 @@ def task_graph_snapshot(plan_id: str) -> dict[str, Any]:
         "dependencies": edges,
         "assignments": assignments,
         "reviews": ReviewStore(connect).list(plan_id=plan_id),
+        "recoveries": RecoveryCoordinator(connect).list(plan_id=plan_id),
     }
 
 
@@ -4392,12 +4463,14 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
         controller_instance_id=instance_id,
         max_concurrency=config["worker_pool_max_concurrency"],
     )
+    recovery = RecoveryCoordinator(connect)
 
     try:
         update_instance(instance_id, status="RUNNING")
         pool.reconcile()
         reconcile_interrupted_reviews(instance_id, config["command_timeout_seconds"])
         reconcile_interrupted_tasks(instance_id)
+        recovery.reconcile(pool)
         reconcile_task_graph()
         reconcile_interrupted_planner_executions()
         reconcile_interrupted_objectives(instance_id)
@@ -4412,6 +4485,7 @@ def daemon_loop(arguments: argparse.Namespace) -> None:
                 if review_future is not None:
                     review_future.result()
                 review_future = controller_executor.submit(reconcile_required_reviews, instance_id, config)
+            recovery.reconcile(pool)
             synchronize_objective_states()
 
             completed_planning = [
@@ -4625,6 +4699,7 @@ def command_import(arguments: argparse.Namespace) -> None:
         plan,
         source=source,
         initial_status=arguments.status,
+        recovery_max_retries=load_config()["recovery_max_retries"],
     )
     print(json.dumps(plan_status_payload(plan_id), indent=2, sort_keys=True))
 

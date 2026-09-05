@@ -473,10 +473,17 @@ def command_submit_plan(arguments: argparse.Namespace) -> None:
         validate_projects(projects)
 
     source = "TEST" if arguments.allow_test_actions else "DECLARATIVE"
+    effective_config = orchestrator.load_config()
+    recovery_max_retries = (
+        effective_config.get("recovery_max_retries", 0)
+        if isinstance(effective_config, dict)
+        else 0
+    )
     plan_id = orchestrator.insert_plan(
         plan,
         source=source,
         initial_status="DRAFT",
+        recovery_max_retries=recovery_max_retries,
     )
     try:
         objective_id = insert_objective(

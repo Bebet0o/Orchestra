@@ -455,10 +455,17 @@ def command_generate(
                 f"{len(plan['tasks'])} != {arguments.expected_task_count}"
             )
 
+        effective_config = orchestrator.load_config()
+        recovery_max_retries = (
+            effective_config.get("recovery_max_retries", 0)
+            if isinstance(effective_config, dict)
+            else 0
+        )
         plan_id = orchestrator.insert_plan(
             plan,
             source="AI",
             initial_status=arguments.status,
+            recovery_max_retries=recovery_max_retries,
         )
         result = {
             "execution_id": execution_id,
