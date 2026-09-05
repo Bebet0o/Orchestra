@@ -56,8 +56,8 @@ the configured/runtime-managed semantics.
 Planner, worker, and reviewer execution tables now have nullable foreign-key
 links to the decision authority. Historical rows remain valid with no fabricated
 route. Once a route is linked to an execution, the linkage is immutable.
-Production configuration loading and dispatch integration are added by the
-remaining 0.2-G work before the milestone is closed.
+Production configuration loading is strict and the planner, worker, and reviewer
+production dispatch paths all resolve and persist a route before runtime execution.
 
 ## Production configuration
 
@@ -79,6 +79,17 @@ runtime_kind = "native"
 ```
 
 The role must still use `runtime = { kind = "native" }`; the policy selects the
-model while AgentRuntime selection remains explicit role configuration. The
-loader is active in this commit; planner/worker/reviewer dispatch consumes this
-policy in the next integration step.
+model while AgentRuntime selection remains explicit role configuration. Planner,
+worker, and reviewer production dispatch consume this policy directly.
+
+## Runtime dispatch
+
+Production Planner, Worker, and Reviewer executions now reserve their durable
+execution identity, resolve the configured routing policy, persist and atomically
+link the immutable `ModelRouteDecision`, and only then construct the runtime. For
+NativeRuntime, the selected model ID is passed to the ModelProvider. For
+HermesRuntime, the decision remains `runtime_managed` and the synchronized profile
+continues to own the actual Hermes model. Corrective recovery attempts reuse the
+Worker path, so they receive the same deterministic routing authority without a
+second recovery-specific model selector. Injected fake runtimes used by tests do
+not fabricate production routing history.

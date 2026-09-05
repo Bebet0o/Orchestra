@@ -28,9 +28,11 @@ from agent_runtime import (
     record_runtime_failure,
 )
 from runtime_control import (
+    persist_model_route,
     persist_runtime_event,
+    prepare_model_route,
     require_runtime_state,
-    runtime_from_role,
+    runtime_from_prepared_route,
     runtime_kind_of,
 )
 import orchestra_review_assignment as ASSIGNMENTS
@@ -1403,14 +1405,24 @@ def command_launch(
         role = load_role(connection, arguments.role)
         run = load_run(connection, arguments.run)
 
+    orchestration_task_id: str | None = None
+    orchestration_task_kind: str | None = None
+    if graph_record is not None:
+        orchestration_task_id = str(graph_record["task_id"])
+        with connect() as connection:
+            subject = connection.execute(
+                "SELECT kind FROM orchestration_tasks WHERE orchestration_task_id=?",
+                (orchestration_task_id,),
+            ).fetchone()
+        if subject is None:
+            fail("Graph review task is unavailable")
+        orchestration_task_kind = str(subject[0])
+
     if runtime is None:
-        runtime_kind, runtime = runtime_from_role(
-            ROOT,
-            role,
-            required_role=RuntimeRole.REVIEWER,
-        )
+        runtime_kind_value = str(role["runtime_kind"])
     else:
         runtime_kind = runtime_kind_of(runtime)
+        runtime_kind_value = runtime_kind.value
 
     if graph_record and (role["runtime_kind"] != graph_record["runtime_kind"]
                          or role["profile_name"] != graph_record["runtime_config_id"]
@@ -1469,7 +1481,7 @@ def command_launch(
         output_path=output_path,
         cpu_limit=cpu_limit,
         memory_mb=memory_mb,
-        runtime_kind=runtime_kind.value,
+        runtime_kind=runtime_kind_value,
     )
 
     clone: Path | None = None
@@ -1484,6 +1496,28 @@ def command_launch(
     baseline_ids = set(nested_docker("ps", "-aq").stdout.split())
 
     try:
+        if runtime is None:
+            prepared_route = prepare_model_route(
+                ROOT,
+                role,
+                required_role=RuntimeRole.REVIEWER,
+                runtime_request_id=runtime_request_id,
+                task_kind=orchestration_task_kind,
+            )
+            persist_model_route(
+                connect,
+                prepared_route,
+                execution_kind="REVIEWER",
+                execution_id=execution_id,
+                orchestration_task_id=orchestration_task_id,
+            )
+            runtime_kind, runtime = runtime_from_prepared_route(
+                ROOT,
+                role,
+                prepared_route,
+                required_role=RuntimeRole.REVIEWER,
+            )
+
         clone = prepare_review_clone(
             repository=repository,
             run=run,

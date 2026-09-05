@@ -323,6 +323,86 @@ class ModelRouterPersistenceTest(unittest.TestCase):
                     (request_text, request_hash, policy.sha256, NOW),
                 )
 
+    def test_store_can_atomically_link_reserved_execution(self) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO roles(
+                    role_id,profile_name,role_kind,description,reasoning_effort,
+                    max_turns,toolsets_json,skills_json,workspace_mode,may_commit,
+                    may_push,network_enabled,cpu_limit,memory_mb,enabled,
+                    config_source,config_hash,registered_at,updated_at,runtime_kind,
+                    model_id
+                ) VALUES ('router-planner-linked','router-planner-linked','orchestrator',
+                          'test','high',10,'[]','[]','none',0,0,0,1,512,1,'test',?,?,?,
+                          'native','base-model')
+                """,
+                ("e" * 64, NOW, NOW),
+            )
+            connection.execute(
+                """
+                INSERT INTO orchestrator_executions(
+                    execution_id,role_id,source_profile,outer_container_name,prompt_path,
+                    output_path,marker,result_json,created_at,started_at,runtime_kind
+                ) VALUES ('planner-linked','router-planner-linked','router-planner-linked',
+                          'container-linked','/tmp/prompt-linked','/tmp/output-linked',
+                          'DONE','{}',?,?, 'native')
+                """,
+                (NOW, NOW),
+            )
+            connection.commit()
+        request = ModelRouteRequest(
+            runtime_request_id="runtime-request-linked",
+            role_id="router-planner-linked",
+            runtime_role="planner",
+            runtime_kind="native",
+            configured_model_id="base-model",
+        )
+        policy = ModelRoutingPolicy(version=1)
+        decision = ModelRouter(policy).route(request)
+        decision_id = self.store.record(
+            request=request,
+            policy=policy,
+            decision=decision,
+            execution_kind="PLANNER",
+            execution_id="planner-linked",
+            link_execution=True,
+        )
+        with self.connect() as connection:
+            linked = connection.execute(
+                "SELECT model_route_decision_id FROM orchestrator_executions "
+                "WHERE execution_id='planner-linked'"
+            ).fetchone()[0]
+        self.assertEqual(linked, decision_id)
+
+    def test_atomic_link_failure_does_not_leave_route_history(self) -> None:
+        request = self.request(runtime_request_id="runtime-request-unreserved")
+        policy = self.policy()
+        decision = ModelRouter(policy).route(request)
+        with self.assertRaises(ModelRouterError):
+            self.store.record(
+                request=request,
+                policy=policy,
+                decision=decision,
+                execution_kind="WORKER",
+                execution_id="missing-worker-execution",
+                link_execution=True,
+            )
+        with self.connect() as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM model_route_decisions "
+                    "WHERE runtime_request_id='runtime-request-unreserved'"
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM model_routing_policies"
+                ).fetchone()[0],
+                0,
+            )
+
     def test_execution_link_must_match_route_identity_and_is_immutable(self) -> None:
         with self.connect() as connection:
             connection.execute(

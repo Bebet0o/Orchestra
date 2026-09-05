@@ -24,9 +24,11 @@ from agent_runtime import (
     record_runtime_failure,
 )
 from runtime_control import (
+    persist_model_route,
     persist_runtime_event,
+    prepare_model_route,
     require_runtime_state,
-    runtime_from_role,
+    runtime_from_prepared_route,
     runtime_kind_of,
 )
 
@@ -324,6 +326,7 @@ def command_generate(
 ) -> None:
     if runtime is not None and provider is not None:
         raise ValueError("An injected runtime and provider are mutually exclusive")
+    role = None
     if runtime is None:
         require_runtime_state(ROOT)
         with connect() as connection:
@@ -335,14 +338,10 @@ def command_generate(
             ).fetchone()
         if role is None:
             fail("Orchestrator role is unknown or disabled")
-        runtime_kind, runtime = runtime_from_role(
-            ROOT,
-            role,
-            required_role=RuntimeRole.PLANNER,
-            provider=provider,
-        )
+        runtime_kind_value = str(role["runtime_kind"])
     else:
         runtime_kind = runtime_kind_of(runtime)
+        runtime_kind_value = runtime_kind.value
     objective_path = Path(arguments.objective_file).resolve()
     if not objective_path.is_file():
         fail(f"Objective file is absent: {objective_path}")
@@ -402,7 +401,7 @@ def command_generate(
         prompt_path=prompt_path,
         output_path=output_path,
         marker=marker,
-        runtime_kind=runtime_kind.value,
+        runtime_kind=runtime_kind_value,
         context_snapshot_id=context_snapshot_id,
     )
 
@@ -412,6 +411,28 @@ def command_generate(
     failure_reason: str | None = None
 
     try:
+        if runtime is None:
+            assert role is not None
+            prepared_route = prepare_model_route(
+                ROOT,
+                role,
+                required_role=RuntimeRole.PLANNER,
+                runtime_request_id=runtime_request_id,
+            )
+            persist_model_route(
+                connect,
+                prepared_route,
+                execution_kind="PLANNER",
+                execution_id=execution_id,
+            )
+            runtime_kind, runtime = runtime_from_prepared_route(
+                ROOT,
+                role,
+                prepared_route,
+                required_role=RuntimeRole.PLANNER,
+                provider=provider,
+            )
+
         def handle_runtime_event(event: RuntimeEvent) -> None:
             with connect() as connection:
                 persist_runtime_event(

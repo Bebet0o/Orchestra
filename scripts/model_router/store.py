@@ -104,6 +104,31 @@ class ModelRouteStore:
             raise ValueError("Model route execution identity is invalid")
         return execution_kind, execution_id.strip()
 
+    @staticmethod
+    def _link_execution(
+        connection: sqlite3.Connection,
+        execution_kind: str,
+        execution_id: str,
+        decision_id: str,
+    ) -> None:
+        table = {
+            "PLANNER": "orchestrator_executions",
+            "WORKER": "worker_executions",
+            "REVIEWER": "reviewer_executions",
+        }[execution_kind]
+        current = connection.execute(
+            f"SELECT model_route_decision_id FROM {table} WHERE execution_id=?",
+            (execution_id,),
+        ).fetchone()
+        if current is None:
+            raise ModelRouterError("Model route execution is not reserved")
+        if current[0] is not None and current[0] != decision_id:
+            raise ModelRouterError("Model route execution is already linked differently")
+        connection.execute(
+            f"UPDATE {table} SET model_route_decision_id=? WHERE execution_id=?",
+            (decision_id, execution_id),
+        )
+
     def record(
         self,
         *,
@@ -113,6 +138,7 @@ class ModelRouteStore:
         execution_kind: str,
         execution_id: str,
         orchestration_task_id: str | None = None,
+        link_execution: bool = False,
     ) -> str:
         if type(decision) is not ModelRouteDecision:
             raise TypeError("Model route decision is invalid")
@@ -129,6 +155,8 @@ class ModelRouteStore:
             or len(orchestration_task_id) > 256
         ):
             raise ValueError("Model route task identity is invalid")
+        if type(link_execution) is not bool:
+            raise TypeError("Model route execution linkage flag must be a boolean")
         expected = ModelRouter(policy).route(request)
         if decision != expected:
             raise ModelRouterError("Model route decision does not match the routing policy")
@@ -204,6 +232,10 @@ class ModelRouteStore:
                     )
                     if not exact:
                         raise ModelRouterError("Model route identity was already used differently")
+                    if link_execution:
+                        self._link_execution(
+                            connection, execution_kind, execution_id, str(row["decision_id"])
+                        )
                     return str(row["decision_id"])
 
                 if orchestration_task_id is not None:
@@ -232,6 +264,10 @@ class ModelRouteStore:
                         decision.rule_id, decision.reason.value, now,
                     ),
                 )
+                if link_execution:
+                    self._link_execution(
+                        connection, execution_kind, execution_id, decision_id
+                    )
         except sqlite3.DatabaseError as error:
             raise ModelRouterError("Model route persistence failed") from error
         return decision_id

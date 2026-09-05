@@ -26,6 +26,10 @@ from agent_runtime import (  # noqa: E402
     create_runtime,
     parse_runtime_kind,
 )
+from model_router import (  # noqa: E402
+    ModelRouteRule,
+    ModelRoutingPolicy,
+)
 from model_provider import (  # noqa: E402
     FakeModelProvider,
     FakeModelProviderOutcome,
@@ -223,6 +227,44 @@ class NativePlannerControlPlaneTest(unittest.TestCase):
                 ).fetchone(),
                 ("native", 0),
             )
+
+    def test_native_planner_route_selects_and_persists_local_model(self) -> None:
+        provider = FakeModelProvider([FakeModelProviderOutcome.success(self.output)])
+        policy = ModelRoutingPolicy(
+            version=3,
+            rules=(
+                ModelRouteRule(
+                    "local-planner",
+                    "local/qwen-planner",
+                    runtime_role="planner",
+                    runtime_kind="native",
+                ),
+            ),
+        )
+        with mock.patch(
+            "runtime_control.load_model_routing_policy", return_value=policy
+        ):
+            self.run_planner(provider)
+
+        self.assertEqual(provider.requests[0].model, "local/qwen-planner")
+        with sqlite3.connect(self.database) as connection:
+            connection.row_factory = sqlite3.Row
+            execution = connection.execute(
+                "SELECT * FROM orchestrator_executions"
+            ).fetchone()
+            assert execution is not None
+            self.assertIsNotNone(execution["model_route_decision_id"])
+            route = connection.execute(
+                "SELECT * FROM model_route_decisions WHERE decision_id=?",
+                (execution["model_route_decision_id"],),
+            ).fetchone()
+            assert route is not None
+            self.assertEqual(route["selected_model_id"], "local/qwen-planner")
+            self.assertEqual(route["configured_model_id"], "fixed-model")
+            self.assertEqual(route["rule_id"], "local-planner")
+            self.assertEqual(route["reason"], "rule_match")
+            self.assertEqual(route["execution_kind"], "PLANNER")
+            self.assertEqual(route["execution_id"], execution["execution_id"])
 
     def test_native_provider_failure_is_durable(self) -> None:
         provider = FakeModelProvider(
