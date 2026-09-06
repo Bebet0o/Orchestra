@@ -27,7 +27,7 @@ static_validation() {
     log "== Validation statique =="
 
     for file in \
-        install.sh preflight.sh uninstall.sh validate.sh \
+        install.sh update.sh preflight.sh uninstall.sh validate.sh \
         compose/orchestra.yaml compose/orchestra.dev.yaml compose/images.lock.env \
         images/orchestra.Dockerfile images/orchestra.Dockerfile.dockerignore \
         images/orchestra-runtime.Dockerfile \
@@ -60,6 +60,7 @@ static_validation() {
         tests/test-install-platform-support.sh \
         tests/test-preflight-minimal-host.sh \
         tests/test-install-no-auth-contract.sh \
+        tests/test-update-contract.sh \
         tests/test-blueprint-v1.sh \
         tests/test-controller-blueprint-lifecycle.sh \
         tests/test-controller-contracts.sh \
@@ -154,6 +155,7 @@ PY
     "${REPO}/tests/test-install-platform-support.sh"
     "${REPO}/tests/test-preflight-minimal-host.sh"
     "${REPO}/tests/test-install-no-auth-contract.sh"
+    "${REPO}/tests/test-update-contract.sh"
     "${REPO}/tests/test-blueprint-v1.sh"
     "${REPO}/tests/test-controller-blueprint-lifecycle.sh"
     "${REPO}/tests/test-controller-contracts.sh"

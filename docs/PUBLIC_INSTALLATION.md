@@ -75,6 +75,28 @@ release manifest supplies immutable application, runtime, and worker
 references; the checked-in template deliberately leaves unpublished digests
 null rather than inventing them.
 
+## Update from v0.1.0
+
+The standalone `update.sh` supports the public comfort-install layout and
+updates an accepted v0.1.0 or already-v0.2.0 installation to v0.2.0. It
+preserves the configured Console port and `ORCHESTRA_PUBLIC_ORIGIN`, requires
+`ORCHESTRA_DATA_SOURCE=/opt/orchestra/data`, stops the running appliance before
+copying SQLite state, and creates a timestamped directory under
+`/opt/orchestra/data/backups/` containing the previous deployment files and
+database when present.
+
+```bash
+curl --fail --location --output update.sh \
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/update.sh
+chmod 0755 update.sh
+./update.sh
+```
+
+The updater downloads the v0.2.0 `install.sh` asset and verifies its exact
+SHA-256 before execution. It never deletes persistent data and does not
+automatically downgrade after a migration failure; the pre-update backup is
+reported for explicit recovery.
+
 ## Persistent state and first boot
 
 The appliance initializes secrets, creates a fresh schema-31 database, and

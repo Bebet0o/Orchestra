@@ -14,6 +14,7 @@ ORCHESTRA_RUNTIME_IMAGE=""
 APPLICATION_OVERRIDE=0
 RUNTIME_OVERRIDE=0
 ORCHESTRA_PORT="8080"
+ORCHESTRA_PUBLIC_ORIGIN=""
 SKIP_START=0
 NON_INTERACTIVE=0
 
@@ -24,6 +25,7 @@ Usage: install.sh [options]
   --orchestra-image REF  Immutable application image override.
   --runtime-image REF    Immutable private runtime image override.
   --port PORT            Host Console port (default: 8080).
+  --public-origin URL    Canonical browser origin (default: loopback + port).
   --manifest-url URL     Accepted release manifest URL.
   --manifest-file PATH   Local accepted manifest (development/testing only).
   --compose-url URL      Canonical Compose release asset URL.
@@ -42,6 +44,7 @@ while (($#)); do
         --orchestra-image) ORCHESTRA_IMAGE="${2:?image reference missing}"; APPLICATION_OVERRIDE=1; shift 2 ;;
         --runtime-image) ORCHESTRA_RUNTIME_IMAGE="${2:?runtime image reference missing}"; RUNTIME_OVERRIDE=1; shift 2 ;;
         --port) ORCHESTRA_PORT="${2:?port missing}"; shift 2 ;;
+        --public-origin) ORCHESTRA_PUBLIC_ORIGIN="${2:?public origin missing}"; shift 2 ;;
         --manifest-url) MANIFEST_URL="${2:?manifest URL missing}"; shift 2 ;;
         --manifest-file) MANIFEST_SOURCE="${2:?manifest path missing}"; shift 2 ;;
         --compose-url) COMPOSE_URL="${2:?Compose URL missing}"; shift 2 ;;
@@ -55,6 +58,11 @@ done
 
 [[ "$ORCHESTRA_PORT" =~ ^[0-9]+$ ]] && ((ORCHESTRA_PORT >= 1 && ORCHESTRA_PORT <= 65535)) || {
     echo "Invalid host port: $ORCHESTRA_PORT" >&2
+    exit 1
+}
+ORCHESTRA_PUBLIC_ORIGIN="${ORCHESTRA_PUBLIC_ORIGIN:-http://127.0.0.1:${ORCHESTRA_PORT}}"
+[[ "$ORCHESTRA_PUBLIC_ORIGIN" =~ ^https?://[^[:space:]]+$ ]] || {
+    echo "Invalid public origin: $ORCHESTRA_PUBLIC_ORIGIN" >&2
     exit 1
 }
 sudo_run() {
@@ -183,7 +191,7 @@ environment_tmp="$(mktemp)"
     printf 'ORCHESTRA_RUNTIME_IMAGE=%s\n' "$ORCHESTRA_RUNTIME_IMAGE"
     printf 'ORCHESTRA_WORKER_IMAGE=%s\n' "$ORCHESTRA_WORKER_IMAGE"
     printf 'ORCHESTRA_PORT=%s\n' "$ORCHESTRA_PORT"
-    printf 'ORCHESTRA_PUBLIC_ORIGIN=http://127.0.0.1:%s\n' "$ORCHESTRA_PORT"
+    printf 'ORCHESTRA_PUBLIC_ORIGIN=%s\n' "$ORCHESTRA_PUBLIC_ORIGIN"
     printf 'ORCHESTRA_DATA_SOURCE=%s\n' "$DATA_ROOT"
 } >"$environment_tmp"
 sudo_run install -m 0640 "$environment_tmp" "$INSTALL_ROOT/orchestra.env"

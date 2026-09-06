@@ -175,6 +175,19 @@ chmod 0755 install.sh
 ./install.sh
 ```
 
+An existing comfort installation can be updated in place with the release
+updater. It preserves the configured Console origin and port, stops the
+appliance, writes a pre-update backup of deployment files and the SQLite
+database when present, verifies the v0.2.0 installer by SHA-256, and then
+reuses that installer against the existing `/opt/orchestra/data`:
+
+```bash
+curl --fail --location --output update.sh \
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/update.sh
+chmod 0755 update.sh
+./update.sh
+```
+
 The release images and assets do not exist until the separate trusted
 publication gate completes. During development, explicit image and Compose
 overrides are available. Authentication may be deferred, but objectives that

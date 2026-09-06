@@ -32,6 +32,7 @@
         'config/examples/Blueprint'
         './install.sh'
         'releases/download/v0.2.0/install.sh'
+        'releases/download/v0.2.0/update.sh'
         'Debian 12+ or Ubuntu 22.04+ on amd64'
         './validate.sh --static --quiet'
         'SECURITY.md'

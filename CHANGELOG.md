@@ -31,6 +31,9 @@ No unreleased changes are currently recorded.
 - SQLite schema migration 22 to 23 for the Blueprint authority cutover.
 - Refreshed public project, contribution, security, and changelog documentation
   for the current Orchestra implementation.
+- A standalone `update.sh` for supported comfort installations, with
+  pre-update deployment/SQLite backup, exact installer SHA-256 verification,
+  and preservation of the configured Console origin and port.
 
 ### Changed
 
