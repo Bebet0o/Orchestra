@@ -16,11 +16,11 @@ on:
         required: true
         type: string
       acceptance_run_id:
-        description: Exact accepted workflow run
+        description: Exact successful accept-official-images workflow run
         required: true
         type: string
       accepted_artifact_id:
-        description: Exact accepted artifact ID
+        description: Exact accepted artifact ID from that run
         required: true
         type: string
 
@@ -48,45 +48,52 @@ jobs:
           path: trusted
           persist-credentials: false
 
-      - name: Validate exact promotion request
+      - name: Validate promotion request
+        id: request
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
-          CANDIDATE_REF: ${{ inputs.candidate_ref }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          REQUESTED_CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          REQUESTED_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
           ACCEPTED_ARTIFACT_ID: ${{ inputs.accepted_artifact_id }}
         run: |
           set -euo pipefail
-          test "$RELEASE_VERSION" = 'v0.1.0'
-          test "$CANDIDATE_REF" = 'refs/heads/milestone/0.1-release-distribution-rc2'
-          test "$CANDIDATE_SHA" = '172071c71cf58076e85524b57cfa19ec8e9f5cb8'
-          test "$ACCEPTANCE_RUN_ID" = '33803446425'
-          test "$ACCEPTED_ARTIFACT_ID" = '9911963558'
+          test "$RELEASE_VERSION" = 'v0.2.0'
+          python3 trusted/.github/scripts/official_image_publication.py validate-request
+          python3 - "$ACCEPTANCE_RUN_ID" "$ACCEPTED_ARTIFACT_ID" <<'PY'
+          import sys
+          for name, value in zip(("acceptance_run_id", "accepted_artifact_id"), sys.argv[1:]):
+              if not value.isascii() or not value.isdecimal() or int(value) < 1:
+                  raise SystemExit(f"invalid {name}")
+          PY
 
       - name: Checkout exact certified product source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ steps.request.outputs.candidate_sha }}
           path: certified
           persist-credentials: false
 
       - name: Reauthorize candidate branch binding
         env:
-          CANDIDATE_REF: ${{ inputs.candidate_ref }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CANDIDATE_REF: ${{ steps.request.outputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ steps.request.outputs.candidate_sha }}
         run: |
           set -euo pipefail
           remote_sha="$(git -C trusted ls-remote --exit-code origin "$CANDIDATE_REF" | awk 'NR == 1 { print $1 }')"
           test "$remote_sha" = "$CANDIDATE_SHA"
           test "$(git -C certified rev-parse HEAD)" = "$CANDIDATE_SHA"
 
-      - name: Retrieve immutable accepted artifact
+      - name: Retrieve trusted acceptance evidence
         env:
           GH_TOKEN: ${{ github.token }}
+          ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
           ARTIFACT_ID: ${{ inputs.accepted_artifact_id }}
         run: |
           set -euo pipefail
           mkdir evidence-input
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ACCEPTANCE_RUN_ID}" \
+            >evidence-input/workflow-run.json
           gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}" \
             >evidence-input/artifact-metadata.json
           gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
@@ -96,15 +103,20 @@ jobs:
         run: |
           set -euo pipefail
           python3 trusted/.github/scripts/release_manifest_promotion.py \
+            --workflow-run-metadata evidence-input/workflow-run.json \
             --artifact-metadata evidence-input/artifact-metadata.json \
             --artifact-archive evidence-input/artifact.zip \
             --certified-installer certified/install.sh \
+            --candidate-ref '${{ steps.request.outputs.candidate_ref }}' \
+            --candidate-sha '${{ steps.request.outputs.candidate_sha }}' \
+            --acceptance-run-id '${{ inputs.acceptance_run_id }}' \
+            --accepted-artifact-id '${{ inputs.accepted_artifact_id }}' \
             --output-directory promotion
 
       - name: Upload trusted promotion result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: orchestra-release-manifest-v0.1.0-172071c71cf58076e85524b57cfa19ec8e9f5cb8
+          name: orchestra-release-manifest-${{ inputs.release_version }}-${{ steps.request.outputs.candidate_sha }}
           path: promotion
           if-no-files-found: error
           retention-days: 14

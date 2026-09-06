@@ -1,6 +1,6 @@
 services:
   orchestra:
-    image: ${ORCHESTRA_IMAGE:-ghcr.io/bebet0o/orchestra:v0.1.0}
+    image: ${ORCHESTRA_IMAGE:-ghcr.io/bebet0o/orchestra:v0.2.0}
     restart: unless-stopped
     depends_on:
       orchestra-runtime:
@@ -37,7 +37,7 @@ services:
     stop_grace_period: 120s
 
   orchestra-runtime:
-    image: ${ORCHESTRA_RUNTIME_IMAGE:-ghcr.io/bebet0o/orchestra-runtime:v0.1.0}
+    image: ${ORCHESTRA_RUNTIME_IMAGE:-ghcr.io/bebet0o/orchestra-runtime:v0.2.0}
     restart: unless-stopped
     privileged: true
     environment:

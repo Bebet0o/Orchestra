@@ -167,8 +167,8 @@ class ApplianceDistributionTest(unittest.TestCase):
             self.assertNotIn("container_name", service)
 
     def test_public_compose_uses_publishable_images(self) -> None:
-        self.assertIn("ghcr.io/bebet0o/orchestra:v0.1.0", SERVICES["orchestra"]["image"])
-        self.assertIn("ghcr.io/bebet0o/orchestra-runtime:v0.1.0", SERVICES["orchestra-runtime"]["image"])
+        self.assertIn("ghcr.io/bebet0o/orchestra:v0.2.0", SERVICES["orchestra"]["image"])
+        self.assertIn("ghcr.io/bebet0o/orchestra-runtime:v0.2.0", SERVICES["orchestra-runtime"]["image"])
         self.assertNotIn(":latest", COMPOSE_PATH.read_text(encoding="utf-8"))
 
     def test_worker_authority_is_exact(self) -> None:

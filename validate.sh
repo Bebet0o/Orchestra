@@ -55,7 +55,7 @@ static_validation() {
         .github/scripts/anonymous_official_image_pull.py \
         .github/scripts/release_manifest_promotion.py \
         specs/release-manifest-v1.schema.json \
-        config/releases/v0.1.0.manifest.template.json \
+        config/releases/v0.2.0.manifest.template.json \
         tests/test-distribution-contract.sh \
         tests/test-install-platform-support.sh \
         tests/test-preflight-minimal-host.sh \

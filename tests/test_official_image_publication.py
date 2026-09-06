@@ -276,16 +276,14 @@ class WorkflowContractTest(unittest.TestCase):
         pre_login = self.publish_steps[:login]
         self.assertNotIn("secrets.GITHUB_TOKEN", "\n".join(json.dumps(step) for step in pre_login))
 
-    def test_application_probe_requires_canonical_schema_24_migration(self) -> None:
-        canonical_name = "024_blueprint_apiversion.sql"
-        stale_name = "024_blueprint_api_namespace.sql"
+    def test_application_probe_requires_current_schema_and_sqlite_lifecycle(self) -> None:
+        canonical_name = "031_model_router.sql"
         probe = self.publish_by_name["Probe validated application image contents"]["run"]
         required_path = f"/opt/orchestra/app/migrations/{canonical_name}"
 
         self.assertTrue((ROOT / "migrations" / canonical_name).is_file())
-        self.assertFalse((ROOT / "migrations" / stale_name).exists())
         self.assertIn(f"test -f {required_path}", probe)
-        self.assertNotIn(stale_name, probe)
+        self.assertIn("test -f /opt/orchestra/app/scripts/sqlite_lifecycle.py", probe)
 
         with tempfile.TemporaryDirectory() as directory:
             absent_path = Path(directory) / "migrations" / canonical_name
@@ -333,7 +331,7 @@ class WorkflowContractTest(unittest.TestCase):
 class ManifestAndInstallerContractTest(unittest.TestCase):
     def test_template_has_no_invented_application_or_runtime_digest(self) -> None:
         template = json.loads(
-            (ROOT / "config/releases/v0.1.0.manifest.template.json").read_text(encoding="utf-8")
+            (ROOT / "config/releases/v0.2.0.manifest.template.json").read_text(encoding="utf-8")
         )
         self.assertEqual(template["publication_state"], "template")
         self.assertIsNone(template["application"]["digest"])
@@ -352,9 +350,9 @@ class ManifestAndInstallerContractTest(unittest.TestCase):
         self.assertIn("${ORCHESTRA_WORKER_IMAGE:-", compose)
         self.assertIn("orchestra-release-manifest.json", installer)
         self.assertIn('.publication_state == "accepted"', installer)
-        self.assertIn('.version == "v0.1.0"', installer)
+        self.assertIn('.version == "v0.2.0"', installer)
         self.assertIn("ORCHESTRA_WORKER_IMAGE=%s", installer)
-        self.assertNotIn("ORCHESTRA_IMAGE=\"ghcr.io/bebet0o/orchestra:v0.1.0\"", installer)
+        self.assertNotIn("ORCHESTRA_IMAGE=\"ghcr.io/bebet0o/orchestra:v0.2.0\"", installer)
 
 
 class AnonymousImageSetContractTest(unittest.TestCase):

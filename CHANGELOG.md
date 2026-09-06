@@ -4,10 +4,13 @@ Notable project changes are recorded here. The current project is Orchestra;
 older entries retain HermesOps and Hermesfile names where those were the names
 of the released or implemented historical interfaces.
 
-Post-transition Orchestra changes remain under [Unreleased] until an Orchestra
-release is published.
+Changes after the v0.2.0 release candidate remain under [Unreleased].
 
 ## [Unreleased]
+
+No unreleased changes are currently recorded.
+
+## [0.2.0] - 2026-09-06
 
 ### Added
 
@@ -40,6 +43,8 @@ release is published.
   instead of silently selecting the legacy local-image environment.
 - Current Controller, OpenAPI, CLI, Console, schema, example, and specification
   terminology and routes use Blueprint and `/blueprints`.
+- Public Compose defaults, installer URLs, release-manifest validation, and
+  trusted manifest-promotion tooling target `v0.2.0`.
 
 ### Fixed
 
@@ -50,6 +55,9 @@ release is published.
   sandbox/profile/revision identity, project and objective linkage, historical
   request routes, and historical integrity domains; malformed semantic input
   fails atomically.
+- Orchestra-owned SQLite connections now close deterministically after their
+  transaction context, and the complete 964-test suite runs with zero
+  `ResourceWarning: unclosed database` warnings.
 
 ### Security
 

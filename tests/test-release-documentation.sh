@@ -5,11 +5,13 @@
     REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     README="${REPO}/README.md"
     CHANGELOG="${REPO}/CHANGELOG.md"
+    ROADMAP="${REPO}/ROADMAP.md"
     SECURITY="${REPO}/SECURITY.md"
     LICENSE_FILE="${REPO}/LICENSE"
 
     [[ -f "$README" ]]
     [[ -f "$CHANGELOG" ]]
+    [[ -f "$ROADMAP" ]]
     [[ -f "$SECURITY" ]]
     [[ -f "$LICENSE_FILE" ]]
     [[ ! -e "${REPO}/VERSION" ]]
@@ -29,6 +31,7 @@
         'specs/blueprint-v1.schema.json'
         'config/examples/Blueprint'
         './install.sh'
+        'releases/download/v0.2.0/install.sh'
         'Debian 12+ or Ubuntu 22.04+ on amd64'
         './validate.sh --static --quiet'
         'SECURITY.md'
@@ -56,7 +59,10 @@
         fi
     done
 
+    grep -Fq '## [0.2.0] - 2026-09-06' "$CHANGELOG"
     grep -Fq '### HermesOps 0.2.0 (historical release)' "$CHANGELOG"
+    grep -Fq '0.2-H Multi-agent Console — CLOSED' "$ROADMAP"
+    grep -Fq 'release publication pending trusted' "$ROADMAP"
     ! grep -Fq 'HermesOps 0.2.0 development (unreleased historical material)' \
         "$CHANGELOG"
     grep -Fq 'Docker Compose' "$README"

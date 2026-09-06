@@ -1,6 +1,6 @@
 # Orchestra appliance architecture
 
-The v0.1.0 public runtime deliberately uses two Compose services so the
+The v0.2.0 public runtime deliberately uses two Compose services so the
 privileged nested-container boundary does not collapse into the control plane.
 
 ```text

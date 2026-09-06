@@ -73,8 +73,12 @@ Implemented foundations include:
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-The v0.2.0 Native Multi-Agent Execution line is complete through milestone
-0.2-H. Foundation-only or planned work includes the v0.3 Durable Project
+The v0.2.0 Native Multi-Agent Execution line is implementation-complete
+through milestone 0.2-H and has passed the repository release-validation gate.
+Publication still requires the trusted application/runtime image acceptance,
+release-manifest promotion, fresh-host install/upgrade smoke tests, and GitHub
+tag/release asset publication. Those are release gates, not additional product
+milestones. Foundation-only or planned work includes the v0.3 Durable Project
 Intelligence scope: automatic context intelligence, artifact management,
 structured project memory, and improved scheduling. Existing components should
 not be read as a claim that those v0.3 capabilities are already complete.
@@ -166,7 +170,7 @@ At release, a normal installation starts with the standalone installer:
 
 ```bash
 curl --fail --location --output install.sh \
-  https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/install.sh
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/install.sh
 chmod 0755 install.sh
 ./install.sh
 ```

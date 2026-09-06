@@ -27,55 +27,66 @@ def load() -> object:
 
 
 PROMOTION = load()
+CANDIDATE_SHA = "a" * 40
+CANDIDATE_REF = "refs/heads/release/0.2.0"
+ACCEPTANCE_RUN = "123456789"
+ARTIFACT_ID = "987654321"
+APPLICATION_DIGEST = "sha256:" + "b" * 64
+RUNTIME_DIGEST = "sha256:" + "c" * 64
+
+
+def image(repository: str, digest: str) -> dict[str, str]:
+    return {"digest": digest, "image_reference": repository + "@" + digest, "repository": repository}
 
 
 def accepted_manifest() -> dict[str, object]:
-    def image(repository: str, digest: str) -> dict[str, str]:
-        return {"digest": digest, "image_reference": repository + "@" + digest, "repository": repository}
     return {
         "schema_version": 1,
         "publication_state": "accepted",
-        "version": PROMOTION.CANDIDATE_VERSION,
-        "candidate_ref": PROMOTION.CANDIDATE_REF,
-        "source_revision": PROMOTION.CERTIFIED_SOURCE,
+        "version": "candidate-" + CANDIDATE_SHA,
+        "candidate_ref": CANDIDATE_REF,
+        "source_revision": CANDIDATE_SHA,
         "platform": PROMOTION.PLATFORM,
-        "application": image("ghcr.io/bebet0o/orchestra", PROMOTION.APPLICATION_DIGEST),
-        "runtime": image("ghcr.io/bebet0o/orchestra-runtime", PROMOTION.RUNTIME_DIGEST),
-        "worker": image("ghcr.io/bebet0o/orchestra-worker", PROMOTION.WORKER_DIGEST),
-        "workflow_run": PROMOTION.ACCEPTANCE_RUN,
+        "application": image(PROMOTION.APPLICATION_REPOSITORY, APPLICATION_DIGEST),
+        "runtime": image(PROMOTION.RUNTIME_REPOSITORY, RUNTIME_DIGEST),
+        "worker": image(PROMOTION.WORKER_REPOSITORY, PROMOTION.WORKER_DIGEST),
+        "workflow_run": ACCEPTANCE_RUN,
         "anonymous_verification": {"digest_pull": "PASS", "fresh_daemon": "YES", "image_set_complete": "YES"},
     }
 
 
+def workflow_run_metadata() -> dict[str, object]:
+    return {
+        "id": int(ACCEPTANCE_RUN),
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": "main",
+        "path": PROMOTION.ACCEPTANCE_WORKFLOW_PATH,
+        "name": PROMOTION.ACCEPTANCE_WORKFLOW_NAME,
+        "repository": {"full_name": "Bebet0o/Orchestra"},
+    }
+
+
 class PromotionContractTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.original_hash = PROMOTION.ACCEPTED_MANIFEST_SHA256
-        self.original_s3_hash = PROMOTION.S3_MANIFEST_SHA256
-
-    def tearDown(self) -> None:
-        PROMOTION.ACCEPTED_MANIFEST_SHA256 = self.original_hash
-        PROMOTION.S3_MANIFEST_SHA256 = self.original_s3_hash
-
     def bytes_for(self, manifest: dict[str, object] | None = None) -> bytes:
         return PROMOTION.canonical_json(manifest or accepted_manifest())
 
     def validate(self, manifest: dict[str, object]) -> dict[str, object]:
-        value = self.bytes_for(manifest)
-        PROMOTION.ACCEPTED_MANIFEST_SHA256 = hashlib.sha256(value).hexdigest()
-        return PROMOTION.validate_accepted_manifest(value)
+        return PROMOTION.validate_accepted_manifest(
+            self.bytes_for(manifest),
+            candidate_ref=CANDIDATE_REF,
+            candidate_sha=CANDIDATE_SHA,
+            acceptance_run_id=ACCEPTANCE_RUN,
+        )
 
-    def test_exact_input_promotes_only_version_and_matches_s3_bytes(self) -> None:
+    def test_accepted_input_promotes_only_version(self) -> None:
         accepted = self.validate(accepted_manifest())
         promoted = PROMOTION.promote_manifest(accepted)
         self.assertEqual(PROMOTION.semantic_diff(accepted, promoted), ["$.version"])
-        self.assertEqual(promoted["version"], "v0.1.0")
-        PROMOTION.S3_MANIFEST_SHA256 = hashlib.sha256(PROMOTION.canonical_json(promoted)).hexdigest()
-        self.assertEqual(PROMOTION.sha256_bytes(PROMOTION.canonical_json(promoted)), PROMOTION.S3_MANIFEST_SHA256)
-
-    def test_wrong_accepted_manifest_hash_is_rejected(self) -> None:
-        PROMOTION.ACCEPTED_MANIFEST_SHA256 = "0" * 64
-        with self.assertRaises(PROMOTION.PromotionError):
-            PROMOTION.validate_accepted_manifest(self.bytes_for())
+        self.assertEqual(promoted["version"], "v0.2.0")
+        self.assertEqual(promoted["application"]["digest"], APPLICATION_DIGEST)
+        self.assertEqual(promoted["runtime"]["digest"], RUNTIME_DIGEST)
 
     def test_wrong_authorities_fail_closed(self) -> None:
         mutations = (
@@ -83,44 +94,86 @@ class PromotionContractTest(unittest.TestCase):
             ("source_revision", "0" * 40),
             ("publication_state", "provisional"),
             ("platform", "linux/arm64"),
+            ("workflow_run", "1"),
         )
         for key, value in mutations:
             manifest = accepted_manifest(); manifest[key] = value
             with self.subTest(key=key), self.assertRaises(PROMOTION.PromotionError):
                 self.validate(manifest)
-        for image, digest in (("application", "a"), ("runtime", "b"), ("worker", "c")):
-            manifest = accepted_manifest()
-            manifest[image]["digest"] = "sha256:" + digest * 64
-            manifest[image]["image_reference"] = manifest[image]["repository"] + "@" + manifest[image]["digest"]
-            with self.subTest(image=image), self.assertRaises(PROMOTION.PromotionError):
-                self.validate(manifest)
+        manifest = accepted_manifest()
+        manifest["worker"] = image(PROMOTION.WORKER_REPOSITORY, "sha256:" + "d" * 64)
+        with self.assertRaises(PROMOTION.PromotionError):
+            self.validate(manifest)
 
     def test_promoted_manifest_satisfies_certified_installer_contract(self) -> None:
-        accepted = self.validate(accepted_manifest())
-        promoted = PROMOTION.promote_manifest(accepted)
-        PROMOTION.validate_installer_contract(ROOT / "install.sh", promoted)
+        PROMOTION.validate_installer_contract(ROOT / "install.sh")
 
-    def test_artifact_identity_archive_digest_and_file_set_are_exact(self) -> None:
+    def test_artifact_and_workflow_provenance_are_verified(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory); archive = root / "artifact.zip"; metadata = root / "metadata.json"
+            root = Path(directory)
+            archive = root / "artifact.zip"
+            metadata = root / "artifact.json"
+            run_metadata = root / "run.json"
             with zipfile.ZipFile(archive, "w") as bundle:
                 bundle.writestr(PROMOTION.MANIFEST_MEMBER, self.bytes_for())
             digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
-            old_digest = PROMOTION.ACCEPTED_ARTIFACT_DIGEST
-            PROMOTION.ACCEPTED_ARTIFACT_DIGEST = digest
-            try:
-                metadata.write_text(json.dumps({
-                    "id": PROMOTION.ACCEPTED_ARTIFACT_ID,
-                    "name": PROMOTION.ACCEPTED_ARTIFACT_NAME,
-                    "digest": digest,
-                    "workflow_run": {"id": int(PROMOTION.ACCEPTANCE_RUN)},
-                }))
-                self.assertEqual(PROMOTION.validate_artifact(metadata, archive), self.bytes_for())
-                metadata.write_text(json.dumps({"id": 0, "name": PROMOTION.ACCEPTED_ARTIFACT_NAME, "digest": digest, "workflow_run": {"id": int(PROMOTION.ACCEPTANCE_RUN)}}))
-                with self.assertRaises(PROMOTION.PromotionError):
-                    PROMOTION.validate_artifact(metadata, archive)
-            finally:
-                PROMOTION.ACCEPTED_ARTIFACT_DIGEST = old_digest
+            metadata.write_text(json.dumps({
+                "id": int(ARTIFACT_ID),
+                "name": "orchestra-official-publication-accepted-" + CANDIDATE_SHA,
+                "digest": digest,
+                "expired": False,
+                "workflow_run": {"id": int(ACCEPTANCE_RUN)},
+            }), encoding="utf-8")
+            run_metadata.write_text(json.dumps(workflow_run_metadata()), encoding="utf-8")
+            PROMOTION.validate_acceptance_workflow_run(run_metadata, ACCEPTANCE_RUN)
+            member, returned_digest = PROMOTION.validate_artifact(
+                metadata, archive,
+                candidate_sha=CANDIDATE_SHA,
+                acceptance_run_id=ACCEPTANCE_RUN,
+                accepted_artifact_id=ARTIFACT_ID,
+            )
+            self.assertEqual(member, self.bytes_for())
+            self.assertEqual(returned_digest, digest)
+
+            bad_run = workflow_run_metadata(); bad_run["path"] = ".github/workflows/other.yml"
+            run_metadata.write_text(json.dumps(bad_run), encoding="utf-8")
+            with self.assertRaises(PROMOTION.PromotionError):
+                PROMOTION.validate_acceptance_workflow_run(run_metadata, ACCEPTANCE_RUN)
+
+    def test_end_to_end_promotion_emits_manifest_and_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifact.zip"
+            metadata = root / "artifact.json"
+            run_metadata = root / "run.json"
+            output = root / "promotion"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr(PROMOTION.MANIFEST_MEMBER, self.bytes_for())
+            digest = "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest()
+            metadata.write_text(json.dumps({
+                "id": int(ARTIFACT_ID),
+                "name": "orchestra-official-publication-accepted-" + CANDIDATE_SHA,
+                "digest": digest,
+                "expired": False,
+                "workflow_run": {"id": int(ACCEPTANCE_RUN)},
+            }), encoding="utf-8")
+            run_metadata.write_text(json.dumps(workflow_run_metadata()), encoding="utf-8")
+            manifest_path, evidence_path = PROMOTION.promote(
+                workflow_run_metadata=run_metadata,
+                artifact_metadata=metadata,
+                artifact_archive=archive,
+                certified_installer=ROOT / "install.sh",
+                output_directory=output,
+                candidate_ref=CANDIDATE_REF,
+                candidate_sha=CANDIDATE_SHA,
+                acceptance_run_id=ACCEPTANCE_RUN,
+                accepted_artifact_id=ARTIFACT_ID,
+            )
+            promoted = json.loads(manifest_path.read_text(encoding="utf-8"))
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            self.assertEqual(promoted["version"], "v0.2.0")
+            self.assertTrue(evidence["acceptance_workflow_verified"])
+            self.assertEqual(evidence["semantic_diff"], ["version"])
 
 
 class WorkflowContractTest(unittest.TestCase):
@@ -130,6 +183,10 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertEqual(set(workflow["on"]), {"workflow_dispatch"})
         self.assertEqual(workflow["permissions"], {"actions": "read", "contents": "read"})
         self.assertIn("github.ref == 'refs/heads/main'", workflow["jobs"]["promote"]["if"])
+        self.assertIn("test \"$RELEASE_VERSION\" = 'v0.2.0'", source)
+        self.assertIn("actions/runs/${ACCEPTANCE_RUN_ID}", source)
+        self.assertIn("official_image_publication.py validate-request", source)
+        self.assertNotIn("172071c71cf58076e85524b57cfa19ec8e9f5cb8", source)
         self.assertNotIn("packages: write", source)
         self.assertNotRegex(source, r"docker\s+(?:build|push)")
         for step in workflow["jobs"]["promote"]["steps"]:

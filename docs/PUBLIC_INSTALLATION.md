@@ -1,6 +1,6 @@
 # Public installation
 
-Orchestra v0.1.0 targets Debian 12+ and Ubuntu 22.04+ on amd64 with Docker
+Orchestra v0.2.0 targets Debian 12+ and Ubuntu 22.04+ on amd64 with Docker
 Engine and Docker Compose. The release remains gated until the official images
 and release assets have passed trusted publication and fresh-host smoke tests.
 
@@ -43,7 +43,7 @@ The release installer is standalone:
 
 ```bash
 curl --fail --location --output install.sh \
-  https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/install.sh
+  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/install.sh
 chmod 0755 install.sh
 ./install.sh
 ```
@@ -54,7 +54,7 @@ asset and the accepted `orchestra-release-manifest.json`, creates
 health check. It does not require Git, a source checkout, a local application
 build, or host Python.
 
-The manifest must be accepted for `v0.1.0`, target `linux/amd64`, and bind the
+The manifest must be accepted for `v0.2.0`, target `linux/amd64`, and bind the
 exact application, private-runtime, and previously accepted worker OCI
 digests. Installation fails closed on a tag, missing digest, mismatched
 repository/reference, partial image set, or provisional manifest.
@@ -77,7 +77,7 @@ null rather than inventing them.
 
 ## Persistent state and first boot
 
-The appliance initializes secrets, creates a fresh schema-24 database, and
+The appliance initializes secrets, creates a fresh schema-31 database, and
 runs forward-only migrations at startup. Existing supported data is migrated
 under the same fail-closed rules. Provider authentication is optional at boot;
 features requiring Hermes Agent remain unavailable until it is configured.

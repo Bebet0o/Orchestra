@@ -5,6 +5,12 @@ real software projects.
 
 ## v0.2.0 — Native Multi-Agent Execution
 
+Status: **implementation complete; release publication pending trusted
+distribution gates**. All product milestones 0.2-A through 0.2-H are closed.
+The remaining work is release engineering: publish and accept the exact
+application/runtime image set, promote the accepted release manifest, run
+fresh-host install/upgrade smoke tests, and publish the GitHub tag/assets.
+
 - 0.2-A NativeRuntime activation — CLOSED
 - 0.2-B Native worker pool — CLOSED
 - 0.2-C Planner and task graph — CLOSED

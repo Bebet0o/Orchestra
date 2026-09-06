@@ -5,9 +5,9 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 INSTALL_ROOT="/opt/orchestra"
 DATA_ROOT="${INSTALL_ROOT}/data"
-COMPOSE_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/orchestra.yaml"
+COMPOSE_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra.yaml"
 COMPOSE_SOURCE=""
-MANIFEST_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.1.0/orchestra-release-manifest.json"
+MANIFEST_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra-release-manifest.json"
 MANIFEST_SOURCE=""
 ORCHESTRA_IMAGE=""
 ORCHESTRA_RUNTIME_IMAGE=""
@@ -74,7 +74,7 @@ case "${ID:-}:${VERSION_ID:-}" in
 esac
 case "$(uname -m)" in
     x86_64|amd64) ;;
-    *) echo "Orchestra v0.1.0 requires amd64." >&2; exit 1 ;;
+    *) echo "Orchestra v0.2.0 requires amd64." >&2; exit 1 ;;
 esac
 
 install_docker() {
@@ -121,7 +121,7 @@ fi
 jq -e '
     .schema_version == 1 and
     .publication_state == "accepted" and
-    .version == "v0.1.0" and
+    .version == "v0.2.0" and
     .platform == "linux/amd64" and
     (.source_revision | type == "string" and test("^[0-9a-f]{40}$")) and
     .application.repository == "ghcr.io/bebet0o/orchestra" and
