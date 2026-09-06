@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import threading
 from contextlib import closing
 from pathlib import Path
@@ -26,7 +27,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
         self.assertEqual(first[0], 202)
         self.assertEqual(second[0], 409)
         self.assertEqual(second[2]["code"], "review_action_conflict")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions "
@@ -90,7 +91,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             [payload.get("code") for status, payload in results if status == 409],
             ["review_action_conflict"],
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions "
@@ -106,7 +107,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             "acknowledge-debt",
             key="adv-db-unique-01",
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     """
@@ -124,7 +125,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
                 )
 
     def test_orphan_review_is_projection_failure_not_not_found(self) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "DELETE FROM runs WHERE run_id=?",
                 ("run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",),
@@ -147,7 +148,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
         session_fp = store.shared._session_fingerprint(TOKEN)
         key_hash = store.shared._key_hash(TOKEN, key)
         request_hash = store.shared._request_hash(TOKEN, "POST", path, body)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 """
                 INSERT INTO controller_review_idempotency (
@@ -173,7 +174,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
         )
         self.assertEqual(status, 503)
         self.assertEqual(payload["code"], "idempotency_reservation_invalid")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"
@@ -182,7 +183,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             )
 
     def test_unknown_verdict_fails_closed_without_mutation(self) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "UPDATE review_results SET verdict='UNKNOWN' WHERE review_id=?",
                 (review_tests.FIX_REVIEW,),
@@ -195,7 +196,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
         )
         self.assertEqual(status, 503)
         self.assertEqual(payload["code"], "review_projection_invalid")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"
@@ -215,7 +216,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             "recovery_executions",
             "approvals",
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             existing = {
                 row[0]
                 for row in connection.execute(
@@ -236,7 +237,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             reason="redacted human reason",
         )
         self.assertEqual(status, 202)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             after = {
                 table: connection.execute(
                     f"SELECT * FROM {table} ORDER BY rowid"
@@ -262,7 +263,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
 
     @staticmethod
     def _migration_fixture() -> sqlite3.Connection:
-        connection = sqlite3.connect(":memory:")
+        connection = sqlite_connect(":memory:")
         connection.executescript(
             """
             PRAGMA foreign_keys=ON;
@@ -489,7 +490,7 @@ class ReviewCommandAdversarialTest(review_tests.ReviewCommandTest):
             self.assertNotEqual(status, 202, variant)
             self.assertIn(status, (400, 404, 409), variant)
             self.assertIsInstance(payload, dict)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"

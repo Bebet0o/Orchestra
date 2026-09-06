@@ -4,6 +4,7 @@ import http.client
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -217,7 +218,7 @@ class Fixture:
         self.database.parent.mkdir(parents=True)
         self.private_log = self.root / "private-worker-output.log"
         self.private_log.write_text("ULTRA_PRIVATE_WORKER_OUTPUT\n", encoding="utf-8")
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             connection.executescript(SCHEMA)
             connection.execute(
                 "INSERT INTO schema_migrations VALUES(10, ?)",
@@ -395,12 +396,12 @@ class Fixture:
         return response.status, response_headers, json.loads(raw) if raw else None
 
     def execute(self, sql: str, parameters: tuple[object, ...] = ()) -> None:
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             connection.execute(sql, parameters)
             connection.commit()
 
     def scalar(self, sql: str) -> object:
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             return connection.execute(sql).fetchone()[0]
 
 

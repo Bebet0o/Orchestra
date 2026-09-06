@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import subprocess
 import tempfile
 import threading
@@ -32,7 +33,7 @@ class ProjectLifecycleFixture:
         shutil.copy2(ROOT / "config/policies/default.toml", self.root / "repo/config/policies/default.toml")
         shutil.copy2(ROOT / "config/controller.toml", self.root / "repo/config/controller.toml")
         self.database = self.root / "state/controller/orchestra.db"
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -98,7 +99,7 @@ class ProjectLifecycleFixture:
         )
 
     def row(self, slug: str = "alpha") -> sqlite3.Row:
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.row_factory = sqlite3.Row
         try:
             row = connection.execute("SELECT * FROM projects WHERE project_id=?", (slug,)).fetchone()
@@ -118,7 +119,7 @@ class ProjectLifecycleTest(unittest.TestCase):
     def test_migration_readiness_and_constraints(self) -> None:
         ready, reason = self.fixture.store.readiness()
         self.assertTrue(ready, reason)
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 31)
             self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 31)
             columns = {row[1] for row in connection.execute("PRAGMA table_info(projects)")}
@@ -140,7 +141,7 @@ class ProjectLifecycleTest(unittest.TestCase):
         config = self.fixture.root / "repo/config/projects.d/alpha.toml"
         self.assertTrue(config.is_file())
         self.assertNotIn("session-token", config.read_text(encoding="utf-8"))
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM projects").fetchone()[0], 1)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_project_operations").fetchone()[0], 1)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_project_command_audit").fetchone()[0], 1)
@@ -228,7 +229,7 @@ class ProjectLifecycleTest(unittest.TestCase):
             body={},
             meta_factory=self.fixture.meta,
         )
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             connection.execute(
                 "INSERT INTO project_locks(project_id,run_id,holder,acquired_at,heartbeat_at) VALUES(?,?,?,?,?)",
                 ("alpha", "run-active", "test", "2026-07-27T00:00:00.000Z", "2026-07-27T00:00:00.000Z"),
@@ -327,7 +328,7 @@ class ProjectLifecycleTest(unittest.TestCase):
 
     def test_registry_sync_preserves_lifecycle_and_backfills_branch(self) -> None:
         self.fixture.create()
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             connection.execute(
                 "UPDATE projects SET default_branch='unknown', resource_revision=resource_revision+1 WHERE project_id='alpha'"
             )

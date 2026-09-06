@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -34,7 +35,7 @@ class BlueprintLifecycleFixture:
         shutil.copy2(ROOT / "config/policies/default.toml", self.root / "repo/config/policies/default.toml")
         shutil.copy2(ROOT / "config/controller.toml", self.root / "repo/config/controller.toml")
         self.database = self.root / "state/controller/orchestra.db"
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -115,12 +116,12 @@ class BlueprintLifecycleTest(unittest.TestCase):
 
     def test_schema_readiness_and_immutable_audit(self) -> None:
         self.assertEqual(self.fixture.store.readiness(), (True, "ready"))
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 31)
             self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 31)
         _, payload = self.fixture.create()
         operation_id = payload["data"]["id"]
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "UPDATE controller_blueprint_command_audit SET outcome='FAILED' WHERE operation_id=?",
@@ -203,7 +204,7 @@ class BlueprintLifecycleTest(unittest.TestCase):
         self.assertEqual(current["revision"]["source"], self.fixture.source)
         self.assertEqual(current["revision"]["runtime_config"]["profile_name"], "python-project")
         self.assertEqual(self.fixture.store.get_operation(operation["id"])["target"]["id"], sandbox_id)
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM sandbox_profiles").fetchone()[0], 1)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM sandbox_profile_revisions").fetchone()[0], 1)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM controller_blueprint_operations").fetchone()[0], 1)
@@ -343,7 +344,7 @@ class BlueprintLifecycleTest(unittest.TestCase):
                     )
                 self.assertEqual(caught.exception.code, code)
         self.assertEqual(len(self.fixture.store.list_revisions(sandbox_id, limit=50)), 1)
-        with sqlite3.connect(self.fixture.database) as connection:
+        with sqlite_connect(self.fixture.database) as connection:
             dump = "\n".join(connection.iterdump())
         self.assertNotIn("private-sentinel", dump)
         self.assertNotIn("renamed-profile", dump)

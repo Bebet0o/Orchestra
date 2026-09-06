@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import time
@@ -24,7 +25,7 @@ MIGRATION_018 = ROOT / "migrations" / "018_browser_auth_hardening.sql"
 class BrowserAuthAdversarialTest(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = BrowserAuthFixture()
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             connection.executescript(MIGRATION_018.read_text(encoding="utf-8"))
 
     def tearDown(self) -> None:
@@ -65,7 +66,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
             thread = threading.Thread(target=worker)
             thread.start()
             self.assertTrue(entered.wait(2))
-            connection = sqlite3.connect(self.fixture.api.database, timeout=0.25)
+            connection = sqlite_connect(self.fixture.api.database, timeout=0.25)
             try:
                 connection.execute("BEGIN IMMEDIATE")
                 connection.rollback()
@@ -118,7 +119,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
         self.assertEqual(outcomes, [])
 
     def test_corrupt_credential_fails_readiness_and_login_closed(self) -> None:
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             connection.execute(
                 "UPDATE controller_operator_credentials SET scrypt_n=65536, scrypt_r=16"
             )
@@ -158,7 +159,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
             with self.assertRaises(ControllerError) as captured:
                 self._login_store(f"rate-block-{index}", "wrong password value")
             self.assertEqual(captured.exception.status, 403)
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             rows = dict(connection.execute(
                 "SELECT outcome, COUNT(*) FROM controller_auth_audit GROUP BY outcome"
             ))
@@ -170,7 +171,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
         self.assertEqual(status, 200)
         _, token = self.fixture.cookie(headers)
         token_hash = __import__("hashlib").sha256(token.encode("ascii")).hexdigest()
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "UPDATE controller_browser_sessions SET expires_at='2099-01-01T00:00:00.000Z' WHERE token_hash=?",
@@ -189,7 +190,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
 
     def test_auth_idempotency_is_immutable(self) -> None:
         self.fixture.login(key="immutable-idempotency")
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             row = connection.execute(
                 "SELECT namespace, key_hash FROM controller_auth_idempotency LIMIT 1"
             ).fetchone()
@@ -206,7 +207,7 @@ class BrowserAuthAdversarialTest(unittest.TestCase):
                 )
 
     def test_noncanonical_auth_timestamp_is_rejected(self) -> None:
-        with sqlite3.connect(self.fixture.api.database) as connection:
+        with sqlite_connect(self.fixture.api.database) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     """

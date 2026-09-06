@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import concurrent.futures
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import tempfile
 import threading
@@ -58,7 +59,7 @@ class TaskGraphTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.database = Path(temporary.name) / "graph.db"
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -66,7 +67,7 @@ class TaskGraphTest(unittest.TestCase):
         ORCHESTRATOR.DATABASE = self.database
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database, timeout=10)
+        connection = sqlite_connect(self.database, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=10000")
@@ -373,7 +374,7 @@ class TaskGraphTest(unittest.TestCase):
     def test_migration_27_preserves_and_backfills_existing_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "upgrade.db"
-            with sqlite3.connect(database) as connection:
+            with sqlite_connect(database) as connection:
                 connection.execute("PRAGMA foreign_keys=ON")
                 for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                     if migration.name.startswith("027_"):

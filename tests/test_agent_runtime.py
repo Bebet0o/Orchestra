@@ -9,6 +9,7 @@ import json
 import os
 import signal
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import subprocess
 import sys
 import tempfile
@@ -3215,7 +3216,10 @@ class RecoveryOwnershipTest(unittest.TestCase):
         self.assertNotIn("LEGACY_HERMES", source)
 
     def test_orphan_cleanup_selects_owned_stale_and_protects_active(self) -> None:
-        connection = sqlite3.connect(":memory:")
+        database_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(database_directory.cleanup)
+        database = Path(database_directory.name) / "orchestra.db"
+        connection = sqlite_connect(database)
         self.addCleanup(connection.close)
         connection.row_factory = sqlite3.Row
         connection.executescript(
@@ -3308,10 +3312,15 @@ class RecoveryOwnershipTest(unittest.TestCase):
                 "Config": {"Labels": {}},
             }
 
+        def recovery_connect() -> sqlite3.Connection:
+            fresh = sqlite_connect(database)
+            fresh.row_factory = sqlite3.Row
+            return fresh
+
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         with (
-            mock.patch.object(RECOVERY, "connect", return_value=connection),
+            mock.patch.object(RECOVERY, "connect", side_effect=recovery_connect),
             mock.patch.object(RECOVERY, "docker_exists", return_value=True),
             mock.patch.object(RECOVERY, "run_command", side_effect=command),
             mock.patch.object(

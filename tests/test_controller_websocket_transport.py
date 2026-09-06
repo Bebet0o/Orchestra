@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import struct
 import time
 import unittest
@@ -120,7 +121,7 @@ class ControllerWebSocketTransportTest(unittest.TestCase):
         return client
 
     def emit(self, aggregate_type: str, aggregate_id: str, event_type: str) -> int:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             event = EventJournal.emit(

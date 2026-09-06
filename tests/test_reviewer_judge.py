@@ -5,6 +5,7 @@ from dataclasses import replace
 import importlib.util
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -513,7 +514,7 @@ class ReviewerJudgeTest(unittest.TestCase):
 
     def test_existing_28_history_is_preserved_by_migration(self):
         database=self.database.parent/'upgrade.db'
-        with sqlite3.connect(database) as c:
+        with sqlite_connect(database) as c:
             c.execute('PRAGMA foreign_keys=ON')
             for migration in sorted((graph.ROOT/'migrations').glob('*.sql')):
                 if int(migration.name[:3])<=28:c.executescript(migration.read_text())

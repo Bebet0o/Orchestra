@@ -4,6 +4,7 @@ import http.client
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import socket
 import threading
@@ -52,7 +53,7 @@ default_branch = "main"
         self.session_file.write_text(TOKEN + "\n", encoding="utf-8")
         os.chmod(self.session_file, 0o600)
         self.database.parent.mkdir(parents=True)
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             connection.executescript(
                 """
                 CREATE TABLE schema_migrations (
@@ -467,7 +468,7 @@ default_branch = "main"
                 """
             )
             connection.commit()
-        with closing(sqlite3.connect(self.database)) as migration_connection:
+        with closing(sqlite_connect(self.database)) as migration_connection:
             migration_connection.executescript(
                 (
                     Path(__file__).resolve().parents[1]

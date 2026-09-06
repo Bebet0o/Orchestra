@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import tempfile
 import unittest
@@ -51,13 +52,13 @@ class ModelRouterPersistenceTest(unittest.TestCase):
         self.store = ModelRouteStore(self.connect)
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database, timeout=10)
+        connection = sqlite_connect(self.database, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
     def apply_through(self, version: int) -> None:
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 if int(migration.name[:3]) <= version:
@@ -518,7 +519,7 @@ class ModelRouterPersistenceTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         database = Path(temporary.name) / "history.db"
-        with sqlite3.connect(database) as connection:
+        with sqlite_connect(database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 if int(migration.name[:3]) <= 30:

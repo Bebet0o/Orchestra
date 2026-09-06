@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import unittest
 from pathlib import Path
@@ -127,7 +128,7 @@ class OrchestrationReadsTest(unittest.TestCase):
         (self.root / "secrets").mkdir()
         (self.root / "secrets/controller-session").write_text("s" * 64, encoding="ascii")
         self.database = self.root / "state/controller/orchestra.db"
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.executescript(SCHEMA)
         connection.executemany(
             "INSERT INTO projects VALUES (?)",
@@ -380,7 +381,7 @@ class OrchestrationReadsTest(unittest.TestCase):
                     case()
 
     def test_plan_projection_rejects_multiple_public_objectives(self) -> None:
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.execute(
             "INSERT INTO objective_queue VALUES (?,?,?)",
             ("objective-" + "3" * 32, PLAN_ONE, T3),
@@ -392,7 +393,7 @@ class OrchestrationReadsTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "plan_projection_invalid")
 
     def test_tampered_assignment_cursor_is_rejected(self) -> None:
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.execute(
             """
             INSERT INTO reviewer_assignments VALUES(

@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import struct
 import unittest
 from contextlib import closing
@@ -101,7 +102,7 @@ class WebSocketAdversarialTest(unittest.TestCase):
         return client
 
     def emit_many(self, count: int) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             for index in range(count):

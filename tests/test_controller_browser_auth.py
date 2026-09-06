@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import struct
 import unittest
 from contextlib import closing
@@ -20,7 +21,7 @@ PASSWORD = "correct horse battery staple"
 class BrowserAuthFixture:
     def __init__(self) -> None:
         self.api = APIFixture()
-        with sqlite3.connect(self.api.database) as connection:
+        with sqlite_connect(self.api.database) as connection:
             connection.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.store: BrowserAuthStore = self.api.server.service.browser_auth
         self.assert_state = self.store.initialize_operator(
@@ -167,7 +168,7 @@ class ControllerBrowserAuthTest(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertEqual(payload["code"], "authentication_temporarily_blocked")
-        with closing(sqlite3.connect(self.fixture.api.database)) as connection:
+        with closing(sqlite_connect(self.fixture.api.database)) as connection:
             outcomes = [
                 row[0]
                 for row in connection.execute(

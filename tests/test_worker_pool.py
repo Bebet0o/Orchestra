@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import importlib.util
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import tempfile
 import threading
@@ -61,7 +62,7 @@ class WorkerPoolTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.database = Path(temporary.name) / "pool.db"
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -124,7 +125,7 @@ class WorkerPoolTest(unittest.TestCase):
             connection.commit()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database, timeout=10)
+        connection = sqlite_connect(self.database, timeout=10)
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 

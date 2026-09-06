@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import subprocess
 import sys
 import tempfile
@@ -22,7 +23,7 @@ MIGRATION_016 = ROOT / "migrations" / "016_controller_event_journal_hardening.sq
 
 class EventJournalAdversarialTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.connection = sqlite3.connect(":memory:", isolation_level=None)
+        self.connection = sqlite_connect(":memory:", isolation_level=None)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute(
             "CREATE TABLE schema_migrations ("
@@ -248,7 +249,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
     def test_concurrent_writers_produce_unique_ordered_revisions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "events.db"
-            setup = sqlite3.connect(database, isolation_level=None)
+            setup = sqlite_connect(database, isolation_level=None)
             setup.execute(
                 "CREATE TABLE schema_migrations ("
                 "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
@@ -263,7 +264,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
 
             def write(index: int) -> None:
                 try:
-                    connection = sqlite3.connect(
+                    connection = sqlite_connect(
                         database, isolation_level=None, timeout=20.0
                     )
                     connection.row_factory = sqlite3.Row
@@ -297,7 +298,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
             self.assertFalse(any(thread.is_alive() for thread in threads))
             self.assertEqual(errors, [])
 
-            verify = sqlite3.connect(database)
+            verify = sqlite_connect(database)
             rows = list(
                 verify.execute(
                     "SELECT sequence,aggregate_revision,event_id "
@@ -361,7 +362,7 @@ class EventJournalAdversarialTest(unittest.TestCase):
                     second.stdout,
                 )
             database = root / "state" / "controller" / "orchestra.db"
-            verify = sqlite3.connect(database)
+            verify = sqlite_connect(database)
             try:
                 all_versions = [
                     int(row[0])

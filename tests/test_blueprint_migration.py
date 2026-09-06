@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import unittest
 from contextlib import closing
@@ -47,7 +48,7 @@ class BlueprintMigrationTest(unittest.TestCase):
         self.temporary.cleanup()
 
     def apply_through(self, version: int) -> None:
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 if int(migration.name[:3]) > version:
@@ -130,7 +131,7 @@ class BlueprintMigrationTest(unittest.TestCase):
             },
             "meta": {"request_id": "request-historical", "resource_revision": 1},
         }
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
@@ -314,7 +315,7 @@ class BlueprintMigrationTest(unittest.TestCase):
         migration = (ROOT / "migrations/023_blueprint_migration.sql").read_text(
             encoding="utf-8"
         )
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.executescript("BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;")
 
@@ -322,14 +323,14 @@ class BlueprintMigrationTest(unittest.TestCase):
         migration = (ROOT / "migrations/024_blueprint_apiversion.sql").read_text(
             encoding="utf-8"
         )
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.executescript("BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;")
 
     def assert_v23_rejected_atomically(self) -> None:
         with self.assertRaises(sqlite3.Error):
             self.apply_v23()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 22)
             tables = {
                 row[0]
@@ -349,7 +350,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_fresh_database_reaches_schema_23(self) -> None:
         self.apply_through(23)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
             self.assertEqual(
                 connection.execute("SELECT max(version) FROM schema_migrations").fetchone()[0],
@@ -359,7 +360,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_fresh_database_reaches_schema_24_and_guards_new_writes(self) -> None:
         self.apply_through(24)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
             self.assertEqual(
                 connection.execute(
@@ -373,7 +374,7 @@ class BlueprintMigrationTest(unittest.TestCase):
         source = (ROOT / "config/examples/Blueprint").read_bytes()
         imported = store.import_source(source)
         self.assertTrue(imported.created)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
             current = connection.execute(
                 "SELECT * FROM sandbox_profile_revisions"
@@ -407,7 +408,7 @@ class BlueprintMigrationTest(unittest.TestCase):
     def test_real_v23_upgrade_preserves_historical_revision_and_links(self) -> None:
         expected = self.seed_real_v22()
         self.apply_v23()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
             before_revisions = [
                 dict(row)
@@ -434,7 +435,7 @@ class BlueprintMigrationTest(unittest.TestCase):
             )
         self.apply_v24()
 
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
             self.assertEqual(
@@ -544,7 +545,7 @@ class BlueprintMigrationTest(unittest.TestCase):
             json.loads(str(expected["second_canonical"])),
         )
         self.apply_v23()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
             revisions = connection.execute(
@@ -729,7 +730,7 @@ class BlueprintMigrationTest(unittest.TestCase):
         self.assertEqual(status, 202)
         objective_id = payload["data"]["target"]["id"]
         attempt_id = "objective-attempt-" + "6" * 32
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute(
                 """
@@ -758,14 +759,14 @@ class BlueprintMigrationTest(unittest.TestCase):
         migration = (ROOT / "migrations/023_blueprint_migration.sql").read_text(
             encoding="utf-8"
         )
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             with self.assertRaises(sqlite3.Error):
                 connection.executescript("BEGIN IMMEDIATE;\n" + migration + "\nCOMMIT;")
             if connection.in_transaction:
                 connection.rollback()
         self.assertEqual(self.database.read_bytes(), before)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 23)
             self.assertEqual(
                 connection.execute(
@@ -780,7 +781,7 @@ class BlueprintMigrationTest(unittest.TestCase):
         migration = (ROOT / "migrations/024_blueprint_apiversion.sql").read_text(
             encoding="utf-8"
         )
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             with self.assertRaises(sqlite3.Error):
                 connection.executescript(
@@ -789,13 +790,13 @@ class BlueprintMigrationTest(unittest.TestCase):
             if connection.in_transaction:
                 connection.rollback()
         self.assertEqual(self.database.read_bytes(), before)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 24)
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
     def test_unexpected_idempotency_kind_fails_atomically(self) -> None:
         self.seed_real_v22()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             response = json.loads(
                 connection.execute(
                     "SELECT response_json FROM controller_hermesfile_idempotency"
@@ -810,7 +811,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_unexpected_legacy_operation_kind_fails_atomically(self) -> None:
         self.seed_real_v22()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA ignore_check_constraints=ON")
             connection.execute(
                 "UPDATE controller_hermesfile_operations "
@@ -821,7 +822,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_malformed_persisted_json_fails_atomically(self) -> None:
         self.seed_real_v22()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA ignore_check_constraints=ON")
             connection.execute(
                 "UPDATE controller_hermesfile_idempotency SET response_json='{'"
@@ -830,7 +831,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_unexpected_legacy_source_format_fails_atomically(self) -> None:
         self.seed_real_v22()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             trigger_sql = connection.execute(
                 "SELECT sql FROM sqlite_master WHERE type='trigger' "
                 "AND name='sandbox_profile_revision_update_guard'"
@@ -845,7 +846,7 @@ class BlueprintMigrationTest(unittest.TestCase):
 
     def test_preexisting_foreign_key_violation_fails_atomically(self) -> None:
         self.seed_real_v22()
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=OFF")
             connection.execute(
                 "UPDATE controller_hermesfile_idempotency SET operation_id=?",

@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -112,7 +113,7 @@ class ControllerProbeTest(unittest.TestCase):
 
         database = self.root / "state" / "controller" / "orchestra.db"
         database.parent.mkdir(parents=True)
-        with sqlite3.connect(database) as connection:
+        with sqlite_connect(database) as connection:
             connection.executescript(
                 """
                 CREATE TABLE schema_migrations (
@@ -432,7 +433,7 @@ class ControllerProbeTest(unittest.TestCase):
                 """
             )
 
-        migration_connection = sqlite3.connect(database)
+        migration_connection = sqlite_connect(database)
         try:
             for migration_name in (
                 "020_sandbox_profile_persistence.sql",
@@ -490,7 +491,7 @@ class ControllerProbeTest(unittest.TestCase):
         self.assertEqual(result.ready_status, 200)
 
         database = self.root / "state" / "controller" / "orchestra.db"
-        with sqlite3.connect(database) as connection:
+        with sqlite_connect(database) as connection:
             tables = {
                 row[0]
                 for row in connection.execute(

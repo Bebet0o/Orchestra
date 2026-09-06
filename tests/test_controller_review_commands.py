@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import threading
 import unittest
@@ -96,7 +97,7 @@ class ReviewCommandTest(unittest.TestCase):
         self.assertEqual(operation["kind"], "review.acknowledge-debt")
         self.assertEqual(operation["target"], {"type": "review", "id": DEBT_REVIEW})
         self.assertTrue(operation["result"]["reason_present"])
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             action = connection.execute(
                 "SELECT command, reason_present, status FROM controller_review_actions"
             ).fetchone()
@@ -125,7 +126,7 @@ class ReviewCommandTest(unittest.TestCase):
         self.assertEqual(status, 202)
         self.assertEqual(payload["data"]["kind"], "review.request-human-review")
         self.assertEqual(self._review_row(FIX_REVIEW), before_review)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM reviewer_executions"
@@ -140,7 +141,7 @@ class ReviewCommandTest(unittest.TestCase):
             )
 
     def _review_row(self, review_id: str):
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             return connection.execute(
                 "SELECT review_id, run_id, verdict, summary, details_json, created_at "
                 "FROM review_results WHERE review_id=?",
@@ -174,7 +175,7 @@ class ReviewCommandTest(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(payload["code"], "review_rerun_unavailable")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"
@@ -200,7 +201,7 @@ class ReviewCommandTest(unittest.TestCase):
         )
         self.assertEqual(first[0], 202)
         self.assertEqual(first[2], second[2])
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"
@@ -257,7 +258,7 @@ class ReviewCommandTest(unittest.TestCase):
             [payload.get("code") for status, payload in results if status == 409],
             ["review_action_already_recorded"],
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_review_actions"
@@ -300,7 +301,7 @@ class ReviewCommandTest(unittest.TestCase):
         self.assertEqual(read_payload["data"]["target"]["type"], "review")
 
     def test_human_verdict_cannot_be_requested_again(self) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "UPDATE review_results SET verdict='HUMAN' WHERE review_id=?",
                 (FIX_REVIEW,),

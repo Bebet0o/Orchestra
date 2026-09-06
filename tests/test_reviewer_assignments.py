@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import unittest
 from pathlib import Path
@@ -69,7 +70,7 @@ class ReviewerAssignmentTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / "test.db"
-        self.connection = sqlite3.connect(self.path)
+        self.connection = sqlite_connect(self.path)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(BASE_SCHEMA)
         self.connection.executescript(MIGRATION.read_text(encoding="utf-8"))

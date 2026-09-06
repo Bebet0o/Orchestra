@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import unittest
 from contextlib import closing
@@ -24,7 +25,7 @@ MIGRATION = (
 
 class EventJournalUnitTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.connection = sqlite3.connect(":memory:", isolation_level=None)
+        self.connection = sqlite_connect(":memory:", isolation_level=None)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute(
             "CREATE TABLE schema_migrations ("
@@ -224,7 +225,7 @@ class EventJournalCommandIntegrationTest(unittest.TestCase):
                 csrf=csrf,
             )
             self.assertEqual(status, 202)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.row_factory = sqlite3.Row
             rows = list(
                 connection.execute(
@@ -276,7 +277,7 @@ class EventJournalCommandIntegrationTest(unittest.TestCase):
             )
             self.assertEqual(status, 202)
             operation_id = str(payload["data"]["id"])
-            with closing(sqlite3.connect(self.fixture.database)) as connection:
+            with closing(sqlite_connect(self.fixture.database)) as connection:
                 row = connection.execute(
                     """
                     SELECT event_type, aggregate_revision, causation_id,
@@ -303,7 +304,7 @@ class EventJournalCommandIntegrationTest(unittest.TestCase):
             csrf=csrf,
         )
         self.assertEqual(status, 404)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM controller_event_journal"

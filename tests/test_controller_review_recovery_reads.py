@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -185,7 +186,7 @@ class Fixture:
         self.session.write_text(TOKEN + "\n", encoding="utf-8")
         os.chmod(self.session, 0o600)
         self.database.parent.mkdir(parents=True)
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             connection.executescript(SCHEMA)
             now = "2026-07-18T10:40:53.548Z"
             older = "2026-07-18T10:30:53.548Z"
@@ -335,7 +336,7 @@ class Fixture:
         return status, headers_out, payload
 
     def update(self, sql: str, parameters: tuple[object, ...]) -> None:
-        with closing(sqlite3.connect(self.database)) as connection:
+        with closing(sqlite_connect(self.database)) as connection:
             connection.execute(sql, parameters)
             connection.commit()
 
@@ -577,7 +578,7 @@ class ReviewRecoveryReadTest(unittest.TestCase):
         self.assertEqual(payload["code"], "recovery_projection_invalid")
 
     def test_missing_review_table_maps_to_database_unavailable(self) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute("DROP TABLE integration_executions")
             connection.commit()
         status, _, payload = self.fixture.request("/api/v1/reviews")
@@ -585,7 +586,7 @@ class ReviewRecoveryReadTest(unittest.TestCase):
         self.assertEqual(payload["code"], "database_unavailable")
 
     def test_reads_do_not_modify_review_recovery_tables(self) -> None:
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             before = {
                 table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 for table in (
@@ -601,7 +602,7 @@ class ReviewRecoveryReadTest(unittest.TestCase):
             f"/api/v1/recoveries/{RECOVERY_ID}",
         ):
             self.assertEqual(self.fixture.request(path)[0], 200)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             after = {
                 table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 for table in before
@@ -709,7 +710,7 @@ class ReviewRecoveryReadTest(unittest.TestCase):
 
     def test_filtered_review_pagination_preserves_continuation(self) -> None:
         created = "2026-07-19T12:00:00.000Z"
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.executemany(
                 "INSERT INTO review_results VALUES(?,?,?,?,?,?)",
                 [
@@ -733,7 +734,7 @@ class ReviewRecoveryReadTest(unittest.TestCase):
 
     def test_filtered_recovery_pagination_preserves_continuation(self) -> None:
         created = "2026-07-19T12:00:00.000Z"
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.executemany(
                 "INSERT INTO recovery_executions VALUES(" + ",".join("?" for _ in range(16)) + ")",
                 [

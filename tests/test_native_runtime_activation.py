@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import tempfile
 import tomllib
@@ -123,7 +124,7 @@ class NativePlannerControlPlaneTest(unittest.TestCase):
         (self.root / "repo").symlink_to(ROOT, target_is_directory=True)
         self.database = self.root / "state/controller/orchestra.db"
         self.database.parent.mkdir(parents=True)
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
             now = "2026-09-04T00:00:00.000Z"
@@ -190,7 +191,7 @@ class NativePlannerControlPlaneTest(unittest.TestCase):
             self.planner.command_generate(self.arguments, provider=provider)
 
     def execution_snapshot(self) -> tuple[sqlite3.Row, list[sqlite3.Row]]:
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         self.addCleanup(connection.close)
         connection.row_factory = sqlite3.Row
         execution = connection.execute(
@@ -220,7 +221,7 @@ class NativePlannerControlPlaneTest(unittest.TestCase):
         self.assertEqual([event["event_kind"] for event in events], ["started"])
         self.assertEqual(events[0]["runtime_kind"], "native")
 
-        with sqlite3.connect(self.database) as restarted:
+        with sqlite_connect(self.database) as restarted:
             self.assertEqual(
                 restarted.execute(
                     "SELECT runtime_kind, exit_code FROM orchestrator_executions"
@@ -247,7 +248,7 @@ class NativePlannerControlPlaneTest(unittest.TestCase):
             self.run_planner(provider)
 
         self.assertEqual(provider.requests[0].model, "local/qwen-planner")
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.row_factory = sqlite3.Row
             execution = connection.execute(
                 "SELECT * FROM orchestrator_executions"

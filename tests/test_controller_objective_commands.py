@@ -5,6 +5,7 @@ import hmac
 import json
 import socket
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import threading
 import unittest
@@ -118,7 +119,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         plan_id = f"plan-{suffix}"
         task_id = f"task-{suffix}"
         run_id = f"run-{suffix}"
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "INSERT INTO orchestration_plans(plan_id,status) VALUES (?,?)",
                 (plan_id, plan_status),
@@ -188,7 +189,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         self.assertEqual(result.pause_status, 202)
         self.assertEqual(result.resume_status, 202)
         self.assertEqual(result.cancel_status, 202)
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             row = connection.execute(
                 "SELECT status, not_before FROM objective_queue "
                 "WHERE objective LIKE 'Orchestra Controller command probe%'"
@@ -256,7 +257,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         objective_id = operation["target"]["id"]
         self.assertEqual(operation["kind"], "objective.create")
         self.assertEqual(operation["state"], "succeeded")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             objective = connection.execute(
                 "SELECT status, source, objective FROM objective_queue WHERE objective_id=?",
                 (objective_id,),
@@ -295,7 +296,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             csrf=token,
         )
         self.assertEqual(first[2], second[2])
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT COUNT(*) FROM objective_queue"
@@ -335,7 +336,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         )
         self.assertEqual(status, 400)
         self.assertEqual(payload["code"], "unknown_project")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute("UPDATE projects SET enabled=0 WHERE project_id='alpha'")
             connection.commit()
         body["project_ids"] = ["alpha"]
@@ -387,7 +388,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             )
             self.assertEqual(status, 202)
             self.assertEqual(command_payload["data"]["kind"], f"objective.{command}")
-            with closing(sqlite3.connect(self.fixture.database)) as connection:
+            with closing(sqlite_connect(self.fixture.database)) as connection:
                 state = connection.execute(
                     "SELECT status FROM objective_queue WHERE objective_id=?",
                     (objective_id,),
@@ -462,7 +463,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             key="private-command-key-01",
             csrf=token,
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             values = "\n".join(
                 str(value)
                 for table in (
@@ -579,7 +580,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             key="resume-future-resume",
             csrf=token,
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             state, not_before = connection.execute(
                 "SELECT status, not_before FROM objective_queue WHERE objective_id=?",
                 (objective_id,),
@@ -590,7 +591,7 @@ class ObjectiveCommandTest(unittest.TestCase):
     def test_resume_completed_plan_converges_objective_to_completed(self) -> None:
         token, _, payload = self.create(key="create-completed-resume")
         objective_id = payload["data"]["target"]["id"]
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "INSERT INTO orchestration_plans(plan_id,status) "
                 "VALUES ('plan-completed-resume','COMPLETED')"
@@ -611,7 +612,7 @@ class ObjectiveCommandTest(unittest.TestCase):
 
         self.assertEqual(status, 202)
         self.assertEqual(operation["data"]["result"]["raw_state"], "COMPLETED")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT status FROM objective_queue WHERE objective_id=?",
@@ -623,7 +624,7 @@ class ObjectiveCommandTest(unittest.TestCase):
     def test_pause_cannot_override_pending_cancellation(self) -> None:
         token, _, payload = self.create(key="create-cancel-pending")
         objective_id = payload["data"]["target"]["id"]
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "UPDATE objective_queue SET status='CANCEL_REQUESTED' WHERE objective_id=?",
                 (objective_id,),
@@ -637,7 +638,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(problem["code"], "objective_cancel_pending")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             state = connection.execute(
                 "SELECT status FROM objective_queue WHERE objective_id=?",
                 (objective_id,),
@@ -647,7 +648,7 @@ class ObjectiveCommandTest(unittest.TestCase):
     def test_cancel_rejects_committing_integration(self) -> None:
         token, _, payload = self.create(key="create-committing-cancel")
         objective_id = payload["data"]["target"]["id"]
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "INSERT INTO orchestration_plans(plan_id,status) "
                 "VALUES ('plan-committing','RUNNING')"
@@ -711,7 +712,7 @@ class ObjectiveCommandTest(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(problem["code"], "objective_integration_committed")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT status FROM objective_queue WHERE objective_id=?",
@@ -740,7 +741,7 @@ class ObjectiveCommandTest(unittest.TestCase):
 
         self.assertEqual(status, 202)
         self.assertEqual(operation["data"]["result"]["raw_state"], "CANCEL_REQUESTED")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT objective.status, plan.status, task.status, run.status, "
@@ -769,7 +770,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             task_status="RUNNING",
             run_status="RECOVERING",
         )
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "INSERT INTO integration_executions(integration_id,run_id,decision,status) "
                 "VALUES ('integration-api-recovering-post-ponr',?,'APPROVE','FAILED')",
@@ -807,7 +808,7 @@ class ObjectiveCommandTest(unittest.TestCase):
 
         self.assertEqual(status, 202)
         self.assertEqual(operation["data"]["result"]["raw_state"], "CANCEL_REQUESTED")
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(
                 connection.execute(
                     "SELECT status FROM orchestration_plans WHERE plan_id=?",
@@ -820,7 +821,7 @@ class ObjectiveCommandTest(unittest.TestCase):
     def test_unknown_persisted_state_fails_closed(self) -> None:
         token, _, payload = self.create(key="create-invalid-state")
         objective_id = payload["data"]["target"]["id"]
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             connection.execute(
                 "UPDATE objective_queue SET status='CORRUPT' WHERE objective_id=?",
                 (objective_id,),
@@ -858,7 +859,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             b"hermesops-request-v1\0" + material,
             hashlib.sha256,
         ).hexdigest()
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             stored = connection.execute(
                 "SELECT request_hash FROM controller_idempotency "
                 "WHERE route='/api/v1/objectives'"
@@ -889,7 +890,7 @@ class ObjectiveCommandTest(unittest.TestCase):
             thread.join()
         self.assertEqual([item[0] for item in results], [202, 202])
         self.assertEqual(results[0][1], results[1][1])
-        with closing(sqlite3.connect(self.fixture.database)) as connection:
+        with closing(sqlite_connect(self.fixture.database)) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM objective_queue").fetchone()[0], 1)
 
 

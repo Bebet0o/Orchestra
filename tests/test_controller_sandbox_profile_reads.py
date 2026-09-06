@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import textwrap
 import threading
@@ -142,7 +143,7 @@ class SandboxProfileHTTPReadTest(unittest.TestCase):
     @staticmethod
     def _apply_migrations(database: Path) -> None:
         repository = Path(__file__).resolve().parents[1]
-        connection = sqlite3.connect(database)
+        connection = sqlite_connect(database)
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA journal_mode = WAL")
         for migration in sorted((repository / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
@@ -154,7 +155,7 @@ class SandboxProfileHTTPReadTest(unittest.TestCase):
 
     @staticmethod
     def _logical_hash(database: Path) -> str:
-        connection = sqlite3.connect(database)
+        connection = sqlite_connect(database)
         dump = "\n".join(connection.iterdump()).encode("utf-8")
         connection.close()
         return hashlib.sha256(dump).hexdigest()

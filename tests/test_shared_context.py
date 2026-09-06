@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import sys
 import tempfile
 import threading
@@ -66,7 +67,7 @@ class SharedContextTest(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.database = Path(temporary.name) / "context.db"
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
             for migration in sorted((ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -76,7 +77,7 @@ class SharedContextTest(unittest.TestCase):
         self.projector = ContextProjector(self.connect)
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database, timeout=10)
+        connection = sqlite_connect(self.database, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=10000")
@@ -702,7 +703,7 @@ class SharedContextTest(unittest.TestCase):
     def test_migration_28_preserves_historical_rows_without_fabricated_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "legacy.db"
-            with sqlite3.connect(database) as connection:
+            with sqlite_connect(database) as connection:
                 connection.execute("PRAGMA foreign_keys=ON")
                 migrations = sorted(
                     (ROOT / "migrations").glob("[0-9][0-9][0-9]_*.sql")

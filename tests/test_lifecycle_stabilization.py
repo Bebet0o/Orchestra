@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import subprocess
 import sys
 import tempfile
@@ -66,13 +67,13 @@ class LifecycleStabilizationRegressionTest(unittest.TestCase):
         self.temporary.cleanup()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def _apply_migrations(self) -> None:
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_connect(self.database) as connection:
             for migration in sorted((REPOSITORY / "migrations").glob("[0-9][0-9][0-9]_*.sql")):
                 connection.executescript(migration.read_text(encoding="utf-8"))
 

@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import threading
 import unittest
@@ -28,7 +29,7 @@ class Fixture:
         self.session.write_text(TOKEN + "\n", encoding="ascii")
         os.chmod(self.session, 0o600)
         self.db.parent.mkdir(parents=True)
-        with closing(sqlite3.connect(self.db)) as connection:
+        with closing(sqlite_connect(self.db)) as connection:
             connection.executescript(
                 """
                 CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -438,7 +439,7 @@ class ObjectiveReadTest(unittest.TestCase):
 
     def test_malformed_scope_fails_closed_without_leaking_raw_value(self) -> None:
         objective = "objective-" + "0" * 32
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 "UPDATE objective_queue SET project_scope_json = ? WHERE objective_id = ?",
                 ('{"secret":"value"}', objective),
@@ -454,7 +455,7 @@ class ObjectiveReadTest(unittest.TestCase):
         objective = "objective-" + "2" * 32
         first = "objective-attempt-" + "c" * 32
         second = "objective-attempt-" + "a" * 32
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 INSERT INTO objective_attempts VALUES(
@@ -494,7 +495,7 @@ class ObjectiveReadTest(unittest.TestCase):
     def test_state_filters_match_projected_transition_and_plan_state(self) -> None:
         pause_requested = "objective-" + "5" * 32
         queued = "objective-" + "0" * 32
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 "INSERT INTO orchestration_plans VALUES(?,?)",
                 ("plan-blocked-transition", "BLOCKED"),
@@ -593,7 +594,7 @@ class ObjectiveReadTest(unittest.TestCase):
         before_etag = headers["etag"]
         before_heartbeat = before["data"]["updated_at"]
 
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 UPDATE objective_queue
@@ -621,7 +622,7 @@ class ObjectiveReadTest(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         operation_etag = headers["etag"]
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 UPDATE objective_attempts
@@ -643,7 +644,7 @@ class ObjectiveReadTest(unittest.TestCase):
 
     def test_project_filter_survives_unrelated_malformed_scope(self) -> None:
         malformed = "objective-" + "0" * 32
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 UPDATE objective_queue
@@ -665,7 +666,7 @@ class ObjectiveReadTest(unittest.TestCase):
         )
 
     def test_invalid_legacy_identifiers_fail_closed(self) -> None:
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 INSERT INTO objective_queue VALUES(
@@ -703,7 +704,7 @@ class ObjectiveReadTest(unittest.TestCase):
         self.assertNotIn("legacy/private-objective", json.dumps(payload))
 
         operation = "objective-attempt-" + "c" * 32
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute(
                 """
                 UPDATE objective_attempts
@@ -721,7 +722,7 @@ class ObjectiveReadTest(unittest.TestCase):
         self.assertNotIn("private-objective-target", json.dumps(payload))
 
     def test_missing_objective_table_maps_to_database_unavailable(self) -> None:
-        with closing(sqlite3.connect(self.fixture.db)) as connection:
+        with closing(sqlite_connect(self.fixture.db)) as connection:
             connection.execute("DROP TABLE objective_events")
             connection.commit()
         status, _, payload = self.fixture.request(
@@ -732,7 +733,7 @@ class ObjectiveReadTest(unittest.TestCase):
 
     def test_reads_do_not_modify_objective_tables(self) -> None:
         def counts():
-            with closing(sqlite3.connect(self.fixture.db)) as connection:
+            with closing(sqlite_connect(self.fixture.db)) as connection:
                 return tuple(
                     connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                     for table in ("objective_queue", "objective_attempts", "objective_events")

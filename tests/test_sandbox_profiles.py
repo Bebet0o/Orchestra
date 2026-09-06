@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+from tests.sqlite_test_support import sqlite_connect
 import tempfile
 import textwrap
 import unittest
@@ -76,7 +77,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
         self.database = root / "controller.db"
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         migrations = Path(__file__).resolve().parents[1] / "migrations"
         connection.execute("PRAGMA foreign_keys=ON")
         for migration in sorted(migrations.glob("[0-9][0-9][0-9]_*.sql")):
@@ -91,7 +92,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
 
     def test_schema_and_readiness(self) -> None:
         self.assertEqual(self.store.readiness(), (True, "ready"))
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         self.assertEqual(
             connection.execute("PRAGMA user_version").fetchone()[0],
             31,
@@ -162,9 +163,8 @@ class SandboxProfileStoreTest(unittest.TestCase):
                     context.exception.code,
                     "sandbox_source_secret_detected",
                 )
-        dump = "\n".join(
-            sqlite3.connect(self.database).iterdump()
-        )
+        with sqlite_connect(self.database) as connection:
+            dump = "\n".join(connection.iterdump())
         for sentinel in sentinels:
             self.assertNotIn(sentinel, dump)
         self.assertNotIn("python-project", dump)
@@ -196,7 +196,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
 
     def test_revisions_are_immutable(self) -> None:
         result = self.store.import_source(textwrap.dedent(VALID).encode())
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         revision_id = connection.execute(
             "SELECT current_revision_id FROM sandbox_profiles"
         ).fetchone()[0]
@@ -221,7 +221,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
     def test_profile_identity_and_revision_sequence_fail_closed(self) -> None:
         result = self.store.import_source(textwrap.dedent(VALID).encode())
         sandbox_id = result.profile["id"]
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.execute("PRAGMA foreign_keys = ON")
         with self.assertRaises(sqlite3.IntegrityError):
             connection.execute(
@@ -287,7 +287,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
 
     def test_duplicate_persisted_json_members_fail_closed(self) -> None:
         result = self.store.import_source(textwrap.dedent(VALID).encode())
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.execute(
             "UPDATE sandbox_profiles "
             "SET labels_json=?, resource_revision=resource_revision+1, "
@@ -307,7 +307,7 @@ class SandboxProfileStoreTest(unittest.TestCase):
     def test_corrupt_public_metadata_fails_closed_without_echo(self) -> None:
         result = self.store.import_source(textwrap.dedent(VALID).encode())
         sentinel = "password=do-not-display-this-value"
-        connection = sqlite3.connect(self.database)
+        connection = sqlite_connect(self.database)
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
             "UPDATE sandbox_profiles "
