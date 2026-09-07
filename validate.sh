@@ -56,6 +56,7 @@ static_validation() {
         .github/scripts/release_manifest_promotion.py \
         specs/release-manifest-v1.schema.json \
         config/releases/v0.2.0.manifest.template.json \
+        config/releases/v0.2.0.manifest.json \
         tests/test-distribution-contract.sh \
         tests/test-install-platform-support.sh \
         tests/test-preflight-minimal-host.sh \

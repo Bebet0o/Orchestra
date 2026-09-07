@@ -8,8 +8,8 @@ UNINSTALLER="${REPO}/uninstall.sh"
 UPDATER="${REPO}/update.sh"
 
 bash -n "$INSTALLER" "$UPDATER" "$UNINSTALLER"
-grep -Fq 'COMPOSE_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra.yaml"' "$INSTALLER"
-grep -Fq 'MANIFEST_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra-release-manifest.json"' "$INSTALLER"
+grep -Fq 'COMPOSE_URL="https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/compose/orchestra.yaml"' "$INSTALLER"
+grep -Fq 'MANIFEST_URL="https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/config/releases/v0.2.0.manifest.json"' "$INSTALLER"
 grep -Fq '.publication_state == "accepted"' "$INSTALLER"
 grep -Fq '.version == "v0.2.0"' "$INSTALLER"
 grep -Fq 'ORCHESTRA_WORKER_IMAGE=%s' "$INSTALLER"
@@ -25,5 +25,8 @@ for forbidden in 'git clone' 'git checkout' 'rsync' 'pip install' 'docker compos
     ! grep -Fq "$forbidden" "$INSTALLER"
 done
 
-echo "Orchestra installer uses release assets without Git/source/build: PASS"
+manifest="$REPO/config/releases/v0.2.0.manifest.json"
+[[ -f "$manifest" ]]
+printf '%s  %s\n' '54e1ea7258511c0bcc947645628c709fdd25a00d9221267ede1e945717ce74ad' "$manifest" | sha256sum --check --status
+echo "Orchestra installer uses immutable tagged release authority without Git/source/build: PASS"
 echo "Orchestra no-auth installation contract: PASS"

@@ -73,12 +73,10 @@ Implemented foundations include:
 - a trusted two-phase worker publication process and an accepted default worker
   environment identified by an immutable OCI digest.
 
-The v0.2.0 Native Multi-Agent Execution line is implementation-complete
-through milestone 0.2-H and has passed the repository release-validation gate.
-Publication still requires the trusted application/runtime image acceptance,
-release-manifest promotion, fresh-host install/upgrade smoke tests, and GitHub
-tag/release asset publication. Those are release gates, not additional product
-milestones. Foundation-only or planned work includes the v0.3 Durable Project
+Orchestra v0.2.0 Native Multi-Agent Execution is released. Milestones 0.2-A
+through 0.2-H are closed, and the release passed trusted application/runtime
+image acceptance, release-manifest promotion, fresh-host installation, a real
+v0.1.0 upgrade smoke test, Git tagging, and GitHub Release publication. Foundation-only or planned work includes the v0.3 Durable Project
 Intelligence scope: automatic context intelligence, artifact management,
 structured project memory, and improved scheduling. Existing components should
 not be read as a claim that those v0.3 capabilities are already complete.
@@ -149,8 +147,9 @@ References:
 
 The public installer uses Docker Compose on Debian 12+ or Ubuntu 22.04+ on amd64.
 It creates the host data directory at `/opt/orchestra/data`, downloads the
-canonical Compose and accepted release-manifest assets, and starts the exact
-immutable application and runtime image references recorded by that manifest.
+canonical Compose and accepted release manifest from the immutable `v0.2.0`
+source tag, and starts the exact immutable application and runtime image
+references recorded by that manifest.
 It does not clone this repository, build an application image, or install
 Python on the host. No application systemd units, user DBus session, or
 lingering are used.
@@ -183,14 +182,14 @@ reuses that installer against the existing `/opt/orchestra/data`:
 
 ```bash
 curl --fail --location --output update.sh \
-  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/update.sh
+  https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/update.sh
 chmod 0755 update.sh
 ./update.sh
 ```
 
-The release images and assets do not exist until the separate trusted
-publication gate completes. During development, explicit image and Compose
-overrides are available. Authentication may be deferred, but objectives that
+The release image digests and accepted manifest do not exist until the
+separate trusted publication gate completes. During development, explicit
+image and Compose overrides are available. Authentication may be deferred, but objectives that
 need Hermes Agent remain unavailable until provider authentication is
 configured. See [public installation](docs/PUBLIC_INSTALLATION.md), the
 [appliance architecture](docs/distribution/APPLIANCE.md), and the

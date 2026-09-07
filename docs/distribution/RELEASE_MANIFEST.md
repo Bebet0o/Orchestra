@@ -1,12 +1,14 @@
 # Release manifest authority
 
-Orchestra release assets use `specs/release-manifest-v1.schema.json`. The
+Orchestra release manifests use `specs/release-manifest-v1.schema.json`. The
 manifest binds one source revision and one `linux/amd64` platform to the exact
 application, private-runtime, and accepted worker OCI digests.
 
 `config/releases/v0.2.0.manifest.template.json` intentionally contains `null`
-application and runtime digests. It is not installation authority. The trusted
-candidate publisher creates a provisional manifest only after both validated
+application and runtime digests. It is not installation authority. The final
+accepted authority is tracked as `config/releases/v0.2.0.manifest.json` so the
+standalone release installer can resolve it from the immutable source tag. The
+trusted candidate publisher creates a provisional manifest only after both validated
 local images have been pushed and bound to registry RepoDigests. The separate
 acceptance workflow creates an accepted manifest only after one fresh,
 credential-free DIND daemon pulls and validates both immutable references.

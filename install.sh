@@ -5,9 +5,9 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 INSTALL_ROOT="/opt/orchestra"
 DATA_ROOT="${INSTALL_ROOT}/data"
-COMPOSE_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra.yaml"
+COMPOSE_URL="https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/compose/orchestra.yaml"
 COMPOSE_SOURCE=""
-MANIFEST_URL="https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/orchestra-release-manifest.json"
+MANIFEST_URL="https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/config/releases/v0.2.0.manifest.json"
 MANIFEST_SOURCE=""
 ORCHESTRA_IMAGE=""
 ORCHESTRA_RUNTIME_IMAGE=""

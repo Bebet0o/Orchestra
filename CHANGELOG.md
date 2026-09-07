@@ -10,7 +10,7 @@ Changes after the v0.2.0 release candidate remain under [Unreleased].
 
 No unreleased changes are currently recorded.
 
-## [0.2.0] - 2026-09-06
+## [0.2.0] - 2026-09-07
 
 ### Added
 
@@ -48,6 +48,9 @@ No unreleased changes are currently recorded.
   terminology and routes use Blueprint and `/blueprints`.
 - Public Compose defaults, installer URLs, release-manifest validation, and
   trusted manifest-promotion tooling target `v0.2.0`.
+- The GitHub Release exposes only `install.sh` as a manual asset; the installer
+  resolves the canonical Compose definition and accepted manifest from the
+  immutable source tag, while `update.sh` remains available from that tag.
 
 ### Fixed
 

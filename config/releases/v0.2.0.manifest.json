@@ -1,0 +1,29 @@
+{
+  "anonymous_verification": {
+    "digest_pull": "PASS",
+    "fresh_daemon": "YES",
+    "image_set_complete": "YES"
+  },
+  "application": {
+    "digest": "sha256:a7a7519af449fb459f7caaadd76d31454f32456b29b325f7a9098483869bd4ca",
+    "image_reference": "ghcr.io/bebet0o/orchestra@sha256:a7a7519af449fb459f7caaadd76d31454f32456b29b325f7a9098483869bd4ca",
+    "repository": "ghcr.io/bebet0o/orchestra"
+  },
+  "candidate_ref": "refs/heads/main",
+  "platform": "linux/amd64",
+  "publication_state": "accepted",
+  "runtime": {
+    "digest": "sha256:1b2992c3d1eec2e8aae5dbd897a8111a7db79a9dc0cf9e531612c7cfd15ee548",
+    "image_reference": "ghcr.io/bebet0o/orchestra-runtime@sha256:1b2992c3d1eec2e8aae5dbd897a8111a7db79a9dc0cf9e531612c7cfd15ee548",
+    "repository": "ghcr.io/bebet0o/orchestra-runtime"
+  },
+  "schema_version": 1,
+  "source_revision": "d7120633b9f81860f6f8a23d33dd0eee40593790",
+  "version": "v0.2.0",
+  "worker": {
+    "digest": "sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49",
+    "image_reference": "ghcr.io/bebet0o/orchestra-worker@sha256:3d23329275ebe922b88a180aaf4ceeb48e2007ad591232179e30736083669f49",
+    "repository": "ghcr.io/bebet0o/orchestra-worker"
+  },
+  "workflow_run": "34060568682"
+}

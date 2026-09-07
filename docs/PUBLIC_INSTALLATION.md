@@ -1,8 +1,8 @@
 # Public installation
 
 Orchestra v0.2.0 targets Debian 12+ and Ubuntu 22.04+ on amd64 with Docker
-Engine and Docker Compose. The release remains gated until the official images
-and release assets have passed trusted publication and fresh-host smoke tests.
+Engine and Docker Compose. The release has passed trusted image publication,
+accepted-manifest promotion, fresh-host installation, and upgrade smoke tests.
 
 ## Runtime contract
 
@@ -48,8 +48,9 @@ chmod 0755 install.sh
 ./install.sh
 ```
 
-It checks or installs Docker and Compose, downloads the same canonical Compose
-asset and the accepted `orchestra-release-manifest.json`, creates
+It checks or installs Docker and Compose, downloads the canonical Compose
+definition and accepted release manifest from the immutable `v0.2.0` source
+tag, creates
 `/opt/orchestra/data`, starts the same two images, and waits for the application
 health check. It does not require Git, a source checkout, a local application
 build, or host Python.
@@ -87,7 +88,7 @@ database when present.
 
 ```bash
 curl --fail --location --output update.sh \
-  https://github.com/Bebet0o/Orchestra/releases/download/v0.2.0/update.sh
+  https://raw.githubusercontent.com/Bebet0o/Orchestra/v0.2.0/update.sh
 chmod 0755 update.sh
 ./update.sh
 ```
