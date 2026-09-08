@@ -57,7 +57,7 @@ rejected before output is replaced.
 
 ## Routes
 
-The product shell serves `/dashboard`, `/projects`, `/blueprints`, `/objectives`, `/executions`,
+The product shell serves `/dashboard`, `/projects`, `/memory`, `/blueprints`, `/objectives`, `/executions`,
 `/reviews`, `/events`, and `/administration`. The service endpoints remain
 `GET|HEAD /health` and `GET|HEAD /version`. Controller gateway paths are
 separately allowlisted and never use generic filesystem or URL routing.
@@ -79,7 +79,7 @@ python3 scripts/orchestra-console-probe.py   --base-url http://127.0.0.1:8788
 
 ## Current scope and non-goals
 
-The Console implements the bounded dashboard, project lifecycle, Blueprint
+The Console implements the bounded dashboard, project lifecycle, Structured Project Memory / Decisions view, Blueprint
 lifecycle, objective lifecycle, multi-agent plan/task/attempt views, Reviewer /
 Judge / Recovery projections, the replayable Controller event stream, and bounded administration diagnostics from Controller health/status projections. The
 WebSocket connection is same-origin through one exact `/api/v1/events` relay;

@@ -11,6 +11,7 @@ ROUTES = (
     "/",
     "/dashboard",
     "/projects",
+    "/memory",
     "/blueprints",
     "/objectives",
     "/executions",

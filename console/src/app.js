@@ -16,6 +16,11 @@ const routes = Object.freeze({
     title: "Projets",
     message: "Connectez-vous pour créer, importer et administrer les projets via le Controller.",
   },
+  "/memory": {
+    key: "memory",
+    title: "Mémoire & décisions",
+    message: "Connectez-vous pour lire et administrer la mémoire structurée durable du projet.",
+  },
   "/blueprints": {
     key: "blueprints",
     title: "Blueprints",
@@ -82,6 +87,38 @@ const projectUpdateForm = document.getElementById("project-update-form");
 const projectUpdateSubmit = document.getElementById("project-update-submit");
 const projectCommandReason = document.getElementById("project-command-reason");
 const projectCommandButtons = document.getElementById("project-command-buttons");
+const memoryPanel = document.getElementById("memory-panel");
+const memoryRefresh = document.getElementById("memory-refresh");
+const memoryStatus = document.getElementById("memory-status");
+const memoryCoverage = document.getElementById("memory-coverage");
+const memoryProjectSelect = document.getElementById("memory-project-select");
+const memoryKindFilter = document.getElementById("memory-kind-filter");
+const memoryStateFilter = document.getElementById("memory-state-filter");
+const memoryCount = document.getElementById("memory-count");
+const memoryList = document.getElementById("memory-list");
+const memoryNew = document.getElementById("memory-new");
+const memoryEditorTitle = document.getElementById("memory-editor-title");
+const memoryEditorMode = document.getElementById("memory-editor-mode");
+const memoryEditorForm = document.getElementById("memory-editor-form");
+const memoryEditorKind = document.getElementById("memory-editor-kind");
+const memoryEditorScope = document.getElementById("memory-editor-scope");
+const memoryEditorObjective = document.getElementById("memory-editor-objective");
+const memoryEditorKey = document.getElementById("memory-editor-key");
+const memoryEditorRecordTitle = document.getElementById("memory-editor-record-title");
+const memoryEditorContent = document.getElementById("memory-editor-content");
+const memorySave = document.getElementById("memory-save");
+const memoryDetailCard = document.getElementById("memory-detail-card");
+const memoryDetailTitle = document.getElementById("memory-detail-title");
+const memoryDetailState = document.getElementById("memory-detail-state");
+const memoryDetailMeta = document.getElementById("memory-detail-meta");
+const memoryDetailContent = document.getElementById("memory-detail-content");
+const memoryProvenanceList = document.getElementById("memory-provenance-list");
+const memoryLinkList = document.getElementById("memory-link-list");
+const memoryCommandReason = document.getElementById("memory-command-reason");
+const memoryCommandButtons = document.getElementById("memory-command-buttons");
+const memoryRevisionCount = document.getElementById("memory-revision-count");
+const memoryRevisions = document.getElementById("memory-revisions");
+const memoryHistoryPreview = document.getElementById("memory-history-preview");
 const blueprintPanel = document.getElementById("blueprint-panel");
 const blueprintRefresh = document.getElementById("blueprint-refresh");
 const blueprintStatus = document.getElementById("blueprint-status");
@@ -199,6 +236,15 @@ let projectsLoaded = false;
 let selectedProjectId = "";
 let selectedProjectEtag = "";
 let selectedProject = null;
+let memoryLoading = false;
+let memoryGeneration = 0;
+let memoryLoaded = false;
+let memoryItems = [];
+let memoryCollectionTruncated = false;
+let selectedMemoryProjectId = "";
+let selectedMemoryId = "";
+let selectedMemoryEtag = "";
+let selectedMemory = null;
 let blueprintLoading = false;
 let blueprintGeneration = 0;
 let blueprintsLoaded = false;
@@ -260,14 +306,15 @@ function safeState(item) {
   return safeText(item && item.state, "inconnu", 40).toLowerCase();
 }
 
-function safeId(item, fallback) {
-  return safeText(item && item.id, fallback, 96);
+function safeId(item, fallback, maximum = 96) {
+  return safeText(item && item.id, fallback, maximum);
 }
 
 function displayFunctionalPanel() {
   const key = currentRoute().key;
   const dashboardRoute = key === "dashboard";
   const projectsRoute = key === "projects";
+  const memoryRoute = key === "memory";
   const blueprintsRoute = key === "blueprints";
   const objectivesRoute = key === "objectives";
   const executionsRoute = key === "executions";
@@ -276,13 +323,14 @@ function displayFunctionalPanel() {
   const administrationRoute = key === "administration";
   dashboardPanel.hidden = !dashboardRoute || !authenticated;
   projectPanel.hidden = !projectsRoute || !authenticated;
+  memoryPanel.hidden = !memoryRoute || !authenticated;
   blueprintPanel.hidden = !blueprintsRoute || !authenticated;
   objectivePanel.hidden = !objectivesRoute || !authenticated;
   executionPanel.hidden = !executionsRoute || !authenticated;
   reviewPanel.hidden = !reviewsRoute || !authenticated;
   eventPanel.hidden = !eventsRoute || !authenticated;
   administrationPanel.hidden = !administrationRoute || !authenticated;
-  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute || administrationRoute);
+  routePanel.hidden = authenticated && (dashboardRoute || projectsRoute || memoryRoute || blueprintsRoute || objectivesRoute || executionsRoute || reviewsRoute || eventsRoute || administrationRoute);
 }
 
 function render(pathname, focusMain = false) {
@@ -306,6 +354,9 @@ function render(pathname, focusMain = false) {
   }
   if (route.key === "projects" && authenticated && !projectsLoaded) {
     void refreshProjects();
+  }
+  if (route.key === "memory" && authenticated && !memoryLoaded) {
+    void refreshMemories();
   }
   if (route.key === "blueprints" && authenticated && !blueprintsLoaded) {
     void refreshBlueprints();
@@ -346,6 +397,7 @@ function showSignedOut(message = "Authentification requise pour accéder aux don
   dashboardLoaded = false;
   dashboardRefresh.disabled = false;
   clearProjectState();
+  clearMemoryState();
   clearBlueprintState();
   clearObjectiveState();
   clearExecutionState();
@@ -384,6 +436,9 @@ function showAuthenticated(session, capabilities) {
   if (currentRoute().key === "projects") {
     void refreshProjects();
   }
+  if (currentRoute().key === "memory") {
+    void refreshMemories();
+  }
   if (currentRoute().key === "blueprints") {
     void refreshBlueprints();
   }
@@ -411,6 +466,7 @@ function showUnavailable(error) {
   dashboardLoaded = false;
   dashboardRefresh.disabled = false;
   clearProjectState();
+  clearMemoryState();
   clearBlueprintState();
   clearObjectiveState();
   clearExecutionState();
@@ -852,6 +908,369 @@ async function submitProjectCreate() {
     document.getElementById("project-create-branch").value = "main";
     document.getElementById("project-create-policy").value = "default";
     projectCreateUrlLabel.hidden = true;
+  }
+}
+
+function clearMemoryState() {
+  memoryGeneration += 1;
+  memoryLoading = false;
+  memoryLoaded = false;
+  memoryItems = [];
+  memoryCollectionTruncated = false;
+  selectedMemoryProjectId = "";
+  selectedMemoryId = "";
+  selectedMemoryEtag = "";
+  selectedMemory = null;
+  memoryRefresh.disabled = false;
+  memoryProjectSelect.replaceChildren();
+  const option = document.createElement("option");
+  option.value = "";
+  option.textContent = "Sélectionnez un projet";
+  memoryProjectSelect.append(option);
+  memoryKindFilter.value = "";
+  memoryStateFilter.value = "";
+  memoryCount.textContent = "0";
+  memoryList.replaceChildren();
+  memoryRevisions.replaceChildren();
+  memoryRevisionCount.textContent = "0";
+  memoryDetailCard.hidden = true;
+  memoryHistoryPreview.textContent = "Sélectionnez une révision historique.";
+  beginNewMemory(false);
+}
+
+function setMemoryBusy(busy) {
+  memoryLoading = busy;
+  const terminal = selectedMemory && safeState(selectedMemory) !== "active";
+  for (const control of [memoryRefresh, memoryProjectSelect, memoryKindFilter, memoryStateFilter, memoryNew, memoryEditorKind, memoryEditorScope, memoryEditorKey, memoryEditorRecordTitle, memoryEditorContent]) {
+    control.disabled = busy;
+  }
+  memoryEditorObjective.disabled = busy || Boolean(selectedMemoryId) || memoryEditorScope.value !== "OBJECTIVE";
+  memorySave.disabled = busy || Boolean(terminal);
+  memoryCommandReason.disabled = busy;
+  memoryCommandButtons.querySelectorAll("button[data-memory-command]").forEach((button) => { button.disabled = busy; });
+  if (!busy && selectedMemoryId) {
+    memoryEditorScope.disabled = true;
+    memoryEditorObjective.disabled = true;
+  }
+}
+
+function renderMemoryProjects(collection) {
+  const previous = selectedMemoryProjectId;
+  memoryProjectSelect.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Sélectionnez un projet";
+  memoryProjectSelect.append(placeholder);
+  for (const project of collection.items) {
+    const identifier = safeId(project, "");
+    if (!identifier) continue;
+    const option = document.createElement("option");
+    option.value = identifier;
+    option.textContent = safeText(project.name, identifier, 120);
+    memoryProjectSelect.append(option);
+  }
+  if (previous && collection.items.some((item) => safeId(item, "") === previous)) {
+    memoryProjectSelect.value = previous;
+  } else if (collection.items.length > 0) {
+    memoryProjectSelect.value = safeId(collection.items[0], "");
+  }
+  selectedMemoryProjectId = memoryProjectSelect.value;
+}
+
+function renderMemoryList() {
+  memoryList.replaceChildren();
+  const kind = memoryKindFilter.value;
+  const state = memoryStateFilter.value;
+  const filtered = memoryItems.filter((item) => (!kind || item.kind === kind) && (!state || item.state === state));
+  memoryCount.textContent = String(filtered.length);
+  memoryCoverage.textContent = `Première page bornée : ${memoryItems.length} enregistrement(s) reçu(s)${memoryCollectionTruncated ? " · d’autres résultats existent côté Controller." : "."}`;
+  if (filtered.length === 0) {
+    appendEmpty(memoryList, kind === "DECISION" ? "Aucune décision dans cette page." : "Aucune mémoire pour ces filtres.");
+    return;
+  }
+  for (const memory of filtered) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    const badge = document.createElement("span");
+    const identifier = safeId(memory, "", 200);
+    button.type = "button";
+    button.dataset.memoryId = identifier;
+    button.className = "project-list-button";
+    if (identifier === selectedMemoryId) button.setAttribute("aria-current", "true");
+    heading.textContent = safeText(memory.title, safeText(memory.memory_key, identifier, 120), 160);
+    detail.textContent = `${safeText(memory.kind, "NOTE", 24)} · ${safeText(memory.scope, "PROJECT", 24)} · révision ${Number.isInteger(memory.revision) ? memory.revision : "?"}`;
+    badge.className = "state-badge";
+    badge.dataset.state = safeState(memory);
+    badge.textContent = safeState(memory);
+    button.append(heading, detail, badge);
+    item.append(button);
+    memoryList.append(item);
+  }
+}
+
+function renderMemoryReferences(list, values, emptyMessage) {
+  list.replaceChildren();
+  const references = Array.isArray(values) ? values.slice(0, 64) : [];
+  if (references.length === 0) {
+    appendEmpty(list, emptyMessage);
+    return;
+  }
+  for (const reference of references) {
+    const item = document.createElement("li");
+    const kind = document.createElement("span");
+    const identifier = document.createElement("strong");
+    kind.className = "operational-type";
+    kind.textContent = safeText(reference && reference.kind, "référence", 40);
+    identifier.textContent = safeText(reference && reference.id, "identifiant indisponible", 256);
+    item.append(kind, identifier);
+    list.append(item);
+  }
+}
+
+function renderMemoryRevisions(collection) {
+  memoryRevisions.replaceChildren();
+  memoryRevisionCount.textContent = String(collection.items.length);
+  if (collection.items.length === 0) {
+    appendEmpty(memoryRevisions, "Aucune révision disponible.");
+    return;
+  }
+  for (const revision of collection.items) {
+    const number = Number(revision.revision);
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    const heading = document.createElement("strong");
+    const detail = document.createElement("span");
+    button.type = "button";
+    button.dataset.memoryRevision = String(number);
+    button.className = "project-list-button";
+    heading.textContent = `Révision ${number}`;
+    detail.textContent = `${safeText(revision.kind, "NOTE", 24)} · ${safeText(revision.authority, "autorité inconnue", 40)} · ${safeText(revision.revision_created_at, "date inconnue", 48)}`;
+    button.append(heading, detail);
+    item.append(button);
+    memoryRevisions.append(item);
+  }
+}
+
+function renderMemoryDetail(memory, etag, revisions) {
+  selectedMemory = memory;
+  selectedMemoryId = safeId(memory, "", 200);
+  selectedMemoryEtag = typeof etag === "string" ? etag : "";
+  memoryDetailCard.hidden = false;
+  const state = safeState(memory);
+  memoryDetailTitle.textContent = safeText(memory.title, safeText(memory.memory_key, selectedMemoryId, 160), 180);
+  memoryDetailState.dataset.state = state;
+  memoryDetailState.textContent = state;
+  memoryDetailMeta.textContent = [
+    selectedMemoryId,
+    safeText(memory.kind, "NOTE", 24),
+    safeText(memory.authority, "autorité inconnue", 48),
+    `${safeText(memory.scope, "PROJECT", 24)}${memory.objective_id ? ` ${safeText(memory.objective_id, "", 200)}` : ""}`,
+    `révision ${Number.isInteger(memory.revision) ? memory.revision : "?"}`,
+    `ressource ${Number.isInteger(memory.resource_revision) ? memory.resource_revision : "?"}`,
+  ].join(" · ");
+  memoryDetailContent.textContent = typeof memory.content === "string" ? memory.content : "Contenu indisponible ou expurgé.";
+  renderMemoryReferences(memoryProvenanceList, memory.provenance, "Aucune provenance exposée.");
+  renderMemoryReferences(memoryLinkList, memory.links, "Aucun lien associé.");
+  renderMemoryRevisions(revisions);
+  memoryEditorTitle.textContent = memoryDetailTitle.textContent;
+  memoryEditorMode.textContent = "édition";
+  memoryEditorMode.dataset.state = state;
+  memoryEditorKind.value = safeText(memory.kind, "NOTE", 24);
+  memoryEditorScope.value = safeText(memory.scope, "PROJECT", 24);
+  memoryEditorObjective.value = typeof memory.objective_id === "string" ? memory.objective_id : "";
+  memoryEditorKey.value = typeof memory.memory_key === "string" ? memory.memory_key : "";
+  memoryEditorRecordTitle.value = typeof memory.title === "string" ? memory.title : "";
+  memoryEditorContent.value = typeof memory.content === "string" ? memory.content : "";
+  memoryEditorScope.disabled = true;
+  memoryEditorObjective.disabled = true;
+  memorySave.textContent = "Créer une nouvelle révision";
+  memoryCommandReason.value = "";
+  memoryCommandButtons.querySelectorAll("button[data-memory-command]").forEach((button) => {
+    const command = button.dataset.memoryCommand;
+    button.hidden = state === "redacted" || (command === "retract" && state !== "active");
+  });
+  renderMemoryList();
+}
+
+function beginNewMemory(clearStatus = true) {
+  selectedMemoryId = "";
+  selectedMemoryEtag = "";
+  selectedMemory = null;
+  memoryEditorForm.reset();
+  memoryEditorKind.value = "NOTE";
+  memoryEditorScope.value = "PROJECT";
+  memoryEditorObjective.value = "";
+  memoryEditorObjective.disabled = true;
+  memoryEditorScope.disabled = false;
+  memoryEditorTitle.textContent = "Nouvelle mémoire";
+  memoryEditorMode.textContent = "nouveau";
+  memoryEditorMode.dataset.state = "draft";
+  memorySave.textContent = "Créer la mémoire";
+  memorySave.disabled = false;
+  memoryDetailCard.hidden = true;
+  memoryRevisions.replaceChildren();
+  memoryRevisionCount.textContent = "0";
+  memoryHistoryPreview.textContent = "Sélectionnez une révision historique.";
+  renderMemoryList();
+  if (clearStatus) memoryStatus.textContent = "Nouvel enregistrement prêt. L’autorité et la provenance seront dérivées par le Controller.";
+}
+
+async function loadMemory(identifier) {
+  if (!authenticated || memoryLoading) return;
+  const generation = memoryGeneration;
+  setMemoryBusy(true);
+  memoryStatus.textContent = "Lecture de la mémoire et de son historique…";
+  try {
+    const [result, revisions] = await Promise.all([client.memory(identifier), client.memoryRevisions(identifier)]);
+    if (!authenticated || generation !== memoryGeneration) return;
+    renderMemoryDetail(result.memory, result.etag, revisions);
+    memoryStatus.textContent = "Mémoire canonique chargée depuis le Controller.";
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter la mémoire projet.");
+      return;
+    }
+    memoryStatus.textContent = projectErrorMessage(error, "Lecture de la mémoire impossible.");
+  } finally {
+    if (authenticated && generation === memoryGeneration) setMemoryBusy(false);
+  }
+}
+
+async function refreshMemories() {
+  if (!authenticated || memoryLoading) return;
+  const generation = ++memoryGeneration;
+  let reloadId = "";
+  setMemoryBusy(true);
+  memoryStatus.textContent = "Lecture des projets et du registre mémoire…";
+  try {
+    const projects = await client.projects();
+    if (generation !== memoryGeneration || !authenticated) return;
+    renderMemoryProjects(projects);
+    if (!selectedMemoryProjectId) {
+      memoryItems = [];
+      memoryCollectionTruncated = false;
+      renderMemoryList();
+      memoryLoaded = true;
+      memoryStatus.textContent = "Aucun projet disponible pour la mémoire.";
+      return;
+    }
+    const collection = await client.memories(selectedMemoryProjectId);
+    if (generation !== memoryGeneration || !authenticated) return;
+    memoryItems = collection.items.slice();
+    memoryCollectionTruncated = collection.truncated;
+    renderMemoryList();
+    memoryLoaded = true;
+    memoryStatus.textContent = `${memoryItems.length} mémoire(s) reçue(s) pour ${selectedMemoryProjectId}.`;
+    if (selectedMemoryId && memoryItems.some((item) => safeId(item, "", 200) === selectedMemoryId)) reloadId = selectedMemoryId;
+    else if (selectedMemoryId) beginNewMemory(false);
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous pour consulter la mémoire projet.");
+      return;
+    }
+    memoryStatus.textContent = projectErrorMessage(error, "Registre mémoire indisponible.");
+  } finally {
+    if (generation === memoryGeneration) setMemoryBusy(false);
+  }
+  if (reloadId && generation === memoryGeneration && authenticated) await loadMemory(reloadId);
+}
+
+async function saveMemoryEditor() {
+  if (!authenticated || memoryLoading || !selectedMemoryProjectId) {
+    memoryStatus.textContent = "Sélectionnez un projet avant d’enregistrer une mémoire.";
+    return;
+  }
+  const base = {
+    kind: memoryEditorKind.value,
+    memory_key: memoryEditorKey.value.trim() || null,
+    title: memoryEditorRecordTitle.value.trim() || null,
+    content: memoryEditorContent.value,
+  };
+  const editing = Boolean(selectedMemoryId);
+  const targetBefore = selectedMemoryId;
+  setMemoryBusy(true);
+  memoryStatus.textContent = editing ? "Création d’une nouvelle révision…" : "Création de la mémoire…";
+  try {
+    let accepted;
+    if (editing) {
+      accepted = await client.reviseMemory(selectedMemoryId, selectedMemoryEtag, base);
+    } else {
+      const scope = memoryEditorScope.value;
+      accepted = await client.createMemory(selectedMemoryProjectId, {
+        scope,
+        objective_id: scope === "OBJECTIVE" ? (memoryEditorObjective.value.trim() || null) : null,
+        ...base,
+      });
+    }
+    const memoryId = safeText(accepted && accepted.result && accepted.result.memory_id, targetBefore, 200);
+    memoryStatus.textContent = `${editing ? "Révision" : "Création"} acceptée · ${safeText(accepted && accepted.id, "opération Controller", 96)}.`;
+    selectedMemoryId = "";
+    selectedMemoryEtag = "";
+    selectedMemory = null;
+    setMemoryBusy(false);
+    memoryLoaded = false;
+    await refreshMemories();
+    if (memoryId) await loadMemory(memoryId);
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous avant toute écriture mémoire.");
+      return;
+    }
+    memoryStatus.textContent = projectErrorMessage(error, "Écriture mémoire impossible.");
+  } finally {
+    setMemoryBusy(false);
+  }
+}
+
+async function runMemoryCommand(command) {
+  if (!authenticated || memoryLoading || !selectedMemoryId || !selectedMemoryEtag) return;
+  if (command === "redact") {
+    const accepted = globalThis.confirm("Expurger cette mémoire vide le contenu canonique de toutes ses révisions. Cette action n’efface pas forcément les anciennes pages SQLite/WAL, backups, snapshots ou sources legacy. Continuer ?");
+    if (!accepted) {
+      memoryStatus.textContent = "Expurgation annulée avant envoi au Controller.";
+      return;
+    }
+  }
+  setMemoryBusy(true);
+  try {
+    const result = await client.commandMemory(selectedMemoryId, command, selectedMemoryEtag, memoryCommandReason.value.trim() || null);
+    memoryStatus.textContent = `${command === "redact" ? "Expurgation" : "Retrait"} acceptée · ${safeText(result && result.id, "opération Controller", 96)}.`;
+    const id = selectedMemoryId;
+    selectedMemoryId = "";
+    selectedMemoryEtag = "";
+    selectedMemory = null;
+    setMemoryBusy(false);
+    memoryLoaded = false;
+    await refreshMemories();
+    await loadMemory(id);
+  } catch (error) {
+    if (error instanceof ControllerClientError && error.status === 401) {
+      showSignedOut("Session expirée. Reconnectez-vous avant toute commande mémoire.");
+      return;
+    }
+    memoryStatus.textContent = projectErrorMessage(error, "Commande mémoire impossible.");
+  } finally {
+    setMemoryBusy(false);
+  }
+}
+
+async function loadHistoricalMemoryRevision(revision) {
+  if (!authenticated || !selectedMemoryId || memoryLoading) return;
+  const generation = memoryGeneration;
+  setMemoryBusy(true);
+  try {
+    const historical = await client.memoryRevision(selectedMemoryId, revision);
+    if (!authenticated || generation !== memoryGeneration) return;
+    const content = typeof historical.content === "string" ? historical.content : "[contenu indisponible ou expurgé]";
+    memoryHistoryPreview.textContent = `Révision ${revision} · ${safeText(historical.kind, "NOTE", 24)} · ${safeText(historical.authority, "autorité inconnue", 48)}\n\n${content}`;
+  } catch (error) {
+    if (authenticated && generation === memoryGeneration) {
+      memoryHistoryPreview.textContent = projectErrorMessage(error, "Révision historique indisponible.");
+    }
+  } finally {
+    if (authenticated && generation === memoryGeneration) setMemoryBusy(false);
   }
 }
 
@@ -2536,6 +2955,46 @@ projectCommandButtons.addEventListener("click", (event) => {
     labels[command] || "Commande projet",
     () => client.commandProject(selectedProjectId, command, selectedProjectEtag, reason),
   );
+});
+
+memoryRefresh.addEventListener("click", () => {
+  memoryLoaded = false;
+  void refreshMemories();
+});
+
+memoryProjectSelect.addEventListener("change", () => {
+  selectedMemoryProjectId = memoryProjectSelect.value;
+  selectedMemoryId = "";
+  selectedMemoryEtag = "";
+  selectedMemory = null;
+  memoryLoaded = false;
+  void refreshMemories();
+});
+
+memoryKindFilter.addEventListener("change", renderMemoryList);
+memoryStateFilter.addEventListener("change", renderMemoryList);
+memoryNew.addEventListener("click", () => beginNewMemory());
+memoryEditorScope.addEventListener("change", () => {
+  const objective = memoryEditorScope.value === "OBJECTIVE";
+  memoryEditorObjective.disabled = !objective;
+  memoryEditorObjective.required = objective;
+  if (!objective) memoryEditorObjective.value = "";
+});
+memoryEditorForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveMemoryEditor();
+});
+memoryList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-memory-id]");
+  if (button) void loadMemory(button.dataset.memoryId || "");
+});
+memoryRevisions.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-memory-revision]");
+  if (button) void loadHistoricalMemoryRevision(Number(button.dataset.memoryRevision));
+});
+memoryCommandButtons.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-memory-command]");
+  if (button) void runMemoryCommand(button.dataset.memoryCommand || "");
 });
 
 blueprintRefresh.addEventListener("click", () => {
