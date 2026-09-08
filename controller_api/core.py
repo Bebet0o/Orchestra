@@ -458,6 +458,8 @@ class ControllerService:
         from .review_commands import ReviewCommandStore
         from .project_commands import ProjectCommandStore
         from .blueprint_lifecycle import BlueprintLifecycleStore
+        from .project_memory import ProjectMemoryStore
+        from .memory_commands import MemoryCommandStore
         self.objectives = ObjectiveReadStore(settings)
         self.executions = ExecutionReadStore(settings)
         self.review_recovery = ReviewRecoveryReadStore(settings)
@@ -467,6 +469,8 @@ class ControllerService:
         self.project_commands = ProjectCommandStore(settings)
         self.blueprints = BlueprintLifecycleStore(settings, self.sandbox_profiles)
         self.review_commands = ReviewCommandStore(settings)
+        self.project_memory = ProjectMemoryStore(settings)
+        self.memory_commands = MemoryCommandStore(settings, self.project_memory)
         from .browser_auth import BrowserAuthStore
         self.browser_auth = BrowserAuthStore(settings)
 
@@ -619,6 +623,12 @@ class ControllerService:
         blueprint_ready, blueprint_reason = self.blueprints.readiness()
         if not blueprint_ready:
             reasons.append(blueprint_reason)
+        memory_ready, memory_reason = self.project_memory.readiness()
+        if not memory_ready:
+            reasons.append(memory_reason)
+        memory_command_ready, memory_command_reason = self.memory_commands.readiness()
+        if not memory_command_ready:
+            reasons.append(memory_command_reason)
         try:
             self.session_token()
         except ControllerError as error:
@@ -677,12 +687,20 @@ class ControllerService:
                 "blueprint_revision_comparison": True,
                 "blueprint_runtime_projection": True,
                 "blueprint_builds": False,
+                "structured_project_memory_reads": True,
+                "structured_project_memory_writes": True,
+                "structured_project_memory_revision_history": True,
+                "structured_project_memory_redaction": True,
+                "structured_project_memory_commands": ["create", "revise", "retract", "redact"],
                 "console": False,
             },
         }
 
 
     def get_operation(self, operation_id: str) -> dict[str, Any]:
+        memory_operation = self.memory_commands.get_operation(operation_id)
+        if memory_operation is not None:
+            return memory_operation
         blueprint_operation = self.blueprints.get_operation(operation_id)
         if blueprint_operation is not None:
             return blueprint_operation

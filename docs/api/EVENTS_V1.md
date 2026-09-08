@@ -216,6 +216,7 @@ tasks
 runs
 reviews
 recovery
+memories
 sandboxes
 backups
 notifications
@@ -316,6 +317,18 @@ recovery.decision_applied
 recovery.blocked_human
 recovery.closed
 ```
+
+### Structured project memory
+
+```text
+memory.created
+memory.attested
+memory.revised
+memory.retracted
+memory.redacted
+```
+
+Memory events contain only bounded identifiers, lifecycle state, kind, revision metadata, and presence flags. They never contain memory content, title, key, payload hashes, idempotency values, or command reasons.
 
 ### Sandboxes
 

@@ -557,6 +557,26 @@ metadata only. Secret-like material is rejected before persistence and is never
 echoed in diagnostics. Build, image activation, secret binding, revision
 deletion, and generic sandbox commands remain unavailable in milestone 2T.
 
+### Structured project memory
+
+Milestone 0.3-A exposes canonical durable project memory through the Controller:
+
+```text
+GET  /projects/{project_id}/memories
+POST /projects/{project_id}/memories
+GET  /memories/{memory_id}
+PATCH /memories/{memory_id}
+GET  /memories/{memory_id}/revisions
+GET  /memories/{memory_id}/revisions/{revision}
+POST /memories/{memory_id}/commands/{command}
+```
+
+Supported commands are `retract` and `redact`. There is no public delete, reactivation, or in-place historical edit. `PATCH` creates an immutable successor revision and requires `If-Match`; lifecycle commands also require `If-Match`.
+
+Public creation and revision bodies accept memory payload fields and bounded resource links only. They do not accept authority or provenance. Browser writes are derived by the Controller as `OPERATOR_DECLARED` with operator provenance, preventing clients from self-promoting to control-plane, reviewer, or legacy authority. Exact duplicate content may add an operator attestation; semantic similarity is never merged in milestone 0.3-A.
+
+Collection responses omit memory content. Authenticated detail and historical revision reads expose eligible content, provenance, and links. Redaction scrubs canonical project-memory payload text across all revisions; hashes and audit metadata remain historical. This is a logical canonical scrub, not forensic erasure: legacy source rows, pre-existing `shared_context_entries` and context snapshots, SQLite/WAL pages, and backups may retain prior bytes. Exposed credentials must therefore be rotated or revoked. Audit, idempotency, operation, and event records never persist raw memory text. Normal canonical-memory writes do not alter `shared_context_entries` or existing context snapshots; runtime context selection remains unchanged until 0.3-B.
+
 ### Operations
 
 ```text
