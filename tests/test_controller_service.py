@@ -449,6 +449,33 @@ class ControllerProbeTest(unittest.TestCase):
                         / migration_name
                     ).read_text(encoding="utf-8")
                 )
+            # Synthetic probe fixture: real 032/033 migrations are covered by
+            # dedicated migration tests. Here we only model the current
+            # Controller readiness surface required by /ready.
+            migration_connection.executescript(
+                """
+                CREATE TABLE project_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    current_revision_id TEXT NOT NULL
+                );
+                CREATE TABLE project_memory_payloads (payload_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_revisions (revision_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_provenance (provenance_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_revision_links (link_id TEXT PRIMARY KEY);
+                CREATE TABLE controller_memory_operations (operation_id TEXT PRIMARY KEY);
+                CREATE TABLE controller_memory_idempotency (
+                    session_fingerprint TEXT NOT NULL,
+                    key_hash TEXT NOT NULL,
+                    PRIMARY KEY(session_fingerprint, key_hash)
+                );
+                CREATE TABLE controller_memory_command_audit (audit_id TEXT PRIMARY KEY);
+                INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+                VALUES (32, '2026-09-08T00:00:00.000Z');
+                INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+                VALUES (33, '2026-09-08T00:00:00.000Z');
+                PRAGMA user_version = 33;
+                """
+            )
             migration_connection.commit()
         finally:
             migration_connection.close()

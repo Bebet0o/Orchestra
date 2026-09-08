@@ -232,7 +232,7 @@ default_branch = "main"
                         aggregate_type IN (
                             'system', 'project', 'objective', 'task', 'run', 'review',
                             'recovery', 'sandbox', 'sandbox_build', 'backup',
-                            'notification', 'confirmation', 'audit'
+                            'notification', 'confirmation', 'audit', 'memory'
                         )
                     ),
                     aggregate_id TEXT NOT NULL CHECK (
@@ -497,6 +497,33 @@ default_branch = "main"
                     Path(__file__).resolve().parents[1]
                     / "migrations/024_blueprint_apiversion.sql"
                 ).read_text(encoding="utf-8")
+            )
+            # Synthetic API fixture: dedicated migration tests cover the real
+            # 032/033 SQL. Model the current readiness surface here so tests
+            # exercise the current Controller without duplicating migration logic.
+            migration_connection.executescript(
+                """
+                CREATE TABLE project_memories (
+                    memory_id TEXT PRIMARY KEY,
+                    current_revision_id TEXT NOT NULL
+                );
+                CREATE TABLE project_memory_payloads (payload_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_revisions (revision_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_provenance (provenance_id TEXT PRIMARY KEY);
+                CREATE TABLE project_memory_revision_links (link_id TEXT PRIMARY KEY);
+                CREATE TABLE controller_memory_operations (operation_id TEXT PRIMARY KEY);
+                CREATE TABLE controller_memory_idempotency (
+                    session_fingerprint TEXT NOT NULL,
+                    key_hash TEXT NOT NULL,
+                    PRIMARY KEY(session_fingerprint, key_hash)
+                );
+                CREATE TABLE controller_memory_command_audit (audit_id TEXT PRIMARY KEY);
+                INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+                VALUES (32, '2026-09-08T00:00:00.000Z');
+                INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+                VALUES (33, '2026-09-08T00:00:00.000Z');
+                PRAGMA user_version = 33;
+                """
             )
             migration_connection.commit()
 

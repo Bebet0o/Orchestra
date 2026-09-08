@@ -34,6 +34,7 @@ ALLOWED_PLAN_QUERY_FIELDS = {"cursor", "limit", "project_id", "state"}
 ALLOWED_ASSIGNMENT_QUERY_FIELDS = {"cursor", "limit", "project_id", "state", "run_id"}
 ALLOWED_SANDBOX_QUERY_FIELDS = {"cursor", "limit", "state"}
 ALLOWED_BLUEPRINT_LIST_QUERY_FIELDS = {"cursor", "limit", "state"}
+ALLOWED_MEMORY_QUERY_FIELDS = {"cursor", "limit", "state", "kind", "scope", "objective_id"}
 ALLOWED_LOG_QUERY_FIELDS = {"after_sequence", "limit"}
 
 
@@ -664,6 +665,58 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                     next_cursor=next_cursor,
                 ),
             }, {}
+
+        memory_project_prefix = "/api/v1/projects/"
+        memory_project_suffix = "/memories"
+        if path.startswith(memory_project_prefix) and path.endswith(memory_project_suffix):
+            project_id = unquote(path[len(memory_project_prefix):-len(memory_project_suffix)])
+            if not project_id or "/" in project_id:
+                raise ControllerError(404, "route_not_found", "Route not found")
+            unknown = set(query) - ALLOWED_MEMORY_QUERY_FIELDS
+            if unknown:
+                raise ControllerError(400, "unknown_query_parameter", "Unknown query parameter", "Only cursor, limit, state, kind, scope and objective_id are supported.")
+            raw_limit = query.get("limit", ["50"]); raw_cursor = query.get("cursor", []); raw_state = query.get("state", []); raw_kind = query.get("kind", []); raw_scope = query.get("scope", []); raw_objective = query.get("objective_id", [])
+            if any(len(values) > 1 for values in (raw_limit, raw_cursor, raw_state, raw_kind, raw_scope, raw_objective)) or len(raw_limit) != 1:
+                raise ControllerError(400, "invalid_query", "Invalid query string")
+            try:
+                limit = int(raw_limit[0])
+            except ValueError as error:
+                raise ControllerError(400, "invalid_limit", "Invalid pagination limit") from error
+            items, next_cursor = service.memory_commands.list_memories(project_id=project_id, limit=limit, cursor=raw_cursor[0] if raw_cursor else None, state=raw_state[0] if raw_state else None, kind=raw_kind[0] if raw_kind else None, scope=raw_scope[0] if raw_scope else None, objective_id=raw_objective[0] if raw_objective else None, cursor_secret=session_token)
+            return 200, {"data": items, "meta": service.meta(request_id, next_cursor=next_cursor)}, {}
+
+        memory_prefix = "/api/v1/memories/"
+        if path.startswith(memory_prefix):
+            parts = [unquote(part) for part in path[len(memory_prefix):].split("/")]
+            if not parts or not parts[0] or any(not part for part in parts):
+                raise ControllerError(404, "route_not_found", "Route not found")
+            memory_id = parts[0]
+            if len(parts) == 1:
+                if query:
+                    raise ControllerError(400, "unknown_query_parameter", "Unknown query parameter")
+                memory = service.memory_commands.get_memory(memory_id)
+                revision = int(memory["resource_revision"])
+                return 200, {"data": memory, "meta": service.meta(request_id, resource_revision=revision)}, {"ETag": f'"{revision}"'}
+            if len(parts) == 2 and parts[1] == "revisions":
+                unknown = set(query) - {"limit"}; raw_limit = query.get("limit", ["50"])
+                if unknown or len(raw_limit) != 1:
+                    raise ControllerError(400, "invalid_query", "Invalid query string")
+                try:
+                    limit = int(raw_limit[0])
+                except ValueError as error:
+                    raise ControllerError(400, "invalid_limit", "Invalid pagination limit") from error
+                revisions = service.memory_commands.list_revisions(memory_id, limit=limit)
+                return 200, {"data": revisions, "meta": service.meta(request_id)}, {}
+            if len(parts) == 3 and parts[1] == "revisions":
+                if query:
+                    raise ControllerError(400, "unknown_query_parameter", "Unknown query parameter")
+                try:
+                    revision_number = int(parts[2])
+                except ValueError as error:
+                    raise ControllerError(404, "project_memory_revision_not_found", "Project memory revision not found") from error
+                revision = service.memory_commands.get_revision(memory_id, revision_number)
+                return 200, {"data": revision, "meta": service.meta(request_id)}, {}
+            raise ControllerError(404, "route_not_found", "Route not found")
 
         if path == "/api/v1/plans":
             unknown = set(query) - ALLOWED_PLAN_QUERY_FIELDS
@@ -1416,8 +1469,26 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             )
             return status, payload, {}
 
-        project_prefix = "/api/v1/projects/"
+        memory_project_prefix = "/api/v1/projects/"
+        memory_project_suffix = "/memories"
+        if path.startswith(memory_project_prefix) and path.endswith(memory_project_suffix):
+            project_id = unquote(path[len(memory_project_prefix):-len(memory_project_suffix)])
+            if not project_id or "/" in project_id:
+                raise ControllerError(404, "route_not_found", "Route not found")
+            status, payload = service.memory_commands.create_memory(session_token=session_token, idempotency_key=key, route=path, project_id=project_id, body=body, meta_factory=lambda revision: service.meta(request_id, resource_revision=revision))
+            return status, payload, {}
+
+        memory_prefix = "/api/v1/memories/"
         marker = "/commands/"
+        if path.startswith(memory_prefix) and marker in path[len(memory_prefix):]:
+            memory_part, command = path[len(memory_prefix):].split(marker, 1)
+            memory_id = unquote(memory_part); command = unquote(command)
+            if not memory_id or "/" in memory_id or not command or "/" in command:
+                raise ControllerError(404, "route_not_found", "Route not found")
+            status, payload = service.memory_commands.command_memory(session_token=session_token, idempotency_key=key, route=path, memory_id=memory_id, command=command, if_match=self._single_header("If-Match"), body=body, meta_factory=lambda revision: service.meta(request_id, resource_revision=revision))
+            return status, payload, {}
+
+        project_prefix = "/api/v1/projects/"
         if path.startswith(project_prefix) and marker in path[len(project_prefix):]:
             project_part, command = path[len(project_prefix):].split(marker, 1)
             project_id = unquote(project_part)
@@ -1522,6 +1593,15 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                 path.startswith("/api/v1/reviews/")
                 and "/commands/" in path[len("/api/v1/reviews/"):]
             )
+            is_memory_create = (
+                path.startswith("/api/v1/projects/")
+                and path.endswith("/memories")
+                and "/" not in path[len("/api/v1/projects/"):-len("/memories")]
+            )
+            is_memory_command = (
+                path.startswith("/api/v1/memories/")
+                and "/commands/" in path[len("/api/v1/memories/"):]
+            )
             if (
                 path not in {
                     "/api/v1/auth/login",
@@ -1535,6 +1615,8 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
                 and not is_project_command
                 and not is_objective_command
                 and not is_review_command
+                and not is_memory_create
+                and not is_memory_command
             ):
                 self._method_not_allowed()
                 return
@@ -1580,6 +1662,14 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
         key = service.commands.validate_idempotency_key(
             self._single_header("Idempotency-Key")
         )
+
+        memory_prefix = "/api/v1/memories/"
+        if path.startswith(memory_prefix):
+            memory_id = unquote(path[len(memory_prefix):])
+            if not memory_id or "/" in memory_id:
+                raise ControllerError(404, "route_not_found", "Route not found")
+            status, payload = service.memory_commands.revise_memory(session_token=session_token, idempotency_key=key, route=path, memory_id=memory_id, if_match=self._single_header("If-Match"), body=body, meta_factory=lambda revision: service.meta(request_id, resource_revision=revision))
+            return status, payload, {}
 
         project_prefix = "/api/v1/projects/"
         if path.startswith(project_prefix):
@@ -1628,7 +1718,7 @@ class ControllerRequestHandler(BaseHTTPRequestHandler):
             self._validate_request_target()
             parsed = urlsplit(self.path)
             path = parsed.path
-            prefixes = ("/api/v1/projects/", "/api/v1/blueprints/")
+            prefixes = ("/api/v1/projects/", "/api/v1/blueprints/", "/api/v1/memories/")
             matched = next((prefix for prefix in prefixes if path.startswith(prefix)), None)
             if matched is None or "/" in path[len(matched):]:
                 self._method_not_allowed()

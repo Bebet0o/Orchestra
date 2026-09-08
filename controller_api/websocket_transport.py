@@ -46,6 +46,7 @@ TOPIC_AGGREGATES: dict[str, frozenset[str]] = {
     "notifications": frozenset({"notification"}),
     "confirmations": frozenset({"confirmation"}),
     "audit": frozenset({"audit"}),
+    "memories": frozenset({"memory"}),
 }
 SUPPORTED_TOPICS = frozenset(TOPIC_AGGREGATES) | {"all"}
 ALL_AGGREGATE_TYPES = frozenset().union(*TOPIC_AGGREGATES.values())

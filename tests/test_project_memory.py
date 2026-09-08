@@ -84,12 +84,12 @@ class ProjectMemoryStoreTest(unittest.TestCase):
     def test_schema_and_readiness(self) -> None:
         self.assertEqual(self.store.readiness(), (True, "ready"))
         with sqlite_connect(self.database) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 32)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 33)
             self.assertEqual(
                 connection.execute(
                     "SELECT version FROM schema_migrations ORDER BY version"
                 ).fetchall(),
-                [(version,) for version in range(1, 33)],
+                [(version,) for version in range(1, 34)],
             )
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
             self.assertEqual(connection.execute("PRAGMA quick_check").fetchone()[0], "ok")

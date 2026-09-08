@@ -765,7 +765,7 @@ class SharedContextTest(unittest.TestCase):
                 )
                 connection.commit()
                 connection.executescript(migrations[-1].read_text(encoding="utf-8"))
-                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 32)
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 33)
                 self.assertEqual(
                     connection.execute(
                         "SELECT context_snapshot_id FROM orchestration_attempts "

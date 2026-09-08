@@ -33,6 +33,7 @@ AGGREGATE_TYPES = {
     "notification",
     "confirmation",
     "audit",
+    "memory",
 }
 MAX_EVENT_DATA_BYTES = 16_384
 MAX_EVENT_STRING_LENGTH = 4_096

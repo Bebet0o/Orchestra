@@ -117,8 +117,8 @@ class BlueprintLifecycleTest(unittest.TestCase):
     def test_schema_readiness_and_immutable_audit(self) -> None:
         self.assertEqual(self.fixture.store.readiness(), (True, "ready"))
         with sqlite_connect(self.fixture.database) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 32)
-            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 32)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 33)
+            self.assertEqual(connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0], 33)
         _, payload = self.fixture.create()
         operation_id = payload["data"]["id"]
         with sqlite_connect(self.fixture.database) as connection:
