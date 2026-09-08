@@ -17,6 +17,7 @@ from typing import Any
 
 from .core import ControllerError, Settings
 from .blueprint import MAX_SOURCE_BYTES, BlueprintReport, validate_source
+from .persistence_secrets import contains_credential_like
 
 
 SANDBOX_ID_PATTERN = re.compile(r"^sandbox-[0-9a-f]{32}$")
@@ -35,27 +36,6 @@ TIMESTAMP_PATTERN = re.compile(
 )
 PROFILE_STATES = {"draft", "ready", "active", "inactive", "archived"}
 MAX_LIST_LIMIT = 200
-
-_HIGH_CONFIDENCE_SECRET_PATTERNS = (
-    re.compile(rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
-    re.compile(rb"\$\{"),
-    re.compile(rb"(?i)https?://[^/\s:@]+:[^/\s@]+@"),
-    re.compile(
-        rb"(?i)\b(?:token|password|secret|api[_-]?key)"
-        rb"\s*[:=]\s*(?!false\b|null\b|none\b)[^\s#]+"
-    ),
-    re.compile(rb"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"),
-    re.compile(rb"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{20,}"),
-    re.compile(rb"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{20,}"),
-    re.compile(rb"(?<![A-Za-z0-9])xox[baprs]-[A-Za-z0-9-]{20,}"),
-    re.compile(rb"(?<![A-Z0-9])AKIA[A-Z0-9]{16}(?![A-Z0-9])"),
-    re.compile(
-        rb"(?<![A-Za-z0-9_-])"
-        rb"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
-        rb"(?![A-Za-z0-9_-])"
-    ),
-)
-
 
 @dataclass(frozen=True)
 class ImportResult:
@@ -215,7 +195,10 @@ class SandboxProfileStore:
 
     @staticmethod
     def _ensure_persistence_eligible(source: bytes) -> None:
-        if any(pattern.search(source) for pattern in _HIGH_CONFIDENCE_SECRET_PATTERNS):
+        if contains_credential_like(
+            source,
+            reject_template_expansion=True,
+        ):
             raise ControllerError(
                 400,
                 "sandbox_source_secret_detected",
@@ -283,7 +266,10 @@ class SandboxProfileStore:
         if not allow_newline and ("\n" in value or "\r" in value):
             raise ValueError("unsafe public text")
         raw = value.encode("utf-8")
-        if any(pattern.search(raw) for pattern in _HIGH_CONFIDENCE_SECRET_PATTERNS):
+        if contains_credential_like(
+            raw,
+            reject_template_expansion=True,
+        ):
             raise ValueError("private public text")
         return value
 
