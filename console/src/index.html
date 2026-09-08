@@ -23,6 +23,7 @@
       <nav id="primary-navigation">
         <a href="/dashboard" data-route="dashboard">Tableau de bord</a>
         <a href="/projects" data-route="projects">Projets</a>
+        <a href="/memory" data-route="memory">Mémoire &amp; décisions</a>
         <a href="/blueprints" data-route="blueprints">Blueprints</a>
         <a href="/objectives" data-route="objectives">Objectifs</a>
         <a href="/executions" data-route="executions">Exécutions</a>
@@ -234,6 +235,101 @@
                 <button type="button" data-project-command="archive" class="danger-button">Archiver</button>
               </div>
             </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="memory-panel" class="memory-panel" aria-labelledby="memory-title" hidden>
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">0.3-A · Structured Project Memory</p>
+            <h2 id="memory-title">Mémoire &amp; décisions</h2>
+            <p id="memory-status" class="dashboard-status" aria-live="polite">Aucune lecture lancée.</p>
+          </div>
+          <button id="memory-refresh" class="secondary-button" type="button">Actualiser</button>
+        </div>
+
+        <div class="memory-grid">
+          <section class="dashboard-card" aria-labelledby="memory-list-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">Autorité durable</p><h3 id="memory-list-title">Registre mémoire</h3></div>
+              <span id="memory-count" class="count-badge">0</span>
+            </div>
+            <label class="memory-control">Projet
+              <select id="memory-project-select"><option value="">Sélectionnez un projet</option></select>
+            </label>
+            <div class="memory-filter-grid">
+              <label>Type
+                <select id="memory-kind-filter">
+                  <option value="">Tous</option><option value="DECISION">Décisions</option><option value="FACT">Faits</option><option value="CONSTRAINT">Contraintes</option><option value="ASSUMPTION">Hypothèses</option><option value="FINDING">Constats</option><option value="RESULT">Résultats</option><option value="REFERENCE">Références</option><option value="NOTE">Notes</option>
+                </select>
+              </label>
+              <label>État
+                <select id="memory-state-filter"><option value="">Tous</option><option value="ACTIVE">Actif</option><option value="RETRACTED">Retiré</option><option value="REDACTED">Expurgé</option></select>
+              </label>
+            </div>
+            <ul id="memory-list" class="project-admin-list"></ul>
+            <p id="memory-coverage" class="coverage-note">Première page bornée du registre Controller.</p>
+          </section>
+
+          <section class="dashboard-card memory-editor-card" aria-labelledby="memory-editor-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">Intention opérateur</p><h3 id="memory-editor-title">Nouvelle mémoire</h3></div>
+              <span id="memory-editor-mode" class="state-badge" data-state="draft">nouveau</span>
+            </div>
+            <button id="memory-new" class="secondary-button" type="button">Nouvel enregistrement</button>
+            <form id="memory-editor-form" class="memory-form" autocomplete="off">
+              <label>Type
+                <select id="memory-editor-kind" required><option value="FACT">Fait</option><option value="CONSTRAINT">Contrainte</option><option value="DECISION">Décision</option><option value="ASSUMPTION">Hypothèse</option><option value="FINDING">Constat</option><option value="RESULT">Résultat</option><option value="REFERENCE">Référence</option><option value="NOTE" selected>Note</option></select>
+              </label>
+              <label>Portée
+                <select id="memory-editor-scope"><option value="PROJECT">Projet</option><option value="OBJECTIVE">Objectif</option></select>
+              </label>
+              <label class="memory-form-wide">Objectif facultatif
+                <input id="memory-editor-objective" maxlength="200" disabled>
+              </label>
+              <label>Clé facultative
+                <input id="memory-editor-key" maxlength="512">
+              </label>
+              <label>Titre facultatif
+                <input id="memory-editor-record-title" maxlength="1024">
+              </label>
+              <label class="memory-form-wide">Contenu
+                <textarea id="memory-editor-content" maxlength="16384" rows="10" required></textarea>
+              </label>
+              <button id="memory-save" class="memory-form-wide" type="submit">Créer la mémoire</button>
+            </form>
+          </section>
+
+          <section id="memory-detail-card" class="dashboard-card memory-detail-card" aria-labelledby="memory-detail-title" hidden>
+            <div class="section-heading">
+              <div><p class="eyebrow">Ressource sélectionnée</p><h3 id="memory-detail-title">Détail mémoire</h3></div>
+              <span id="memory-detail-state" class="state-badge">inconnu</span>
+            </div>
+            <p id="memory-detail-meta" class="project-meta"></p>
+            <pre id="memory-detail-content" class="memory-content">Aucun contenu chargé.</pre>
+            <div class="memory-reference-grid">
+              <div><p class="eyebrow">Provenance</p><ul id="memory-provenance-list" class="operational-list compact-list"></ul></div>
+              <div><p class="eyebrow">Liens</p><ul id="memory-link-list" class="operational-list compact-list"></ul></div>
+            </div>
+            <div class="project-command-box">
+              <label>Motif facultatif
+                <textarea id="memory-command-reason" maxlength="1000" rows="3"></textarea>
+              </label>
+              <div id="memory-command-buttons" class="project-command-buttons">
+                <button type="button" data-memory-command="retract">Retirer</button>
+                <button type="button" data-memory-command="redact" class="danger-button">Expurger</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="dashboard-card memory-history-card" aria-labelledby="memory-history-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">Historique immuable</p><h3 id="memory-history-title">Révisions</h3></div>
+              <span id="memory-revision-count" class="count-badge">0</span>
+            </div>
+            <ul id="memory-revisions" class="project-admin-list"></ul>
+            <pre id="memory-history-preview" class="memory-content">Sélectionnez une révision historique.</pre>
           </section>
         </div>
       </section>

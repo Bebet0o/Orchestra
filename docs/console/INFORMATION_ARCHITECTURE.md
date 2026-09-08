@@ -32,6 +32,7 @@ Primary navigation:
 ```text
 Dashboard
 Projects
+Memory & Decisions
 Objectives
 Runs
 Reviews
@@ -548,35 +549,15 @@ Broader permissions require explicit confirmation.
 
 ## Memory and decisions
 
-Project memory is presented as structured records, not one unbounded prompt.
+Status: **implemented in 0.3-A**. Project memory is presented as structured records, not one unbounded prompt.
 
-Categories:
+The Console exposes the canonical kinds `FACT`, `CONSTRAINT`, `DECISION`, `ASSUMPTION`, `FINDING`, `RESULT`, `REFERENCE`, and `NOTE`, with a dedicated Decisions filter. It shows current state, scope, authority, immutable revision history, provenance and bounded resource links. Collection cards omit content; content is loaded only from an authenticated detail or historical revision read.
 
-```text
-Architecture decisions
-Project conventions
-Known bugs and traps
-Assumptions
-Rejected approaches
-Operational procedures
-Technical debt
-Glossary
-Milestone summaries
-```
+Operator writes never choose authority or provenance. The Controller derives public Console writes as `OPERATOR_DECLARED` with operator provenance. The UI can create or revise active records, retract them, and perform the terminal security redaction. Delete and reactivation are intentionally absent.
 
-Each record shows:
+Redaction is shown as a canonical logical scrub, not forensic erasure. The Console warns that legacy source rows, SQLite/WAL pages, backups and existing context snapshots can retain older bytes.
 
-- source;
-- author/agent;
-- confidence;
-- project scope;
-- creation and update time;
-- related objective/task/run;
-- superseded state;
-- audit history.
-
-The Console must distinguish operator-authored truth from model-generated
-hypotheses.
+The Console visibly distinguishes authority values such as operator-declared, control-plane-observed, review-accepted, agent-proposed and legacy-unverified. It does not present `AGENT_PROPOSED` material as operator truth. Runtime context selection is unchanged until 0.3-B.
 
 ## Backups
 

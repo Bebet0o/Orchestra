@@ -1,6 +1,6 @@
 # Console Browser Session and Controller Client
 
-Status: **implemented and extended through Orchestra 0.2-H**
+Status: **implemented and extended through Orchestra 0.3-A**
 
 ## Boundary
 
@@ -20,8 +20,7 @@ Milestone 2R additionally exposes six exact query-free GET collections for the
 operational dashboard: projects, objectives, reviews, recoveries, plans, and
 reviewer assignments. Later slices add the bounded project, Blueprint,
 objective, multi-agent plan, review-detail, and exact system health/status reads required by the current
-Console. The only query-bearing HTTP Console route is the bounded Blueprint
-comparison with positive integer `from` and `to` values.
+Console. The 0.3-A slice additionally exposes only the project-memory collection, memory detail/revision reads, `PATCH` revision, and `retract`/`redact` commands required by the Console. Memory identifiers are encoded as one canonical URL segment; encoded slashes and control characters remain rejected. The only query-bearing HTTP Console route remains the bounded Blueprint comparison with positive integer `from` and `to` values.
 
 Orchestra 0.2-H also exposes exactly one WebSocket relay:
 `/api/v1/events`. It is not part of the normal HTTP allowlist. The relay accepts
@@ -83,6 +82,7 @@ The current Console still does not add:
 - Blueprint build, activation, secret binding, or revision deletion;
 - project deletion or repository/default-branch mutation;
 - review mutation commands;
+- memory delete/reactivate commands, authority selection, or provenance injection;
 - objective start, replan, archive or delete commands;
 - offline queues, service workers, or browser persistence;
 - arbitrary WebSocket targets or a general-purpose API proxy.

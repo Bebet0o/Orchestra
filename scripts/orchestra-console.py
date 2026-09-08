@@ -20,7 +20,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 MAX_FILE_SIZE = 512 * 1024
 MAX_PROXY_REQUEST_BODY = 384 * 1024
@@ -35,6 +35,7 @@ ROUTES = frozenset(
         "/",
         "/dashboard",
         "/projects",
+        "/memory",
         "/blueprints",
         "/objectives",
         "/executions",
@@ -77,6 +78,7 @@ CONTROLLER_ROUTES = frozenset(
 PROJECT_ID_PATTERN = __import__("re").compile(r"^[a-z][a-z0-9-]{1,62}$")
 PROJECT_COMMANDS = frozenset({"enable", "disable", "rescan", "archive"})
 OBJECTIVE_COMMANDS = frozenset({"pause", "resume", "cancel"})
+MEMORY_COMMANDS = frozenset({"retract", "redact"})
 OBJECTIVE_ID_PATTERN = __import__("re").compile(r"^objective-[0-9a-f]{32}$")
 PLAN_ID_PATTERN = __import__("re").compile(r"^plan-[0-9a-f]{32}$")
 REVIEW_ID_PATTERN = __import__("re").compile(r"^review-[0-9a-f]{32}$")
@@ -85,9 +87,25 @@ SANDBOX_ID_PATTERN = __import__("re").compile(r"^sandbox-[0-9a-f]{32}$")
 REVISION_PATTERN = __import__("re").compile(r"^[1-9][0-9]*$")
 
 
+def _memory_route_segment(segment: str) -> bool:
+    try:
+        decoded = unquote(segment, errors="strict")
+    except UnicodeError:
+        return False
+    if (
+        not decoded
+        or len(decoded) > 200
+        or "/" in decoded
+        or "\\" in decoded
+        or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
+    ):
+        return False
+    return quote(decoded, safe="~()*!.'-_") == segment
+
+
 def _controller_route_exposed(method: str, path: str) -> bool:
     parsed = urlsplit(path)
-    if parsed.fragment or "%" in parsed.path or "\\" in parsed.path:
+    if parsed.fragment or "\\" in parsed.path:
         return False
     route_path = parsed.path
     query = parsed.query
@@ -113,6 +131,22 @@ def _controller_route_exposed(method: str, path: str) -> bool:
                 SANDBOX_ID_PATTERN.fullmatch(parts[0]) is not None
                 and REVISION_PATTERN.fullmatch(parts[2]) is not None
             )
+        return False
+    memory_prefix = "/api/v1/memories/"
+    if route_path.startswith(memory_prefix):
+        if query:
+            return False
+        parts = route_path[len(memory_prefix):].split("/")
+        if not parts or not _memory_route_segment(parts[0]):
+            return False
+        if len(parts) == 1:
+            return method in {"GET", "PATCH"}
+        if len(parts) == 2 and parts[1] == "revisions":
+            return method == "GET"
+        if len(parts) == 3 and parts[1] == "revisions":
+            return method == "GET" and REVISION_PATTERN.fullmatch(parts[2]) is not None
+        if len(parts) == 3 and parts[1] == "commands":
+            return method == "POST" and parts[2] in MEMORY_COMMANDS
         return False
     operation_prefix = "/api/v1/operations/"
     if route_path.startswith(operation_prefix):
@@ -158,6 +192,12 @@ def _controller_route_exposed(method: str, path: str) -> bool:
             )
         return False
     prefix = "/api/v1/projects/"
+    memory_suffix = "/memories"
+    if route_path.startswith(prefix) and route_path.endswith(memory_suffix):
+        if query or method not in {"GET", "POST"}:
+            return False
+        project_id = route_path[len(prefix):-len(memory_suffix)]
+        return PROJECT_ID_PATTERN.fullmatch(project_id) is not None
     if not route_path.startswith(prefix):
         return False
     suffix = route_path[len(prefix):]

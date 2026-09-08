@@ -21,10 +21,16 @@ gates are complete.
 
 ## v0.3.0 — Durable Project Intelligence
 
-- Context intelligence
-- Artifact management
-- Structured project memory
-- Improved scheduling
+Implementation order is intentionally Memory → Context → Artifact → Scheduling.
+
+- 0.3-A Structured Project Memory — **CLOSED** ([design and operator surface](docs/STRUCTURED_PROJECT_MEMORY.md))
+- 0.3-B Context Intelligence — **NEXT**
+- 0.3-C Artifact Management — planned
+- 0.3-D Improved Scheduling — planned
+
+0.3-A establishes canonical durable project memory, revision history, provenance,
+Controller commands/events and the Console Memory & Decisions view. Runtime context
+selection remains unchanged until 0.3-B.
 
 ## v0.4.0 — Autonomy and Advanced Workflows
 

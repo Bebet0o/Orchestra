@@ -355,3 +355,22 @@ summary { cursor: pointer; color: var(--accent); font-weight: 700; }
 .state-badge[data-state="unknown"] { border-color: rgba(155, 176, 216, 0.24); color: #c8d4e7; background: rgba(83, 125, 181, 0.10); }
 .state-badge[data-state="unavailable"] { border-color: rgba(255, 128, 128, 0.28); color: #ffd7d7; background: rgba(180, 61, 61, 0.10); }
 @media (max-width: 920px) { .administration-grid, .administration-capability-list { grid-template-columns: 1fr; } .administration-wide { grid-column: auto; } }
+
+/* Milestone 0.3-A Structured Project Memory */
+.memory-panel { margin-top: 1rem; }
+.memory-grid { display: grid; grid-template-columns: minmax(18rem, 0.8fr) minmax(22rem, 1.2fr); gap: 1rem; margin-top: 1rem; align-items: start; }
+.memory-editor-card { min-width: 0; }
+.memory-detail-card, .memory-history-card { grid-column: 1 / -1; }
+.memory-control, .memory-filter-grid label, .memory-form label { display: grid; gap: 0.38rem; color: var(--muted); font-size: 0.8rem; }
+.memory-control { margin-top: 1rem; }
+.memory-filter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; margin-top: 0.7rem; }
+.memory-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin-top: 1rem; }
+.memory-form-wide { grid-column: 1 / -1; }
+.memory-form button { min-height: 2.85rem; padding: 0.72rem 0.9rem; border: 1px solid rgba(142, 230, 194, 0.34); background: var(--accent-soft); color: #e9fff6; font-weight: 700; }
+.memory-content { max-height: 24rem; margin: 0.9rem 0 0; padding: 0.9rem; overflow: auto; border: 1px solid rgba(155, 176, 216, 0.13); border-radius: 0.75rem; background: #070b13; color: #dfe8f7; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.78rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.memory-reference-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.state-badge[data-state="active"] { border-color: rgba(142, 230, 194, 0.28); color: #dffcef; background: var(--accent-soft); }
+.state-badge[data-state="retracted"] { border-color: rgba(255, 213, 128, 0.30); color: #ffe6b5; background: rgba(180, 126, 61, 0.10); }
+.state-badge[data-state="redacted"] { border-color: rgba(255, 160, 160, 0.34); color: #ffd4d4; background: rgba(180, 61, 61, 0.12); }
+@media (max-width: 920px) { .memory-grid, .memory-form, .memory-reference-grid { grid-template-columns: 1fr; } .memory-detail-card, .memory-history-card, .memory-form-wide { grid-column: auto; } }
+@media (max-width: 620px) { .memory-filter-grid { grid-template-columns: 1fr; } }

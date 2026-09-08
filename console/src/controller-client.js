@@ -22,6 +22,8 @@ const REVIEW_ID_PATTERN = /^review-[0-9a-f]{32}$/;
 const OPERATION_ID_PATTERN = /^operation-[0-9a-f]{32}$/;
 const PROJECT_COMMANDS = new Set(["enable", "disable", "rescan", "archive"]);
 const OBJECTIVE_COMMANDS = new Set(["pause", "resume", "cancel"]);
+const MEMORY_COMMANDS = new Set(["retract", "redact"]);
+const MEMORY_KINDS = new Set(["FACT", "CONSTRAINT", "DECISION", "ASSUMPTION", "FINDING", "RESULT", "REFERENCE", "NOTE"]);
 const REQUEST_TIMEOUT_MS = 7000;
 const MAX_ERROR_TEXT = 160;
 const MAX_COLLECTION_ITEMS = 200;
@@ -113,6 +115,22 @@ function operationId(value) {
   return value;
 }
 
+function memoryId(value) {
+  if (
+    typeof value !== "string"
+    || value.length < 1
+    || value.length > 200
+    || value.includes("/")
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw new ControllerClientError("Identifiant mémoire invalide.", {
+      status: 400,
+      code: "invalid_memory_id",
+    });
+  }
+  return value;
+}
+
 function objectiveIntent(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new ControllerClientError("Intention objectif invalide.", {
@@ -123,12 +141,35 @@ function objectiveIntent(value) {
   return value;
 }
 
+function memoryIntent(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ControllerClientError("Intention mémoire invalide.", {
+      status: 400,
+      code: "invalid_memory",
+    });
+  }
+  if (typeof value.kind !== "string" || !MEMORY_KINDS.has(value.kind)) {
+    throw new ControllerClientError("Type de mémoire invalide.", { status: 400, code: "invalid_memory_kind" });
+  }
+  if (typeof value.content !== "string") {
+    throw new ControllerClientError("Contenu mémoire invalide.", { status: 400, code: "invalid_memory_content" });
+  }
+  return value;
+}
+
 function revisionNumber(value) {
   if (!Number.isInteger(value) || value < 1 || value > Number.MAX_SAFE_INTEGER) {
     throw new ControllerClientError("Révision Blueprint invalide.", {
       status: 400,
       code: "invalid_blueprint_revision",
     });
+  }
+  return value;
+}
+
+function memoryRevisionNumber(value) {
+  if (!Number.isInteger(value) || value < 1 || value > Number.MAX_SAFE_INTEGER) {
+    throw new ControllerClientError("Révision mémoire invalide.", { status: 400, code: "invalid_memory_revision" });
   }
   return value;
 }
@@ -281,7 +322,7 @@ function eventTopics(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 64) {
     throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
   }
-  const allowed = new Set(["all", "system", "projects", "objectives", "tasks", "runs", "reviews", "recoveries", "sandboxes", "backups", "notifications", "confirmations", "audit"]);
+  const allowed = new Set(["all", "system", "projects", "objectives", "tasks", "runs", "reviews", "recoveries", "sandboxes", "backups", "notifications", "confirmations", "audit", "memories"]);
   if (new Set(value).size !== value.length || value.some((topic) => typeof topic !== "string" || !allowed.has(topic)) || (value.includes("all") && value.length !== 1)) {
     throw new ControllerClientError("Topics événementiels invalides.", { status: 400, code: "invalid_event_topics" });
   }
@@ -464,6 +505,53 @@ export function createControllerClient() {
         ifMatch: etag,
         idempotencyLabel: `project-${command}`,
       }));
+    },
+    async memories(projectIdentifier) {
+      return collection(await request({
+        method: "GET",
+        path: `/api/v1/projects/${projectId(projectIdentifier)}/memories`,
+      }));
+    },
+    async memory(identifier) {
+      const encoded = encodeURIComponent(memoryId(identifier));
+      const result = await request({ method: "GET", path: `/api/v1/memories/${encoded}` }, { includeEtag: true });
+      return Object.freeze({ memory: dataObject(result.payload), etag: result.etag });
+    },
+    async memoryRevisions(identifier) {
+      const encoded = encodeURIComponent(memoryId(identifier));
+      return collection(await request({ method: "GET", path: `/api/v1/memories/${encoded}/revisions` }));
+    },
+    async memoryRevision(identifier, revision) {
+      const encoded = encodeURIComponent(memoryId(identifier));
+      return dataObject(await request({
+        method: "GET",
+        path: `/api/v1/memories/${encoded}/revisions/${memoryRevisionNumber(revision)}`,
+      }));
+    },
+    async createMemory(projectIdentifier, intent) {
+      const csrf = await csrfToken();
+      return dataObject(await request({
+        method: "POST",
+        path: `/api/v1/projects/${projectId(projectIdentifier)}/memories`,
+      }, { body: memoryIntent(intent), csrfToken: csrf, idempotencyLabel: "memory-create" }));
+    },
+    async reviseMemory(identifier, etag, intent) {
+      const csrf = await csrfToken();
+      const encoded = encodeURIComponent(memoryId(identifier));
+      return dataObject(await request({ method: "PATCH", path: `/api/v1/memories/${encoded}` }, {
+        body: memoryIntent(intent), csrfToken: csrf, ifMatch: etag, idempotencyLabel: "memory-revise",
+      }));
+    },
+    async commandMemory(identifier, command, etag, reason = null) {
+      if (!MEMORY_COMMANDS.has(command)) {
+        throw new ControllerClientError("Commande mémoire non autorisée.", { status: 400, code: "unsupported_memory_command" });
+      }
+      const csrf = await csrfToken();
+      const encoded = encodeURIComponent(memoryId(identifier));
+      return dataObject(await request({
+        method: "POST",
+        path: `/api/v1/memories/${encoded}/commands/${command}`,
+      }, { body: { reason }, csrfToken: csrf, ifMatch: etag, idempotencyLabel: `memory-${command}` }));
     },
     async objectives() {
       return collection(await request("objectives"));
